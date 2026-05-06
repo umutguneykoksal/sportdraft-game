@@ -4,6 +4,7 @@ import {
   AuctionRoundResponse,
   confirmMatchStart,
   getAuctionState,
+  getMatchResult,
   getSessionSnapshot,
   passRound,
   placeBid,
@@ -66,6 +67,7 @@ export function AuctionPage() {
         const onAuctionPage =
           snapshot.status === "AUCTIONING"
           || snapshot.status === "MATCH_START_PENDING"
+          || snapshot.status === "FINALIZING"
           || snapshot.status === "AWAITING_RESULT";
         if (!onAuctionPage) {
           navigate("/lobby");
@@ -124,6 +126,44 @@ export function AuctionPage() {
   }, [sessionId, sessionSnap?.status]);
 
   useEffect(() => {
+    if (!sessionId) {
+      return;
+    }
+    const simulating =
+      sessionSnap?.status === "AWAITING_RESULT"
+      || sessionSnap?.status === "FINALIZING";
+    if (!simulating) {
+      return;
+    }
+    let cancelled = false;
+    const tick = async () => {
+      try {
+        const snap = await getSessionSnapshot(sessionId);
+        if (cancelled) {
+          return;
+        }
+        setSessionSnap(snap);
+        if (snap.status === "FINISHED") {
+          navigate(`/match/${sessionId}`);
+          return;
+        }
+        const result = await getMatchResult(sessionId);
+        if (!cancelled && result !== null) {
+          navigate(`/match/${sessionId}`);
+        }
+      } catch {
+        // ignore transient errors while polling
+      }
+    };
+    tick();
+    const id = window.setInterval(tick, 1000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [sessionId, sessionSnap?.status, navigate]);
+
+  useEffect(() => {
     if (!sessionId || !isConnected) {
       return;
     }
@@ -137,6 +177,7 @@ export function AuctionPage() {
         const onAuctionPage =
           snapshot.status === "AUCTIONING"
           || snapshot.status === "MATCH_START_PENDING"
+          || snapshot.status === "FINALIZING"
           || snapshot.status === "AWAITING_RESULT";
         if (!onAuctionPage) {
           navigate("/lobby");
@@ -400,8 +441,10 @@ export function AuctionPage() {
         </div>
       )}
 
-      {sessionSnap?.status === "AWAITING_RESULT" && (
-        <p style={{ color: "#333" }}>Maç simüle ediliyor…</p>
+      {(sessionSnap?.status === "AWAITING_RESULT" || sessionSnap?.status === "FINALIZING") && (
+        <p style={{ color: "#333" }}>
+          Maç simüle ediliyor… Birkaç saniye içinde sonuç sayfasına geçmeli; olmazsa sayfayı yenileyin.
+        </p>
       )}
 
       <button onClick={handleStartRound} disabled={loading || !auctionPhaseActive}>

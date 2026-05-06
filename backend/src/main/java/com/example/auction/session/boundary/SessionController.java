@@ -4,10 +4,13 @@ import com.example.auction.bidding.control.AuctionService;
 import com.example.auction.lobby.boundary.SessionSnapshotResponse;
 import com.example.auction.lobby.control.LobbyService;
 import com.example.auction.session.control.SessionAdminService;
+import com.example.auction.simulation.boundary.MatchResultResponse;
+import com.example.auction.simulation.entity.MatchResultRepository;
 import jakarta.validation.Valid;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -25,15 +28,18 @@ public class SessionController {
     private final LobbyService lobbyService;
     private final SessionAdminService sessionAdminService;
     private final AuctionService auctionService;
+    private final MatchResultRepository matchResultRepository;
 
     public SessionController(
         LobbyService lobbyService,
         SessionAdminService sessionAdminService,
-        AuctionService auctionService
+        AuctionService auctionService,
+        MatchResultRepository matchResultRepository
     ) {
         this.lobbyService = lobbyService;
         this.sessionAdminService = sessionAdminService;
         this.auctionService = auctionService;
+        this.matchResultRepository = matchResultRepository;
     }
 
     @GetMapping("/{sessionId}")
@@ -61,6 +67,13 @@ public class SessionController {
         UUID userId = extractUserId(authorization);
         auctionService.confirmMatchStart(sessionId, userId);
         return lobbyService.getSnapshot(sessionId, userId);
+    }
+
+    @GetMapping("/{sessionId}/match-result")
+    public ResponseEntity<MatchResultResponse> getMatchResult(@PathVariable UUID sessionId) {
+        return matchResultRepository.findBySession_Id(sessionId)
+            .map(m -> ResponseEntity.ok(new MatchResultResponse(m.getHomeScore(), m.getAwayScore())))
+            .orElse(ResponseEntity.notFound().build());
     }
 
     @DeleteMapping("/{sessionId}")

@@ -5,6 +5,7 @@ import com.example.auction.simulation.entity.MatchResult;
 import com.example.auction.simulation.entity.MatchResultRepository;
 import com.example.auction.session.entity.GameSession;
 import com.example.auction.session.entity.GameSessionRepository;
+import jakarta.transaction.Transactional;
 import java.time.Instant;
 import java.util.UUID;
 import org.springframework.context.ApplicationEventPublisher;
@@ -36,6 +37,7 @@ public class MatchSimulationListener {
     }
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    @Transactional
     public void onSessionFinalized(SessionFinalizedEvent event) {
         boolean isNew = processedEventRepository.markIfNew(event.eventId(), "SessionFinalizedEvent");
         if (!isNew) {

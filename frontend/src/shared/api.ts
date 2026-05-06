@@ -113,6 +113,25 @@ export async function leaveLobby(sessionId: string): Promise<SessionSnapshotResp
   return (await response.json()) as SessionSnapshotResponse;
 }
 
+export interface MatchResultResponse {
+  homeScore: number;
+  awayScore: number;
+}
+
+export async function getMatchResult(sessionId: string): Promise<MatchResultResponse | null> {
+  const response = await fetch(`${API_BASE}/api/sessions/${sessionId}/match-result`, {
+    method: "GET",
+    headers: authHeaders(),
+  });
+  if (response.status === 404) {
+    return null;
+  }
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response, `getMatchResult failed: ${response.status}`));
+  }
+  return (await response.json()) as MatchResultResponse;
+}
+
 export async function getSessionSnapshot(sessionId: string): Promise<SessionSnapshotResponse> {
   let lastError: Error | null = null;
   for (let attempt = 0; attempt < 2; attempt += 1) {

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { getMatchResult } from "../../shared/api";
 import { useSessionStream } from "../../shared/sse";
 
 export function MatchPage() {
@@ -26,6 +27,30 @@ export function MatchPage() {
       setAwayScore(payload.awayScore);
     }
   }, [events]);
+
+  useEffect(() => {
+    if (!sessionId || (homeScore !== null && awayScore !== null)) {
+      return;
+    }
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const result = await getMatchResult(sessionId);
+        if (!cancelled && result) {
+          setHomeScore(result.homeScore);
+          setAwayScore(result.awayScore);
+        }
+      } catch {
+        // ignore
+      }
+    };
+    load();
+    const id = window.setInterval(load, 1500);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [sessionId, homeScore, awayScore]);
 
   const ready = useMemo(
     () => typeof homeScore === "number" && typeof awayScore === "number",
