@@ -14,7 +14,7 @@ interface WonCard {
 export function AuctionPage() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
-  const { events } = useSessionStream(sessionId ?? null);
+  const { events, isConnected } = useSessionStream(sessionId ?? null);
   const myUserId = localStorage.getItem("sessionToken");
 
   const [round, setRound] = useState<AuctionRoundResponse | null>(null);
@@ -54,21 +54,31 @@ export function AuctionPage() {
       }
     };
     syncSnapshot();
-    const timer = setInterval(async () => {
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionId, navigate]);
+
+  useEffect(() => {
+    if (!sessionId || !isConnected) {
+      return;
+    }
+    const refresh = async () => {
       try {
         const snapshot = await getSessionSnapshot(sessionId);
         if (snapshot.status === "FINISHED") {
           navigate(`/match/${sessionId}`);
+          return;
+        }
+        if (snapshot.status !== "AUCTIONING" && snapshot.status !== "AWAITING_RESULT") {
+          navigate("/lobby");
         }
       } catch {
-        // ignore polling issues
+        // ignore sync issues
       }
-    }, 1000);
-    return () => {
-      cancelled = true;
-      clearInterval(timer);
     };
-  }, [sessionId, navigate]);
+    refresh();
+  }, [isConnected, navigate, sessionId]);
 
   useEffect(() => {
     const latest = events.at(-1);
@@ -248,6 +258,7 @@ export function AuctionPage() {
       )}
 
       {error && <p style={{ color: "red" }}>{error}</p>}
+      {!isConnected && <p style={{ color: "#a15c00" }}>Reconnecting live updates...</p>}
 
       <div style={{ marginTop: 20, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
         <div style={{ background: "#f5f5f5", padding: 10 }}>

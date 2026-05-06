@@ -9,7 +9,9 @@ export interface SseEventEnvelope {
 
 export function useSessionStream(sessionId: string | null) {
   const [events, setEvents] = useState<SseEventEnvelope[]>([]);
-  const sourceRef = useRef<EventSource | null>(null);
+  const [isConnected, setIsConnected] = useState(false);
+  const socketRef = useRef<WebSocket | null>(null);
+  const reconnectTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (!sessionId) {
@@ -19,45 +21,51 @@ export function useSessionStream(sessionId: string | null) {
     if (!token) {
       return;
     }
+    let closedByHook = false;
 
-    const source = new EventSource(
-      `${getApiBase()}/api/sessions/${sessionId}/events?token=${token}`
-    );
-    sourceRef.current = source;
+    const wsBase = getApiBase().replace(/^http/, "ws");
+    const connect = () => {
+      const socket = new WebSocket(`${wsBase}/ws/sessions/${sessionId}?token=${token}`);
+      socketRef.current = socket;
+      setIsConnected(false);
 
-    const push = (event: MessageEvent<string>) => {
-      try {
-        const parsed = JSON.parse(event.data) as SseEventEnvelope;
-        setEvents((prev) => [...prev.slice(-30), parsed]);
-      } catch {
-        // ignore parse issues for now
-      }
+      socket.onopen = () => {
+        setIsConnected(true);
+      };
+
+      socket.onmessage = (event) => {
+        try {
+          const parsed = JSON.parse(event.data) as SseEventEnvelope;
+          setEvents((prev) => [...prev.slice(-30), parsed]);
+        } catch {
+          // ignore parse issues for now
+        }
+      };
+
+      socket.onclose = () => {
+        setIsConnected(false);
+        if (!closedByHook) {
+          reconnectTimerRef.current = window.setTimeout(connect, 1000);
+        }
+      };
+
+      socket.onerror = () => {
+        setIsConnected(false);
+      };
     };
-
-    const names = [
-      "lobby_updated",
-      "countdown_started",
-      "countdown_cancelled",
-      "formation_phase_started",
-      "formation_chosen",
-      "auctioning_started",
-      "round_started",
-      "bid_placed",
-      "round_ended",
-      "round_skipped",
-      "session_finalizing",
-      "match_completed",
-      "heartbeat",
-    ];
-
-    names.forEach((name) => source.addEventListener(name, push as EventListener));
+    connect();
 
     return () => {
-      names.forEach((name) => source.removeEventListener(name, push as EventListener));
-      source.close();
-      sourceRef.current = null;
+      closedByHook = true;
+      setIsConnected(false);
+      if (reconnectTimerRef.current !== null) {
+        window.clearTimeout(reconnectTimerRef.current);
+        reconnectTimerRef.current = null;
+      }
+      socketRef.current?.close();
+      socketRef.current = null;
     };
   }, [sessionId]);
 
-  return { events };
+  return { events, isConnected };
 }

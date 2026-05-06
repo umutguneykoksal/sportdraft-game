@@ -2,19 +2,31 @@ package com.example.auction.common.sse;
 
 import java.io.IOException;
 import java.time.Instant;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import org.springframework.stereotype.Component;
+import org.springframework.web.socket.TextMessage;
+import org.springframework.web.socket.WebSocketSession;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 @Component
 public class SseEmitterRegistry {
 
     private static final long TIMEOUT_MS = 30L * 60L * 1000L;
     private final Map<UUID, List<SseEmitter>> bySession = new ConcurrentHashMap<>();
+    private final Map<UUID, List<WebSocketSession>> wsBySession = new ConcurrentHashMap<>();
+    private final ObjectMapper objectMapper;
+
+    public SseEmitterRegistry(ObjectMapper objectMapper) {
+        this.objectMapper = objectMapper;
+    }
 
     public SseEmitter register(UUID sessionId) {
         SseEmitter emitter = new SseEmitter(TIMEOUT_MS);
@@ -26,6 +38,11 @@ public class SseEmitterRegistry {
     }
 
     public void broadcast(UUID sessionId, String eventType, Object payload) {
+        Map<String, Object> envelope = Map.of(
+            "eventType", eventType,
+            "occurredAt", Instant.now().toString(),
+            "payload", payload
+        );
         List<SseEmitter> emitters = bySession.getOrDefault(sessionId, List.of());
         for (SseEmitter emitter : emitters) {
             try {
@@ -33,13 +50,7 @@ public class SseEmitterRegistry {
                     SseEmitter.event()
                         .id(UUID.randomUUID().toString())
                         .name(eventType)
-                        .data(
-                            Map.of(
-                                "eventType", eventType,
-                                "occurredAt", Instant.now().toString(),
-                                "payload", payload
-                            )
-                        )
+                        .data(envelope)
                 );
             } catch (IOException | IllegalStateException ex) {
                 emitter.completeWithError(ex);
@@ -48,10 +59,47 @@ public class SseEmitterRegistry {
                 remove(sessionId, emitter);
             }
         }
+
+        List<WebSocketSession> wsSessions = wsBySession.getOrDefault(sessionId, List.of());
+        String jsonMessage;
+        try {
+            jsonMessage = objectMapper.writeValueAsString(envelope);
+        } catch (JsonProcessingException ex) {
+            return;
+        }
+        TextMessage textMessage = new TextMessage(jsonMessage);
+        for (WebSocketSession wsSession : wsSessions) {
+            try {
+                if (wsSession.isOpen()) {
+                    wsSession.sendMessage(textMessage);
+                } else {
+                    removeWebSocket(sessionId, wsSession);
+                }
+            } catch (IOException | IllegalStateException ex) {
+                removeWebSocket(sessionId, wsSession);
+            }
+        }
     }
 
     public List<UUID> sessionIds() {
-        return List.copyOf(bySession.keySet());
+        Set<UUID> sessionIds = new HashSet<>(bySession.keySet());
+        sessionIds.addAll(wsBySession.keySet());
+        return List.copyOf(sessionIds);
+    }
+
+    public void registerWebSocket(UUID sessionId, WebSocketSession session) {
+        wsBySession.computeIfAbsent(sessionId, key -> new CopyOnWriteArrayList<>()).add(session);
+    }
+
+    public void removeWebSocket(UUID sessionId, WebSocketSession session) {
+        List<WebSocketSession> sessions = wsBySession.get(sessionId);
+        if (sessions == null) {
+            return;
+        }
+        sessions.remove(session);
+        if (sessions.isEmpty()) {
+            wsBySession.remove(sessionId);
+        }
     }
 
     private void remove(UUID sessionId, SseEmitter emitter) {

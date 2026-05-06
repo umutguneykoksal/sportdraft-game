@@ -61,6 +61,16 @@ async function readErrorMessage(response: Response, fallback: string): Promise<s
   }
 }
 
+async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export async function joinLobby(nickname: string): Promise<SessionSnapshotResponse> {
   const response = await fetch(`${API_BASE}/api/lobbies/join`, {
     method: "POST",
@@ -85,14 +95,29 @@ export async function leaveLobby(sessionId: string): Promise<SessionSnapshotResp
 }
 
 export async function getSessionSnapshot(sessionId: string): Promise<SessionSnapshotResponse> {
-  const response = await fetch(`${API_BASE}/api/sessions/${sessionId}`, {
-    method: "GET",
-    headers: authHeaders(),
-  });
-  if (!response.ok) {
-    throw new Error(await readErrorMessage(response, `getSessionSnapshot failed: ${response.status}`));
+  let lastError: Error | null = null;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const response = await fetchWithTimeout(
+        `${API_BASE}/api/sessions/${sessionId}`,
+        {
+          method: "GET",
+          headers: authHeaders(),
+        },
+        3500
+      );
+      if (!response.ok) {
+        throw new Error(await readErrorMessage(response, `getSessionSnapshot failed: ${response.status}`));
+      }
+      return (await response.json()) as SessionSnapshotResponse;
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error("getSessionSnapshot failed");
+      if (attempt === 0) {
+        await new Promise((resolve) => setTimeout(resolve, 250));
+      }
+    }
   }
-  return (await response.json()) as SessionSnapshotResponse;
+  throw lastError ?? new Error("getSessionSnapshot failed");
 }
 
 export async function selectFormation(sessionId: string, formation: Formation): Promise<SessionSnapshotResponse> {

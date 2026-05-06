@@ -26,7 +26,7 @@ export function LobbyPage() {
 
   const session = getOrCreateClientSession();
   const sessionId = snapshot?.sessionId ?? null;
-  const { events } = useSessionStream(sessionId);
+  const { events, isConnected } = useSessionStream(sessionId);
 
   useEffect(() => {
     const restore = async () => {
@@ -68,16 +68,19 @@ export function LobbyPage() {
     if (!snapshot) {
       return;
     }
-    const timer = setInterval(async () => {
+    if (!isConnected) {
+      return;
+    }
+    const refresh = async () => {
       try {
         const latest = await getSessionSnapshot(snapshot.sessionId);
         setSnapshot(latest);
       } catch {
-        // ignore polling errors for now
+        // ignore sync issues
       }
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [snapshot]);
+    };
+    refresh();
+  }, [isConnected, snapshot]);
 
   const handleJoin = async () => {
     setLoading(true);
@@ -168,6 +171,9 @@ export function LobbyPage() {
       )}
 
       {error && <p style={{ color: "red" }}>{error}</p>}
+      {snapshot && !isConnected && (
+        <p style={{ color: "#a15c00" }}>Reconnecting live updates...</p>
+      )}
 
       <h4 style={{ marginTop: 20 }}>Recent SSE Events</h4>
       <div style={{ background: "#f5f5f5", padding: 8, maxHeight: 240, overflow: "auto" }}>
