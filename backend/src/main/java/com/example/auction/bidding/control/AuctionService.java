@@ -250,7 +250,7 @@ public class AuctionService {
 
         SessionPlayer winner = sessionPlayerRepository.findById(round.getHighestBidderId())
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "Winner not found"));
-        if (winner.getCards().size() >= ROSTER_SIZE) {
+        if (sessionPlayerRepository.countCardsByPlayerId(winner.getId()) >= ROSTER_SIZE) {
             round.markPassed();
             sseEmitterRegistry.broadcast(
                 round.getSession().getId(),
@@ -407,9 +407,7 @@ public class AuctionService {
 
     private int openSlotsForPosition(SessionPlayer player, Position position) {
         int required = formationSlotCount(player.getFormation(), position);
-        int filled = (int) player.getCards().stream()
-            .filter(card -> card.getPosition() == position)
-            .count();
+        int filled = (int) sessionPlayerRepository.countCardsByPlayerIdAndPosition(player.getId(), position);
         return Math.max(required - filled, 0);
     }
 
@@ -456,7 +454,8 @@ public class AuctionService {
             return;
         }
 
-        boolean allRostersFull = players.stream().allMatch(player -> player.getCards().size() >= ROSTER_SIZE);
+        boolean allRostersFull = players.stream()
+            .allMatch(player -> sessionPlayerRepository.countCardsByPlayerId(player.getId()) >= ROSTER_SIZE);
         boolean everyoneBlocked = players.stream().allMatch(player -> {
             int openSlots = totalOpenSlots(player);
             if (openSlots <= 0) {
