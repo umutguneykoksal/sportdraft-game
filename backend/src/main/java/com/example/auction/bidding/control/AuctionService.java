@@ -295,7 +295,7 @@ public class AuctionService {
                 }
                 UUID previousOpening = previousRound.getOpeningBidderUserId();
                 if (previousOpening != null) {
-                    return otherPlayerUserId(sessionId, previousOpening);
+                    return previousOpening;
                 }
                 return players.stream()
                     .map(SessionPlayer::getUserId)

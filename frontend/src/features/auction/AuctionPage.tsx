@@ -18,7 +18,7 @@ export function AuctionPage() {
   const myUserId = localStorage.getItem("sessionToken");
 
   const [round, setRound] = useState<AuctionRoundResponse | null>(null);
-  const [amount, setAmount] = useState<string>("200");
+  const [amount, setAmount] = useState<string>("1");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [myTeam, setMyTeam] = useState<WonCard[]>([]);
@@ -113,6 +113,20 @@ export function AuctionPage() {
 
   useEffect(() => {
     if (!round) {
+      return;
+    }
+    const minimum = Math.max(1, round.highestBidCents + 1);
+    setAmount((prev) => {
+      const parsed = Number(prev);
+      if (!Number.isFinite(parsed) || parsed < minimum) {
+        return String(minimum);
+      }
+      return prev;
+    });
+  }, [round]);
+
+  useEffect(() => {
+    if (!round) {
       setSecondsLeft(0);
       return;
     }
@@ -194,9 +208,32 @@ export function AuctionPage() {
             onChange={(e) => setAmount(e.target.value)}
             type="number"
             min={1}
+            placeholder="Enter bid (cents)"
             disabled={loading || !isMyTurn}
             style={{ marginRight: 8 }}
           />
+          <button
+            onClick={() => {
+              const current = Number(amount);
+              const safe = Number.isFinite(current) ? current : Math.max(1, (round?.highestBidCents ?? 0) + 1);
+              setAmount(String(safe + 1));
+            }}
+            disabled={loading || !isMyTurn}
+            style={{ marginRight: 8 }}
+          >
+            +1
+          </button>
+          <button
+            onClick={() => {
+              const current = Number(amount);
+              const safe = Number.isFinite(current) ? current : Math.max(1, (round?.highestBidCents ?? 0) + 1);
+              setAmount(String(safe + 5));
+            }}
+            disabled={loading || !isMyTurn}
+            style={{ marginRight: 8 }}
+          >
+            +5
+          </button>
           <button onClick={handleBid} disabled={loading || !isMyTurn}>
             Place Bid
           </button>
