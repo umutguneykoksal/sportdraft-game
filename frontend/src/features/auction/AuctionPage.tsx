@@ -215,6 +215,9 @@ export function AuctionPage() {
       }
       setRound(payload.round);
     }
+    if (latest.eventType === "round_ended" && sessionId) {
+      getSessionSnapshot(sessionId).then(setSessionSnap).catch(() => {});
+    }
     if (
       latest.eventType === "round_ended" &&
       payload.result === "SOLD" &&

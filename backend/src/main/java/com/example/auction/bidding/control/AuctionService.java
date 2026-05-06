@@ -27,6 +27,7 @@ import java.util.Collections;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.ArrayList;
 import org.springframework.http.HttpStatus;
@@ -164,6 +165,12 @@ public class AuctionService {
         }
 
         if (round == null) {
+            boolean allFull = players.stream()
+                .allMatch(player -> sessionPlayerRepository.countCardsByPlayerId(player.getId()) >= ROSTER_SIZE);
+            if (allFull) {
+                enterMatchStartPending(sessionId);
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "Rosters complete; confirm match start");
+            }
             session.moveToFinalizing(session.getId().getMostSignificantBits());
             publishSessionFinalized(session, players);
             sseEmitterRegistry.broadcast(
@@ -204,6 +211,9 @@ public class AuctionService {
 
         SessionPlayer bidder = sessionPlayerRepository.findBySession_IdAndUserId(sessionId, userId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Player not found in session"));
+        if (sessionPlayerRepository.countCardsByPlayerId(bidder.getId()) >= ROSTER_SIZE) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "Roster is full");
+        }
         normalizeTurnForRound(round, sessionId);
         if (round.getStatus() != RoundStatus.OPEN) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Round is not open");
@@ -365,6 +375,23 @@ public class AuctionService {
         List<AuctionRound> expired = auctionRoundRepository.findByStatusAndEndsAtLessThanEqual(RoundStatus.OPEN, Instant.now());
         for (AuctionRound round : expired) {
             closeRound(round);
+        }
+    }
+
+    @Scheduled(fixedDelay = 1000)
+    public void reconcileRostersCompleteAuctions() {
+        List<GameSession> auctioning = gameSessionRepository.findByStatusOrderByCreatedAtAsc(SessionStatus.AUCTIONING);
+        for (GameSession gameSession : auctioning) {
+            UUID sessionId = gameSession.getId();
+            List<SessionPlayer> players = sessionPlayerRepository.findBySession_Id(sessionId);
+            if (players.size() < 2) {
+                continue;
+            }
+            boolean allFull = players.stream()
+                .allMatch(player -> sessionPlayerRepository.countCardsByPlayerId(player.getId()) >= ROSTER_SIZE);
+            if (allFull) {
+                enterMatchStartPending(sessionId);
+            }
         }
     }
 
@@ -552,10 +579,16 @@ public class AuctionService {
     }
 
     private boolean canBidForPosition(SessionPlayer player, Position position) {
+        if (sessionPlayerRepository.countCardsByPlayerId(player.getId()) >= ROSTER_SIZE) {
+            return false;
+        }
         return openSlotsForPosition(player, position) > 0 && player.getRemainingBudgetCents() >= STARTING_BID;
     }
 
     private boolean canPlayerBidRound(SessionPlayer player, AuctionRound round, long amountCents) {
+        if (sessionPlayerRepository.countCardsByPlayerId(player.getId()) >= ROSTER_SIZE) {
+            return false;
+        }
         if (openSlotsForPosition(player, round.getCard().getPosition()) <= 0) {
             return false;
         }
@@ -664,6 +697,26 @@ public class AuctionService {
             .allMatch(player -> sessionPlayerRepository.countCardsByPlayerId(player.getId()) >= ROSTER_SIZE);
         if (!allFull) {
             return;
+        }
+        Optional<AuctionRound> openRound = auctionRoundRepository.findFirstBySession_IdAndStatusOrderByStartsAtDesc(
+            sessionId,
+            RoundStatus.OPEN
+        );
+        if (openRound.isPresent()) {
+            AuctionRound lockedOpen = auctionRoundRepository.lockById(openRound.get().getId()).orElse(null);
+            if (lockedOpen != null && lockedOpen.getStatus() == RoundStatus.OPEN) {
+                lockedOpen.markPassed();
+                auctionRoundRepository.flush();
+                sseEmitterRegistry.broadcast(
+                    sessionId,
+                    "round_ended",
+                    Map.of(
+                        "round", toResponse(lockedOpen),
+                        "result", "PASSED",
+                        "reason", "both_rosters_complete"
+                    )
+                );
+            }
         }
         session.moveToMatchStartPending(Instant.now().plus(MATCH_START_COUNTDOWN_SECONDS, ChronoUnit.SECONDS));
         gameSessionRepository.save(session);
