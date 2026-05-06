@@ -40,6 +40,7 @@ public class AuctionService {
     private static final long STARTING_BID = 1L;
     private static final int ROSTER_SIZE = 11;
     private static final long MAX_ANTI_SNIPE_SECONDS = 30L;
+    private static final long ANTI_SNIPE_EXTENSION_SECONDS = 5L;
 
     private final GameSessionRepository gameSessionRepository;
     private final SessionPlayerRepository sessionPlayerRepository;
@@ -197,9 +198,9 @@ public class AuctionService {
         }
 
         Instant newEndsAt = round.getEndsAt();
-        if (Instant.now().isAfter(round.getEndsAt().minus(3, ChronoUnit.SECONDS))) {
+        if (Instant.now().isAfter(round.getEndsAt().minus(ANTI_SNIPE_EXTENSION_SECONDS, ChronoUnit.SECONDS))) {
             Instant capped = round.getStartsAt().plus(15 + MAX_ANTI_SNIPE_SECONDS, ChronoUnit.SECONDS);
-            Instant proposed = round.getEndsAt().plus(3, ChronoUnit.SECONDS);
+            Instant proposed = round.getEndsAt().plus(ANTI_SNIPE_EXTENSION_SECONDS, ChronoUnit.SECONDS);
             newEndsAt = proposed.isAfter(capped) ? capped : proposed;
         }
 
