@@ -1,0 +1,20 @@
+spring:
+  config:
+    activate:
+      on-profile: railway
+
+management:
+  otlp:
+    tracing:
+      endpoint: ${OTLP_TRACES_URL:}
+      headers:
+        Authorization: ${OTLP_AUTH:}
+    metrics:
+      export:
+        url: ${OTLP_METRICS_URL:}
+        headers:
+          Authorization: ${OTLP_AUTH:}
+
+logging:
+  level:
+    root: INFO
