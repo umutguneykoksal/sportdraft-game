@@ -227,6 +227,38 @@ public class AuctionService {
         return response;
     }
 
+    public AuctionRoundResponse readyNext(UUID sessionId, UUID userId, UUID roundId) {
+        AuctionRound round = auctionRoundRepository.findById(roundId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Round not found"));
+        if (!round.getSession().getId().equals(sessionId)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Round does not belong to session");
+        }
+        if (round.getStatus() != RoundStatus.OPEN) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Round is not open");
+        }
+        sessionPlayerRepository.findBySession_IdAndUserId(sessionId, userId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Player not found in session"));
+
+        round.registerReady(userId);
+        if (round.areBothReady()) {
+            round.markPassed();
+            sseEmitterRegistry.broadcast(
+                sessionId,
+                "round_ended",
+                Map.of("round", toResponse(round), "result", "PASSED", "reason", "both_players_ready_next")
+            );
+            maybeFinalizeSession(sessionId);
+            maybeStartNextRound(sessionId);
+        } else {
+            sseEmitterRegistry.broadcast(
+                sessionId,
+                "round_ready",
+                Map.of("round", toResponse(round), "userId", userId)
+            );
+        }
+        return toResponse(round);
+    }
+
     @Scheduled(fixedDelay = 1000)
     public void closeExpiredRounds() {
         List<AuctionRound> expired = auctionRoundRepository.findByStatusAndEndsAtLessThanEqual(RoundStatus.OPEN, Instant.now());

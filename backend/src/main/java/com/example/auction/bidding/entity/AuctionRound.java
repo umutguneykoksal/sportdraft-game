@@ -47,6 +47,12 @@ public class AuctionRound {
     @Column(name = "current_turn_user_id")
     private UUID currentTurnUserId;
 
+    @Column(name = "ready_user_one_id")
+    private UUID readyUserOneId;
+
+    @Column(name = "ready_user_two_id")
+    private UUID readyUserTwoId;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private RoundStatus status;
@@ -129,6 +135,8 @@ public class AuctionRound {
         this.highestBidCents = amountCents;
         this.endsAt = endsAt;
         this.currentTurnUserId = nextTurnUserId;
+        this.readyUserOneId = null;
+        this.readyUserTwoId = null;
     }
 
     public void markSold() {
@@ -137,5 +145,24 @@ public class AuctionRound {
 
     public void markPassed() {
         this.status = RoundStatus.PASSED;
+    }
+
+    public boolean registerReady(UUID userId) {
+        if (userId == null || userId.equals(readyUserOneId) || userId.equals(readyUserTwoId)) {
+            return false;
+        }
+        if (readyUserOneId == null) {
+            readyUserOneId = userId;
+            return true;
+        }
+        if (readyUserTwoId == null) {
+            readyUserTwoId = userId;
+            return true;
+        }
+        return false;
+    }
+
+    public boolean areBothReady() {
+        return readyUserOneId != null && readyUserTwoId != null;
     }
 }

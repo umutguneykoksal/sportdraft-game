@@ -161,3 +161,14 @@ export async function placeBid(
   }
   return (await response.json()) as AuctionRoundResponse;
 }
+
+export async function readyNextRound(sessionId: string, roundId: string): Promise<AuctionRoundResponse> {
+  const response = await fetch(`${API_BASE}/api/sessions/${sessionId}/auction/rounds/${roundId}/ready-next`, {
+    method: "POST",
+    headers: authHeaders(),
+  });
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response, `readyNextRound failed: ${response.status}`));
+  }
+  return (await response.json()) as AuctionRoundResponse;
+}

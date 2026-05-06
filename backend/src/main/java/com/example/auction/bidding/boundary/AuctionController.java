@@ -38,6 +38,16 @@ public class AuctionController {
         return auctionService.placeBid(sessionId, userId, idempotencyKey, request);
     }
 
+    @PostMapping("/auction/rounds/{roundId}/ready-next")
+    public AuctionRoundResponse readyNext(
+        @PathVariable UUID sessionId,
+        @PathVariable UUID roundId,
+        @RequestHeader("Authorization") String authorization
+    ) {
+        UUID userId = extractUserId(authorization);
+        return auctionService.readyNext(sessionId, userId, roundId);
+    }
+
     private UUID extractUserId(String authorization) {
         if (authorization == null || !authorization.startsWith("Bearer ")) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Missing Authorization: Bearer <uuid>");

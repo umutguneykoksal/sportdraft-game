@@ -23,6 +23,7 @@ export function LobbyPage() {
   const [snapshot, setSnapshot] = useState<SessionSnapshotResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [countdownSecondsLeft, setCountdownSecondsLeft] = useState<number | null>(null);
 
   const session = getOrCreateClientSession();
   const sessionId = snapshot?.sessionId ?? null;
@@ -81,6 +82,22 @@ export function LobbyPage() {
     };
     refresh();
   }, [isConnected, snapshot]);
+
+  useEffect(() => {
+    if (!snapshot?.countdownEndsAt) {
+      setCountdownSecondsLeft(null);
+      return;
+    }
+    const computeSecondsLeft = () => {
+      const diffMs = new Date(snapshot.countdownEndsAt as string).getTime() - Date.now();
+      return Math.max(0, Math.ceil(diffMs / 1000));
+    };
+    setCountdownSecondsLeft(computeSecondsLeft());
+    const timer = setInterval(() => {
+      setCountdownSecondsLeft(computeSecondsLeft());
+    }, 250);
+    return () => clearInterval(timer);
+  }, [snapshot?.countdownEndsAt]);
 
   const handleJoin = async () => {
     setLoading(true);
@@ -145,7 +162,7 @@ export function LobbyPage() {
           <p>Session: {snapshot.sessionId}</p>
           <p>Status: {snapshot.status}</p>
           <p>Players: {snapshot.playerCount}/2</p>
-          <p>Countdown Ends: {snapshot.countdownEndsAt ?? "-"}</p>
+          <p>Countdown: {countdownSecondsLeft !== null ? `${countdownSecondsLeft}s` : "-"}</p>
           <p>My Formation: {snapshot.myFormation ?? "Not selected"}</p>
 
           <button onClick={handleLeave} disabled={loading}>

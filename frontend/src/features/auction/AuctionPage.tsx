@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { AuctionRoundResponse, getSessionSnapshot, placeBid, startRound } from "../../shared/api";
+import { AuctionRoundResponse, getSessionSnapshot, placeBid, readyNextRound, startRound } from "../../shared/api";
 import { clearActiveSessionId, setActiveSessionId } from "../../shared/session";
 import { useSessionStream } from "../../shared/sse";
 
@@ -208,6 +208,22 @@ export function AuctionPage() {
     }
   };
 
+  const handleReadyNext = async () => {
+    if (!round) {
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await readyNextRound(sessionId, round.roundId);
+      setRound(response);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to ready next");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div style={{ padding: 16, maxWidth: 900, margin: "0 auto", fontFamily: "Arial, sans-serif" }}>
       <h2>Auction</h2>
@@ -259,6 +275,13 @@ export function AuctionPage() {
           </button>
           <button onClick={handleBid} disabled={loading || !isMyTurn}>
             Place Bid
+          </button>
+          <button
+            onClick={handleReadyNext}
+            disabled={loading || round.status !== "OPEN"}
+            style={{ marginLeft: 8 }}
+          >
+            Ready Next
           </button>
           <p style={{ marginTop: 8, marginBottom: 0, fontSize: 13 }}>
             {isMyTurn ? "Your turn to bid." : "Waiting for opponent turn."}
