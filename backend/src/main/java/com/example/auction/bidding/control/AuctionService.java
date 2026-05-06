@@ -341,55 +341,63 @@ public class AuctionService {
     }
 
     private void closeRound(AuctionRound round) {
-        if (round.getHighestBidderId() == null) {
-            round.markPassed();
-            sseEmitterRegistry.broadcast(
-                round.getSession().getId(),
-                "round_ended",
-                Map.of("round", toResponse(round), "result", "PASSED")
-            );
-            maybeFinalizeSession(round.getSession().getId());
-            maybeStartNextRound(round.getSession().getId());
+        AuctionRound locked = auctionRoundRepository.lockById(round.getId())
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "Round not found"));
+        if (locked.getStatus() != RoundStatus.OPEN) {
             return;
         }
 
-        SessionPlayer winner = sessionPlayerRepository.findById(round.getHighestBidderId())
+        UUID sessionId = locked.getSession().getId();
+
+        if (locked.getHighestBidderId() == null) {
+            locked.markPassed();
+            sseEmitterRegistry.broadcast(
+                sessionId,
+                "round_ended",
+                Map.of("round", toResponse(locked), "result", "PASSED")
+            );
+            maybeFinalizeSession(sessionId);
+            maybeStartNextRound(sessionId);
+            return;
+        }
+
+        SessionPlayer winner = sessionPlayerRepository.lockById(locked.getHighestBidderId())
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "Winner not found"));
         if (sessionPlayerRepository.countCardsByPlayerId(winner.getId()) >= ROSTER_SIZE) {
-            round.markPassed();
+            locked.markPassed();
             sseEmitterRegistry.broadcast(
-                round.getSession().getId(),
+                sessionId,
                 "round_ended",
-                Map.of("round", toResponse(round), "result", "PASSED", "reason", "winner_roster_full")
+                Map.of("round", toResponse(locked), "result", "PASSED", "reason", "winner_roster_full")
             );
-            maybeFinalizeSession(round.getSession().getId());
-            maybeStartNextRound(round.getSession().getId());
+            maybeFinalizeSession(sessionId);
+            maybeStartNextRound(sessionId);
             return;
         }
-        if (openSlotsForPosition(winner, round.getCard().getPosition()) <= 0) {
-            round.markPassed();
+        if (openSlotsForPosition(winner, locked.getCard().getPosition()) <= 0) {
+            locked.markPassed();
             sseEmitterRegistry.broadcast(
-                round.getSession().getId(),
+                sessionId,
                 "round_ended",
-                Map.of("round", toResponse(round), "result", "PASSED", "reason", "winner_position_full")
+                Map.of("round", toResponse(locked), "result", "PASSED", "reason", "winner_position_full")
             );
-            maybeFinalizeSession(round.getSession().getId());
-            maybeStartNextRound(round.getSession().getId());
+            maybeFinalizeSession(sessionId);
+            maybeStartNextRound(sessionId);
             return;
         }
-        winner.spendBudget(round.getHighestBidCents());
-        winner.addCard(round.getCard());
-        round.markSold();
+        winner.spendBudget(locked.getHighestBidCents());
+        winner.addCard(locked.getCard());
+        locked.markSold();
         sessionPlayerRepository.flush();
         auctionRoundRepository.flush();
 
         sseEmitterRegistry.broadcast(
-            round.getSession().getId(),
+            sessionId,
             "round_ended",
-            Map.of("round", toResponse(round), "result", "SOLD", "winnerUserId", winner.getUserId())
+            Map.of("round", toResponse(locked), "result", "SOLD", "winnerUserId", winner.getUserId())
         );
-        maybeFinalizeSession(round.getSession().getId());
-        maybeStartNextRound(round.getSession().getId());
+        maybeFinalizeSession(sessionId);
+        maybeStartNextRound(sessionId);
     }
 
     private void maybeStartNextRound(UUID sessionId) {

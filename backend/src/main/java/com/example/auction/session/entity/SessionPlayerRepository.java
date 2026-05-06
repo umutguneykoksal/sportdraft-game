@@ -1,14 +1,20 @@
 package com.example.auction.session.entity;
 
 import com.example.auction.bidding.entity.Position;
+import jakarta.persistence.LockModeType;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface SessionPlayerRepository extends JpaRepository<SessionPlayer, UUID> {
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select sp from SessionPlayer sp where sp.id = :id")
+    Optional<SessionPlayer> lockById(@Param("id") UUID id);
 
     long countBySession_Id(UUID sessionId);
 

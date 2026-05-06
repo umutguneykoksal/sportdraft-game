@@ -1,12 +1,20 @@
 package com.example.auction.bidding.entity;
 
+import jakarta.persistence.LockModeType;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 public interface AuctionRoundRepository extends JpaRepository<AuctionRound, UUID> {
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select r from AuctionRound r where r.id = :id")
+    Optional<AuctionRound> lockById(@Param("id") UUID id);
 
     Optional<AuctionRound> findFirstBySession_IdAndStatusOrderByStartsAtDesc(UUID sessionId, RoundStatus status);
 
