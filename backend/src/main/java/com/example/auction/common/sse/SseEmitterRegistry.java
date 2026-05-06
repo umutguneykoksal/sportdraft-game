@@ -41,7 +41,10 @@ public class SseEmitterRegistry {
                             )
                         )
                 );
-            } catch (IOException ex) {
+            } catch (IOException | IllegalStateException ex) {
+                emitter.completeWithError(ex);
+                remove(sessionId, emitter);
+            } catch (Exception ex) {
                 remove(sessionId, emitter);
             }
         }
