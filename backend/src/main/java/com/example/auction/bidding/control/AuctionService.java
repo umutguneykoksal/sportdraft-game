@@ -36,8 +36,8 @@ import org.springframework.web.server.ResponseStatusException;
 @Transactional
 public class AuctionService {
 
-    private static final long MIN_INCREMENT = 100L;
-    private static final long STARTING_BID = 100L;
+    private static final long MIN_INCREMENT = 1L;
+    private static final long STARTING_BID = 1L;
     private static final int ROSTER_SIZE = 11;
     private static final long MAX_ANTI_SNIPE_SECONDS = 30L;
 
@@ -166,10 +166,6 @@ public class AuctionService {
         SessionPlayer bidder = sessionPlayerRepository.findBySession_IdAndUserId(sessionId, userId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Player not found in session"));
 
-        if (round.getHighestBidderId() != null && round.getHighestBidderId().equals(bidder.getId())) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "You are already the highest bidder");
-        }
-
         long minimumAllowed = round.getHighestBidCents() == 0
             ? STARTING_BID
             : round.getHighestBidCents() + MIN_INCREMENT;
@@ -179,8 +175,19 @@ public class AuctionService {
         if (request.amountCents() > bidder.getRemainingBudgetCents()) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "Insufficient budget");
         }
-        if (openSlotsForPosition(bidder, round.getCard().getPosition()) <= 0) {
+        int openSlotsForCardPosition = openSlotsForPosition(bidder, round.getCard().getPosition());
+        if (openSlotsForCardPosition <= 0) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "No open slot for this card position");
+        }
+        int totalOpenSlots = totalOpenSlots(bidder);
+        long remainingAfterBid = bidder.getRemainingBudgetCents() - request.amountCents();
+        long reserveRequired = Math.max(totalOpenSlots - 1, 0);
+        if (remainingAfterBid < reserveRequired) {
+            throw new ResponseStatusException(
+                HttpStatus.UNPROCESSABLE_ENTITY,
+                "Bid violates reserve rule: keep at least %d cents for %d remaining slots"
+                    .formatted(reserveRequired, Math.max(totalOpenSlots - 1, 0))
+            );
         }
 
         Instant newEndsAt = round.getEndsAt();
@@ -220,6 +227,7 @@ public class AuctionService {
                 Map.of("round", toResponse(round), "result", "PASSED")
             );
             maybeFinalizeSession(round.getSession().getId());
+            maybeStartNextRound(round.getSession().getId());
             return;
         }
 
@@ -235,6 +243,22 @@ public class AuctionService {
             Map.of("round", toResponse(round), "result", "SOLD", "winnerUserId", winner.getUserId())
         );
         maybeFinalizeSession(round.getSession().getId());
+        maybeStartNextRound(round.getSession().getId());
+    }
+
+    private void maybeStartNextRound(UUID sessionId) {
+        GameSession session = gameSessionRepository.findById(sessionId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Session not found"));
+        if (session.getStatus() != SessionStatus.AUCTIONING) {
+            return;
+        }
+        boolean hasOpenRound = auctionRoundRepository
+            .findFirstBySession_IdAndStatusOrderByStartsAtDesc(sessionId, RoundStatus.OPEN)
+            .isPresent();
+        if (hasOpenRound) {
+            return;
+        }
+        startRound(sessionId);
     }
 
     private AuctionRoundResponse toResponse(AuctionRound round) {
@@ -269,6 +293,13 @@ public class AuctionService {
             .filter(card -> card.getPosition() == position)
             .count();
         return Math.max(required - filled, 0);
+    }
+
+    private int totalOpenSlots(SessionPlayer player) {
+        return openSlotsForPosition(player, Position.GK)
+            + openSlotsForPosition(player, Position.DEF)
+            + openSlotsForPosition(player, Position.MID)
+            + openSlotsForPosition(player, Position.FWD);
     }
 
     private int formationSlotCount(Formation formation, Position position) {
@@ -308,13 +339,15 @@ public class AuctionService {
         }
 
         boolean allRostersFull = players.stream().allMatch(player -> player.getCards().size() >= ROSTER_SIZE);
-        boolean everyoneBlocked = players.stream().allMatch(player ->
-            player.getRemainingBudgetCents() < STARTING_BID ||
-                openSlotsForPosition(player, Position.GK)
-                    + openSlotsForPosition(player, Position.DEF)
-                    + openSlotsForPosition(player, Position.MID)
-                    + openSlotsForPosition(player, Position.FWD) == 0
-        );
+        boolean everyoneBlocked = players.stream().allMatch(player -> {
+            int openSlots = totalOpenSlots(player);
+            if (openSlots <= 0) {
+                return true;
+            }
+            long reserveRequiredAfterMinimumBid = Math.max(openSlots - 1, 0);
+            return player.getRemainingBudgetCents() < STARTING_BID
+                || (player.getRemainingBudgetCents() - STARTING_BID) < reserveRequiredAfterMinimumBid;
+        });
         if (!allRostersFull && !everyoneBlocked) {
             return;
         }

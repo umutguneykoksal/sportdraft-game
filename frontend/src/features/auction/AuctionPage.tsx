@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { AuctionRoundResponse, getSessionSnapshot, placeBid, startRound } from "../../shared/api";
+import { clearActiveSessionId, setActiveSessionId } from "../../shared/session";
 import { useSessionStream } from "../../shared/sse";
 
 interface WonCard {
@@ -28,6 +29,29 @@ export function AuctionPage() {
     if (!sessionId) {
       return;
     }
+    setActiveSessionId(sessionId);
+    let cancelled = false;
+    const syncSnapshot = async () => {
+      try {
+        const snapshot = await getSessionSnapshot(sessionId);
+        if (cancelled) {
+          return;
+        }
+        if (snapshot.status === "FINISHED") {
+          navigate(`/match/${sessionId}`);
+          return;
+        }
+        if (snapshot.status !== "AUCTIONING" && snapshot.status !== "AWAITING_RESULT") {
+          navigate("/lobby");
+        }
+      } catch {
+        if (!cancelled) {
+          clearActiveSessionId();
+          navigate("/lobby");
+        }
+      }
+    };
+    syncSnapshot();
     const timer = setInterval(async () => {
       try {
         const snapshot = await getSessionSnapshot(sessionId);
@@ -38,7 +62,10 @@ export function AuctionPage() {
         // ignore polling issues
       }
     }, 1000);
-    return () => clearInterval(timer);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
   }, [sessionId, navigate]);
 
   useEffect(() => {
@@ -150,6 +177,10 @@ export function AuctionPage() {
           <button onClick={handleBid} disabled={loading}>
             Place Bid
           </button>
+          <p style={{ marginTop: 8, marginBottom: 0, fontSize: 13 }}>
+            Rule: You can bid repeatedly, but after any winning bid you must still keep
+            at least 1 cent per remaining empty squad slot.
+          </p>
         </div>
       )}
 

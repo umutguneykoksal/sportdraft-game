@@ -8,7 +8,12 @@ import {
   leaveLobby,
   selectFormation,
 } from "../../shared/api";
-import { getOrCreateClientSession } from "../../shared/session";
+import {
+  clearActiveSessionId,
+  getActiveSessionId,
+  getOrCreateClientSession,
+  setActiveSessionId,
+} from "../../shared/session";
 import { useSessionStream } from "../../shared/sse";
 
 const formations: Formation[] = ["FOUR_FOUR_TWO", "FOUR_THREE_THREE", "THREE_FIVE_TWO"];
@@ -22,6 +27,33 @@ export function LobbyPage() {
   const session = getOrCreateClientSession();
   const sessionId = snapshot?.sessionId ?? null;
   const { events } = useSessionStream(sessionId);
+
+  useEffect(() => {
+    const restore = async () => {
+      const activeSessionId = getActiveSessionId();
+      if (!activeSessionId || snapshot) {
+        return;
+      }
+      try {
+        const restored = await getSessionSnapshot(activeSessionId);
+        setSnapshot(restored);
+      } catch {
+        clearActiveSessionId();
+      }
+    };
+    restore();
+  }, [snapshot]);
+
+  useEffect(() => {
+    if (!snapshot) {
+      return;
+    }
+    if (snapshot.joined) {
+      setActiveSessionId(snapshot.sessionId);
+    } else {
+      clearActiveSessionId();
+    }
+  }, [snapshot]);
 
   useEffect(() => {
     if (!snapshot) {
@@ -69,6 +101,9 @@ export function LobbyPage() {
     try {
       const response = await leaveLobby(snapshot.sessionId);
       setSnapshot(response);
+      if (!response.joined) {
+        clearActiveSessionId();
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to leave lobby");
     } finally {

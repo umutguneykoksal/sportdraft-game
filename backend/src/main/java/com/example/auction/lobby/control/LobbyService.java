@@ -22,7 +22,7 @@ import org.springframework.web.server.ResponseStatusException;
 @Transactional
 public class LobbyService {
 
-    private static final long STARTING_BUDGET_CENTS = 10_000L;
+    private static final long STARTING_BUDGET_CENTS = 100L;
 
     private final GameSessionRepository gameSessionRepository;
     private final SessionPlayerRepository sessionPlayerRepository;
