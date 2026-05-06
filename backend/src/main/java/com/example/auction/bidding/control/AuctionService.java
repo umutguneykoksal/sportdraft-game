@@ -275,6 +275,8 @@ public class AuctionService {
         winner.spendBudget(round.getHighestBidCents());
         winner.addCard(round.getCard());
         round.markSold();
+        sessionPlayerRepository.flush();
+        auctionRoundRepository.flush();
 
         sseEmitterRegistry.broadcast(
             round.getSession().getId(),
