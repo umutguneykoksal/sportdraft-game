@@ -9,15 +9,15 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 @Configuration
 public class CorsConfig implements WebMvcConfigurer {
 
-    @Value("${app.cors.allowed-origins:http://localhost:3000}")
+    @Value("${app.cors.allowed-origins:http://localhost:3000,https://*.up.railway.app}")
     private List<String> allowedOrigins;
 
     @Override
     public void addCorsMappings(CorsRegistry registry) {
         registry.addMapping("/**")
-            .allowedOrigins(allowedOrigins.toArray(String[]::new))
+            .allowedOriginPatterns(allowedOrigins.toArray(String[]::new))
             .allowedMethods("GET", "POST", "DELETE", "PUT", "PATCH", "OPTIONS")
-            .allowedHeaders("Authorization", "Content-Type", "Idempotency-Key")
+            .allowedHeaders("*")
             .allowCredentials(false);
     }
 }
