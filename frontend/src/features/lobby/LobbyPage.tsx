@@ -60,7 +60,7 @@ export function LobbyPage() {
     if (!snapshot) {
       return;
     }
-    if (snapshot.status === "AUCTIONING") {
+    if (snapshot.status === "AUCTIONING" || snapshot.status === "MATCH_START_PENDING") {
       navigate(`/auction/${snapshot.sessionId}`);
     }
   }, [snapshot, navigate]);

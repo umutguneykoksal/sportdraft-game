@@ -188,13 +188,26 @@ public class LobbyService {
         long playerCount = sessionPlayerRepository.countBySession_Id(sessionId);
         SessionPlayer me = sessionPlayerRepository.findBySession_IdAndUserId(sessionId, userId).orElse(null);
 
+        Instant matchStartDeadlineAt = null;
+        int matchStartReadyCount = 0;
+        boolean matchStartConfirmedByMe = false;
+        if (session.getStatus() == SessionStatus.MATCH_START_PENDING) {
+            matchStartDeadlineAt = session.getMatchStartDeadlineAt();
+            matchStartReadyCount = session.matchStartReadyCount();
+            matchStartConfirmedByMe = userId.equals(session.getMatchStartReadyUserOneId())
+                || userId.equals(session.getMatchStartReadyUserTwoId());
+        }
+
         return new SessionSnapshotResponse(
             session.getId(),
             session.getStatus(),
             session.getCountdownEndsAt(),
             Math.toIntExact(playerCount),
             me != null,
-            me != null && me.isFormationConfirmed() ? me.getFormation() : null
+            me != null && me.isFormationConfirmed() ? me.getFormation() : null,
+            matchStartDeadlineAt,
+            matchStartReadyCount,
+            matchStartConfirmedByMe
         );
     }
 }

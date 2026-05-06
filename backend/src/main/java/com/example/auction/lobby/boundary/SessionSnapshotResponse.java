@@ -11,6 +11,9 @@ public record SessionSnapshotResponse(
     Instant countdownEndsAt,
     int playerCount,
     boolean joined,
-    Formation myFormation
+    Formation myFormation,
+    Instant matchStartDeadlineAt,
+    int matchStartReadyCount,
+    boolean matchStartConfirmedByMe
 ) {
 }

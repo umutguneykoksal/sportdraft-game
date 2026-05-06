@@ -1,5 +1,6 @@
 package com.example.auction.session.boundary;
 
+import com.example.auction.bidding.control.AuctionService;
 import com.example.auction.lobby.boundary.SessionSnapshotResponse;
 import com.example.auction.lobby.control.LobbyService;
 import com.example.auction.session.control.SessionAdminService;
@@ -23,10 +24,16 @@ public class SessionController {
 
     private final LobbyService lobbyService;
     private final SessionAdminService sessionAdminService;
+    private final AuctionService auctionService;
 
-    public SessionController(LobbyService lobbyService, SessionAdminService sessionAdminService) {
+    public SessionController(
+        LobbyService lobbyService,
+        SessionAdminService sessionAdminService,
+        AuctionService auctionService
+    ) {
         this.lobbyService = lobbyService;
         this.sessionAdminService = sessionAdminService;
+        this.auctionService = auctionService;
     }
 
     @GetMapping("/{sessionId}")
@@ -44,6 +51,16 @@ public class SessionController {
         @RequestHeader("Authorization") String authorization
     ) {
         return lobbyService.selectFormation(sessionId, extractUserId(authorization), request.formation());
+    }
+
+    @PostMapping("/{sessionId}/confirm-match-start")
+    public SessionSnapshotResponse confirmMatchStart(
+        @PathVariable UUID sessionId,
+        @RequestHeader("Authorization") String authorization
+    ) {
+        UUID userId = extractUserId(authorization);
+        auctionService.confirmMatchStart(sessionId, userId);
+        return lobbyService.getSnapshot(sessionId, userId);
     }
 
     @DeleteMapping("/{sessionId}")

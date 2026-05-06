@@ -1,6 +1,5 @@
 package com.example.auction.session.entity;
 
-import com.example.auction.bidding.entity.Position;
 import jakarta.persistence.LockModeType;
 import java.util.List;
 import java.util.Optional;
@@ -24,9 +23,19 @@ public interface SessionPlayerRepository extends JpaRepository<SessionPlayer, UU
 
     List<SessionPlayer> findBySession_Id(UUID sessionId);
 
-    @Query("select count(c) from SessionPlayer sp join sp.cards c where sp.id = :playerId")
+    @Query(
+        value = "SELECT COUNT(*) FROM session_player_cards WHERE session_player_id = :playerId",
+        nativeQuery = true
+    )
     long countCardsByPlayerId(@Param("playerId") UUID playerId);
 
-    @Query("select count(c) from SessionPlayer sp join sp.cards c where sp.id = :playerId and c.position = :position")
-    long countCardsByPlayerIdAndPosition(@Param("playerId") UUID playerId, @Param("position") Position position);
+    @Query(
+        value = """
+            SELECT COUNT(*) FROM session_player_cards spc
+            INNER JOIN card c ON c.id = spc.card_id
+            WHERE spc.session_player_id = :playerId AND c.position = :position
+            """,
+        nativeQuery = true
+    )
+    long countCardsByPlayerIdAndPosition(@Param("playerId") UUID playerId, @Param("position") String position);
 }

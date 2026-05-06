@@ -1,6 +1,16 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { AuctionRoundResponse, getAuctionState, getSessionSnapshot, passRound, placeBid, readyNextRound, startRound } from "../../shared/api";
+import {
+  AuctionRoundResponse,
+  confirmMatchStart,
+  getAuctionState,
+  getSessionSnapshot,
+  passRound,
+  placeBid,
+  readyNextRound,
+  SessionSnapshotResponse,
+  startRound,
+} from "../../shared/api";
 import { clearActiveSessionId, setActiveSessionId } from "../../shared/session";
 import { useSessionStream } from "../../shared/sse";
 
@@ -24,6 +34,8 @@ export function AuctionPage() {
   const [myTeam, setMyTeam] = useState<WonCard[]>([]);
   const [opponentTeam, setOpponentTeam] = useState<WonCard[]>([]);
   const [secondsLeft, setSecondsLeft] = useState<number>(0);
+  const [sessionSnap, setSessionSnap] = useState<SessionSnapshotResponse | null>(null);
+  const [matchStartSecondsLeft, setMatchStartSecondsLeft] = useState<number>(0);
   const processedRoundsRef = useRef<Set<string>>(new Set());
   const previousRoundIdRef = useRef<string | null>(null);
   const serverClockOffsetMsRef = useRef<number>(0);
@@ -31,6 +43,8 @@ export function AuctionPage() {
   const isReadyByMe = !!myUserId && !!round && (round.readyUserOneId === myUserId || round.readyUserTwoId === myUserId);
   const readyCount = round ? [round.readyUserOneId, round.readyUserTwoId].filter(Boolean).length : 0;
   const hasBidOnRound = !!round?.highestBidderId;
+  const mySquadFull = myTeam.length >= 11;
+  const auctionPhaseActive = sessionSnap?.status === "AUCTIONING";
 
   useEffect(() => {
     if (!sessionId) {
@@ -44,11 +58,16 @@ export function AuctionPage() {
         if (cancelled) {
           return;
         }
+        setSessionSnap(snapshot);
         if (snapshot.status === "FINISHED") {
           navigate(`/match/${sessionId}`);
           return;
         }
-        if (snapshot.status !== "AUCTIONING" && snapshot.status !== "AWAITING_RESULT") {
+        const onAuctionPage =
+          snapshot.status === "AUCTIONING"
+          || snapshot.status === "MATCH_START_PENDING"
+          || snapshot.status === "AWAITING_RESULT";
+        if (!onAuctionPage) {
           navigate("/lobby");
           return;
         }
@@ -84,6 +103,27 @@ export function AuctionPage() {
   }, [sessionId, navigate]);
 
   useEffect(() => {
+    if (!sessionId || sessionSnap?.status !== "MATCH_START_PENDING") {
+      return;
+    }
+    let cancelled = false;
+    const id = window.setInterval(async () => {
+      try {
+        const snap = await getSessionSnapshot(sessionId);
+        if (!cancelled) {
+          setSessionSnap(snap);
+        }
+      } catch {
+        // ignore
+      }
+    }, 1000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [sessionId, sessionSnap?.status]);
+
+  useEffect(() => {
     if (!sessionId || !isConnected) {
       return;
     }
@@ -94,8 +134,14 @@ export function AuctionPage() {
           navigate(`/match/${sessionId}`);
           return;
         }
-        if (snapshot.status !== "AUCTIONING" && snapshot.status !== "AWAITING_RESULT") {
+        const onAuctionPage =
+          snapshot.status === "AUCTIONING"
+          || snapshot.status === "MATCH_START_PENDING"
+          || snapshot.status === "AWAITING_RESULT";
+        if (!onAuctionPage) {
           navigate("/lobby");
+        } else {
+          setSessionSnap(snapshot);
         }
       } catch {
         // ignore sync issues
@@ -150,6 +196,18 @@ export function AuctionPage() {
         }
       }
     }
+    if (
+      (latest.eventType === "match_start_pending"
+        || latest.eventType === "match_start_ready"
+        || latest.eventType === "session_finalizing")
+      && sessionId
+    ) {
+      const serverEventTime = Date.parse(latest.occurredAt);
+      if (!Number.isNaN(serverEventTime)) {
+        serverClockOffsetMsRef.current = serverEventTime - Date.now();
+      }
+      getSessionSnapshot(sessionId).then(setSessionSnap).catch(() => {});
+    }
     if (latest.eventType === "match_completed" && sessionId) {
       navigate(`/match/${sessionId}`);
     }
@@ -192,6 +250,23 @@ export function AuctionPage() {
     return () => clearInterval(timer);
   }, [round]);
 
+  useEffect(() => {
+    if (!sessionSnap?.matchStartDeadlineAt) {
+      setMatchStartSecondsLeft(0);
+      return;
+    }
+    const deadlineMs = new Date(sessionSnap.matchStartDeadlineAt).getTime();
+    const tick = () => {
+      const adjustedNow = Date.now() + serverClockOffsetMsRef.current;
+      return Math.max(0, Math.ceil((deadlineMs - adjustedNow) / 1000));
+    };
+    setMatchStartSecondsLeft(tick());
+    const timer = window.setInterval(() => {
+      setMatchStartSecondsLeft(tick());
+    }, 250);
+    return () => window.clearInterval(timer);
+  }, [sessionSnap?.matchStartDeadlineAt]);
+
   if (!sessionId) {
     return <div>Session id missing</div>;
   }
@@ -212,6 +287,10 @@ export function AuctionPage() {
   const handleBid = async () => {
     if (!round) {
       setError("Start a round first");
+      return;
+    }
+    if (myTeam.length >= 11) {
+      setError("Your squad is full");
       return;
     }
     if (!isMyTurn) {
@@ -268,16 +347,68 @@ export function AuctionPage() {
     }
   };
 
+  const handleConfirmMatchStart = async () => {
+    if (!sessionId) {
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const snap = await confirmMatchStart(sessionId);
+      setSessionSnap(snap);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to confirm match start");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div style={{ padding: 16, maxWidth: 900, margin: "0 auto", fontFamily: "Arial, sans-serif" }}>
       <h2>Auction</h2>
       <p>Session: {sessionId}</p>
 
-      <button onClick={handleStartRound} disabled={loading}>
+      {sessionSnap?.status === "MATCH_START_PENDING" && (
+        <div
+          style={{
+            marginTop: 12,
+            marginBottom: 16,
+            padding: 16,
+            background: "#e8f4fc",
+            border: "1px solid #7eb8da",
+            borderRadius: 8,
+          }}
+        >
+          <h3 style={{ marginTop: 0 }}>Maç başlatma</h3>
+          <p style={{ margin: "8px 0" }}>
+            Her iki takım da 11 oyuncuya ulaştı. Aşağıdaki süre dolmadan ikiniz de &quot;Maçı başlat&quot; demelisiniz; aksi halde süre bitince maç yine de başlar.
+          </p>
+          <p style={{ margin: "8px 0", fontSize: 18, fontWeight: "bold" }}>
+            Kalan süre: {matchStartSecondsLeft}s
+          </p>
+          <p style={{ margin: "8px 0", fontSize: 14 }}>
+            Onaylar: {sessionSnap.matchStartReadyCount}/2
+          </p>
+          <button
+            type="button"
+            onClick={handleConfirmMatchStart}
+            disabled={loading || sessionSnap.matchStartConfirmedByMe}
+            style={{ marginTop: 8 }}
+          >
+            {sessionSnap.matchStartConfirmedByMe ? "Hazırsınız" : "Maçı başlat"}
+          </button>
+        </div>
+      )}
+
+      {sessionSnap?.status === "AWAITING_RESULT" && (
+        <p style={{ color: "#333" }}>Maç simüle ediliyor…</p>
+      )}
+
+      <button onClick={handleStartRound} disabled={loading || !auctionPhaseActive}>
         {loading ? "Working..." : "Start Round"}
       </button>
 
-      {round && (
+      {round && auctionPhaseActive && (
         <div style={{ marginTop: 12 }}>
           <h4>Current Round</h4>
           <p>Round: {round.roundId}</p>
@@ -292,7 +423,7 @@ export function AuctionPage() {
             type="number"
             min={1}
             placeholder="Enter bid (cents)"
-            disabled={loading || !isMyTurn}
+            disabled={loading || !isMyTurn || mySquadFull}
             style={{ marginRight: 8 }}
           />
           <button
@@ -301,7 +432,7 @@ export function AuctionPage() {
               const safe = Number.isFinite(current) ? current : Math.max(1, (round?.highestBidCents ?? 0) + 1);
               setAmount(String(safe + 1));
             }}
-            disabled={loading || !isMyTurn}
+            disabled={loading || !isMyTurn || mySquadFull}
             style={{ marginRight: 8 }}
           >
             +1
@@ -312,12 +443,12 @@ export function AuctionPage() {
               const safe = Number.isFinite(current) ? current : Math.max(1, (round?.highestBidCents ?? 0) + 1);
               setAmount(String(safe + 5));
             }}
-            disabled={loading || !isMyTurn}
+            disabled={loading || !isMyTurn || mySquadFull}
             style={{ marginRight: 8 }}
           >
             +5
           </button>
-          <button onClick={handleBid} disabled={loading || !isMyTurn}>
+          <button onClick={handleBid} disabled={loading || !isMyTurn || mySquadFull}>
             Place Bid
           </button>
           <button
@@ -338,7 +469,11 @@ export function AuctionPage() {
             Ready votes: {readyCount}/2
           </p>
           <p style={{ marginTop: 8, marginBottom: 0, fontSize: 13 }}>
-            {isMyTurn ? "Your turn to bid." : "Waiting for opponent turn."}
+            {mySquadFull
+              ? "Your squad is full (11/11) — you cannot bid on new cards."
+              : isMyTurn
+                ? "Your turn to bid."
+                : "Waiting for opponent turn."}
           </p>
           <p style={{ marginTop: 8, marginBottom: 0, fontSize: 13 }}>
             Rule: You can bid repeatedly, but after any winning bid you must still keep
@@ -347,12 +482,16 @@ export function AuctionPage() {
         </div>
       )}
 
+      {auctionPhaseActive && !round && (
+        <p style={{ marginTop: 12, color: "#555" }}>No open round — start one when both are ready.</p>
+      )}
+
       {error && <p style={{ color: "red" }}>{error}</p>}
       {!isConnected && <p style={{ color: "#a15c00" }}>Reconnecting live updates...</p>}
 
       <div style={{ marginTop: 20, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
         <div style={{ background: "#f5f5f5", padding: 10 }}>
-          <h4 style={{ marginTop: 0 }}>My Team ({myTeam.length})</h4>
+          <h4 style={{ marginTop: 0 }}>My Team ({myTeam.length}/11)</h4>
           {myTeam.length === 0 && <p style={{ margin: 0 }}>No players won yet.</p>}
           {myTeam.map((card) => (
             <p key={card.roundId} style={{ margin: "4px 0" }}>
@@ -361,7 +500,7 @@ export function AuctionPage() {
           ))}
         </div>
         <div style={{ background: "#f5f5f5", padding: 10 }}>
-          <h4 style={{ marginTop: 0 }}>Opponent Team ({opponentTeam.length})</h4>
+          <h4 style={{ marginTop: 0 }}>Opponent Team ({opponentTeam.length}/11)</h4>
           {opponentTeam.length === 0 && <p style={{ margin: 0 }}>No players won yet.</p>}
           {opponentTeam.map((card) => (
             <p key={card.roundId} style={{ margin: "4px 0" }}>

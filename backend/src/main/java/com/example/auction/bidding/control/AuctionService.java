@@ -42,6 +42,7 @@ public class AuctionService {
     private static final long MIN_INCREMENT = 1L;
     private static final long STARTING_BID = 1L;
     private static final int ROSTER_SIZE = 11;
+    private static final long MATCH_START_COUNTDOWN_SECONDS = 20L;
     private static final long MAX_ANTI_SNIPE_SECONDS = 30L;
     private static final long ANTI_SNIPE_EXTENSION_SECONDS = 5L;
 
@@ -69,6 +70,33 @@ public class AuctionService {
         this.bidRepository = bidRepository;
         this.sseEmitterRegistry = sseEmitterRegistry;
         this.publisher = publisher;
+    }
+
+    public void confirmMatchStart(UUID sessionId, UUID userId) {
+        gameSessionRepository.findById(sessionId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Session not found"));
+        sessionPlayerRepository.findBySession_IdAndUserId(sessionId, userId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Player not in session"));
+
+        GameSession session = gameSessionRepository.lockById(sessionId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Session not found"));
+        if (session.getStatus() != SessionStatus.MATCH_START_PENDING) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Match start is not pending");
+        }
+        session.registerMatchStartReady(userId);
+        if (session.areBothMatchStartReady()) {
+            finalizeSessionFromFullRostersWithSession(session);
+        } else {
+            sseEmitterRegistry.broadcast(
+                sessionId,
+                "match_start_ready",
+                Map.of(
+                    "sessionId", sessionId,
+                    "readyCount", session.matchStartReadyCount(),
+                    "userId", userId
+                )
+            );
+        }
     }
 
     public AuctionRoundResponse startRound(UUID sessionId) {
@@ -340,10 +368,27 @@ public class AuctionService {
         }
     }
 
+    @Scheduled(fixedDelay = 1000)
+    public void expireMatchStartCountdowns() {
+        List<GameSession> due = gameSessionRepository.findByStatusAndMatchStartDeadlineAtLessThanEqual(
+            SessionStatus.MATCH_START_PENDING,
+            Instant.now()
+        );
+        for (GameSession pending : due) {
+            GameSession locked = gameSessionRepository.lockById(pending.getId()).orElse(null);
+            if (locked != null && locked.getStatus() == SessionStatus.MATCH_START_PENDING) {
+                finalizeSessionFromFullRostersWithSession(locked);
+            }
+        }
+    }
+
     private void closeRound(AuctionRound round) {
         AuctionRound locked = auctionRoundRepository.lockById(round.getId())
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "Round not found"));
         if (locked.getStatus() != RoundStatus.OPEN) {
+            return;
+        }
+        if (locked.getSession().getStatus() != SessionStatus.AUCTIONING) {
             return;
         }
 
@@ -525,7 +570,7 @@ public class AuctionService {
 
     private int openSlotsForPosition(SessionPlayer player, Position position) {
         int required = formationSlotCount(player.getFormation(), position);
-        int filled = (int) sessionPlayerRepository.countCardsByPlayerIdAndPosition(player.getId(), position);
+        int filled = (int) sessionPlayerRepository.countCardsByPlayerIdAndPosition(player.getId(), position.name());
         return Math.max(required - filled, 0);
     }
 
@@ -587,6 +632,11 @@ public class AuctionService {
             return;
         }
 
+        if (allRostersFull) {
+            enterMatchStartPending(sessionId);
+            return;
+        }
+
         session.moveToFinalizing(session.getId().getMostSignificantBits());
         publishSessionFinalized(session, players);
         sseEmitterRegistry.broadcast(
@@ -594,7 +644,53 @@ public class AuctionService {
             "session_finalizing",
             Map.of(
                 "sessionId", sessionId,
-                "reason", allRostersFull ? "rosters_complete" : "players_blocked",
+                "reason", "players_blocked",
+                "seed", session.getMatchSeed()
+            )
+        );
+    }
+
+    private void enterMatchStartPending(UUID sessionId) {
+        GameSession session = gameSessionRepository.lockById(sessionId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Session not found"));
+        if (session.getStatus() != SessionStatus.AUCTIONING) {
+            return;
+        }
+        List<SessionPlayer> players = sessionPlayerRepository.findBySession_Id(sessionId);
+        if (players.size() < 2) {
+            return;
+        }
+        boolean allFull = players.stream()
+            .allMatch(player -> sessionPlayerRepository.countCardsByPlayerId(player.getId()) >= ROSTER_SIZE);
+        if (!allFull) {
+            return;
+        }
+        session.moveToMatchStartPending(Instant.now().plus(MATCH_START_COUNTDOWN_SECONDS, ChronoUnit.SECONDS));
+        gameSessionRepository.save(session);
+        sseEmitterRegistry.broadcast(
+            sessionId,
+            "match_start_pending",
+            Map.of(
+                "sessionId", sessionId,
+                "deadlineAt", session.getMatchStartDeadlineAt()
+            )
+        );
+    }
+
+    private void finalizeSessionFromFullRostersWithSession(GameSession session) {
+        if (session.getStatus() != SessionStatus.MATCH_START_PENDING) {
+            return;
+        }
+        UUID sessionId = session.getId();
+        List<SessionPlayer> players = sessionPlayerRepository.findBySession_Id(sessionId);
+        session.moveToFinalizing(session.getId().getMostSignificantBits());
+        publishSessionFinalized(session, players);
+        sseEmitterRegistry.broadcast(
+            sessionId,
+            "session_finalizing",
+            Map.of(
+                "sessionId", sessionId,
+                "reason", "rosters_complete",
                 "seed", session.getMatchSeed()
             )
         );

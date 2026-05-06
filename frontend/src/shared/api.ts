@@ -3,6 +3,7 @@ export type SessionStatus =
   | "COUNTDOWN"
   | "FORMATION_SELECT"
   | "AUCTIONING"
+  | "MATCH_START_PENDING"
   | "FINALIZING"
   | "AWAITING_RESULT"
   | "FINISHED";
@@ -16,6 +17,9 @@ export interface SessionSnapshotResponse {
   playerCount: number;
   joined: boolean;
   myFormation: Formation | null;
+  matchStartDeadlineAt: string | null;
+  matchStartReadyCount: number;
+  matchStartConfirmedByMe: boolean;
 }
 
 export interface AuctionRoundResponse {
@@ -143,6 +147,17 @@ export async function selectFormation(sessionId: string, formation: Formation): 
   });
   if (!response.ok) {
     throw new Error(await readErrorMessage(response, `selectFormation failed: ${response.status}`));
+  }
+  return (await response.json()) as SessionSnapshotResponse;
+}
+
+export async function confirmMatchStart(sessionId: string): Promise<SessionSnapshotResponse> {
+  const response = await fetch(`${API_BASE}/api/sessions/${sessionId}/confirm-match-start`, {
+    method: "POST",
+    headers: authHeaders(),
+  });
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response, `confirmMatchStart failed: ${response.status}`));
   }
   return (await response.json()) as SessionSnapshotResponse;
 }

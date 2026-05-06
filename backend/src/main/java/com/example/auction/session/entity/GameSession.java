@@ -34,6 +34,15 @@ public class GameSession {
     @Column(name = "match_seed")
     private Long matchSeed;
 
+    @Column(name = "match_start_deadline_at")
+    private Instant matchStartDeadlineAt;
+
+    @Column(name = "match_start_ready_user_one_id")
+    private UUID matchStartReadyUserOneId;
+
+    @Column(name = "match_start_ready_user_two_id")
+    private UUID matchStartReadyUserTwoId;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -74,6 +83,18 @@ public class GameSession {
         return matchSeed;
     }
 
+    public Instant getMatchStartDeadlineAt() {
+        return matchStartDeadlineAt;
+    }
+
+    public UUID getMatchStartReadyUserOneId() {
+        return matchStartReadyUserOneId;
+    }
+
+    public UUID getMatchStartReadyUserTwoId() {
+        return matchStartReadyUserTwoId;
+    }
+
     public Instant getCreatedAt() {
         return createdAt;
     }
@@ -107,6 +128,9 @@ public class GameSession {
     public void moveToAuctioning() {
         this.status = SessionStatus.AUCTIONING;
         this.countdownEndsAt = null;
+        this.matchStartDeadlineAt = null;
+        this.matchStartReadyUserOneId = null;
+        this.matchStartReadyUserTwoId = null;
     }
 
     public void moveToWaiting() {
@@ -118,6 +142,47 @@ public class GameSession {
         this.status = SessionStatus.FINALIZING;
         this.matchSeed = seed;
         this.countdownEndsAt = null;
+        this.matchStartDeadlineAt = null;
+        this.matchStartReadyUserOneId = null;
+        this.matchStartReadyUserTwoId = null;
+    }
+
+    public void moveToMatchStartPending(Instant deadlineAt) {
+        this.status = SessionStatus.MATCH_START_PENDING;
+        this.matchStartDeadlineAt = deadlineAt;
+        this.matchStartReadyUserOneId = null;
+        this.matchStartReadyUserTwoId = null;
+        this.countdownEndsAt = null;
+    }
+
+    public boolean registerMatchStartReady(UUID userId) {
+        if (userId == null || userId.equals(matchStartReadyUserOneId) || userId.equals(matchStartReadyUserTwoId)) {
+            return false;
+        }
+        if (matchStartReadyUserOneId == null) {
+            matchStartReadyUserOneId = userId;
+            return true;
+        }
+        if (matchStartReadyUserTwoId == null) {
+            matchStartReadyUserTwoId = userId;
+            return true;
+        }
+        return false;
+    }
+
+    public boolean areBothMatchStartReady() {
+        return matchStartReadyUserOneId != null && matchStartReadyUserTwoId != null;
+    }
+
+    public int matchStartReadyCount() {
+        int n = 0;
+        if (matchStartReadyUserOneId != null) {
+            n++;
+        }
+        if (matchStartReadyUserTwoId != null) {
+            n++;
+        }
+        return n;
     }
 
     public void moveToAwaitingResult() {

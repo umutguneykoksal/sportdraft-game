@@ -5,6 +5,7 @@ public enum SessionStatus {
     COUNTDOWN,
     FORMATION_SELECT,
     AUCTIONING,
+    MATCH_START_PENDING,
     FINALIZING,
     AWAITING_RESULT,
     FINISHED
