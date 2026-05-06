@@ -1,0 +1,8 @@
+[phases.install]
+cmds = ["mvn -q -DskipTests dependency:go-offline"]
+
+[phases.build]
+cmds = ["mvn -q -DskipTests package"]
+
+[start]
+cmd = "java -jar target/*.jar"
