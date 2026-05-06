@@ -2,6 +2,7 @@ package com.example.auction.common.sse;
 
 import java.io.IOException;
 import java.time.Instant;
+import java.time.Duration;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -22,6 +23,7 @@ public class SseEmitterRegistry {
     private static final long TIMEOUT_MS = 30L * 60L * 1000L;
     private final Map<UUID, List<SseEmitter>> bySession = new ConcurrentHashMap<>();
     private final Map<UUID, List<WebSocketSession>> wsBySession = new ConcurrentHashMap<>();
+    private final Map<UUID, Instant> disconnectedAtBySession = new ConcurrentHashMap<>();
     private final ObjectMapper objectMapper;
 
     public SseEmitterRegistry(ObjectMapper objectMapper) {
@@ -34,6 +36,7 @@ public class SseEmitterRegistry {
         emitter.onTimeout(() -> remove(sessionId, emitter));
         emitter.onError(ex -> remove(sessionId, emitter));
         bySession.computeIfAbsent(sessionId, key -> new CopyOnWriteArrayList<>()).add(emitter);
+        disconnectedAtBySession.remove(sessionId);
         return emitter;
     }
 
@@ -89,6 +92,7 @@ public class SseEmitterRegistry {
 
     public void registerWebSocket(UUID sessionId, WebSocketSession session) {
         wsBySession.computeIfAbsent(sessionId, key -> new CopyOnWriteArrayList<>()).add(session);
+        disconnectedAtBySession.remove(sessionId);
     }
 
     public void removeWebSocket(UUID sessionId, WebSocketSession session) {
@@ -99,6 +103,7 @@ public class SseEmitterRegistry {
         sessions.remove(session);
         if (sessions.isEmpty()) {
             wsBySession.remove(sessionId);
+            markDisconnectedIfNoActiveConnections(sessionId);
         }
     }
 
@@ -110,6 +115,30 @@ public class SseEmitterRegistry {
         emitters.remove(emitter);
         if (emitters.isEmpty()) {
             bySession.remove(sessionId);
+            markDisconnectedIfNoActiveConnections(sessionId);
+        }
+    }
+
+    public boolean hasActiveConnections(UUID sessionId) {
+        return !bySession.getOrDefault(sessionId, List.of()).isEmpty()
+            || !wsBySession.getOrDefault(sessionId, List.of()).isEmpty();
+    }
+
+    public boolean isDisconnectedLongerThan(UUID sessionId, Duration threshold) {
+        if (hasActiveConnections(sessionId)) {
+            return false;
+        }
+        Instant disconnectedAt = disconnectedAtBySession.computeIfAbsent(sessionId, key -> Instant.now());
+        return disconnectedAt.plus(threshold).isBefore(Instant.now());
+    }
+
+    public void forgetSession(UUID sessionId) {
+        disconnectedAtBySession.remove(sessionId);
+    }
+
+    private void markDisconnectedIfNoActiveConnections(UUID sessionId) {
+        if (!hasActiveConnections(sessionId)) {
+            disconnectedAtBySession.putIfAbsent(sessionId, Instant.now());
         }
     }
 }

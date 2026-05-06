@@ -47,7 +47,7 @@ CREATE TABLE IF NOT EXISTS auction_round (
 CREATE TABLE IF NOT EXISTS bid (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     round_id UUID NOT NULL REFERENCES auction_round(id) ON DELETE CASCADE,
-    bidder_id UUID NOT NULL REFERENCES session_player(id),
+    bidder_id UUID NOT NULL REFERENCES session_player(id) ON DELETE CASCADE,
     amount_cents BIGINT NOT NULL,
     idempotency_key UUID NOT NULL,
     placed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
