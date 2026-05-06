@@ -1,17 +1,28 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { AuctionRoundResponse, getSessionSnapshot, placeBid, startRound } from "../../shared/api";
 import { useSessionStream } from "../../shared/sse";
+
+interface WonCard {
+  roundId: string;
+  cardName: string;
+  position: string;
+  amountCents: number;
+}
 
 export function AuctionPage() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
   const { events } = useSessionStream(sessionId ?? null);
+  const myUserId = localStorage.getItem("sessionToken");
 
   const [round, setRound] = useState<AuctionRoundResponse | null>(null);
   const [amount, setAmount] = useState<string>("200");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [myTeam, setMyTeam] = useState<WonCard[]>([]);
+  const [opponentTeam, setOpponentTeam] = useState<WonCard[]>([]);
+  const processedRoundsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     if (!sessionId) {
@@ -35,14 +46,41 @@ export function AuctionPage() {
     if (!latest) {
       return;
     }
-    const payload = latest.payload as { round?: AuctionRoundResponse; sessionId?: string };
+    const payload = latest.payload as {
+      round?: AuctionRoundResponse;
+      sessionId?: string;
+      result?: string;
+      winnerUserId?: string;
+    };
     if ((latest.eventType === "round_started" || latest.eventType === "bid_placed" || latest.eventType === "round_ended") && payload.round) {
       setRound(payload.round);
+    }
+    if (
+      latest.eventType === "round_ended" &&
+      payload.result === "SOLD" &&
+      payload.round &&
+      payload.winnerUserId
+    ) {
+      const endedRoundId = payload.round.roundId;
+      if (!processedRoundsRef.current.has(endedRoundId)) {
+        processedRoundsRef.current.add(endedRoundId);
+        const wonCard: WonCard = {
+          roundId: endedRoundId,
+          cardName: payload.round.cardName,
+          position: payload.round.position,
+          amountCents: payload.round.highestBidCents,
+        };
+        if (payload.winnerUserId === myUserId) {
+          setMyTeam((prev) => [...prev, wonCard]);
+        } else {
+          setOpponentTeam((prev) => [...prev, wonCard]);
+        }
+      }
     }
     if (latest.eventType === "match_completed" && sessionId) {
       navigate(`/match/${sessionId}`);
     }
-  }, [events, navigate, sessionId]);
+  }, [events, myUserId, navigate, sessionId]);
 
   if (!sessionId) {
     return <div>Session id missing</div>;
@@ -116,6 +154,27 @@ export function AuctionPage() {
       )}
 
       {error && <p style={{ color: "red" }}>{error}</p>}
+
+      <div style={{ marginTop: 20, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+        <div style={{ background: "#f5f5f5", padding: 10 }}>
+          <h4 style={{ marginTop: 0 }}>My Team ({myTeam.length})</h4>
+          {myTeam.length === 0 && <p style={{ margin: 0 }}>No players won yet.</p>}
+          {myTeam.map((card) => (
+            <p key={card.roundId} style={{ margin: "4px 0" }}>
+              {card.cardName} ({card.position}) - {card.amountCents}
+            </p>
+          ))}
+        </div>
+        <div style={{ background: "#f5f5f5", padding: 10 }}>
+          <h4 style={{ marginTop: 0 }}>Opponent Team ({opponentTeam.length})</h4>
+          {opponentTeam.length === 0 && <p style={{ margin: 0 }}>No players won yet.</p>}
+          {opponentTeam.map((card) => (
+            <p key={card.roundId} style={{ margin: "4px 0" }}>
+              {card.cardName} ({card.position}) - {card.amountCents}
+            </p>
+          ))}
+        </div>
+      </div>
 
       <h4 style={{ marginTop: 20 }}>Recent SSE Events</h4>
       <div style={{ background: "#f5f5f5", padding: 8, maxHeight: 320, overflow: "auto" }}>
