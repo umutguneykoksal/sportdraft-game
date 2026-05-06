@@ -30,6 +30,7 @@ export function AuctionPage() {
   const isMyTurn = !!myUserId && !!round && round.currentTurnUserId === myUserId;
   const isReadyByMe = !!myUserId && !!round && (round.readyUserOneId === myUserId || round.readyUserTwoId === myUserId);
   const readyCount = round ? [round.readyUserOneId, round.readyUserTwoId].filter(Boolean).length : 0;
+  const hasBidOnRound = !!round?.highestBidderId;
 
   useEffect(() => {
     if (!sessionId) {
@@ -309,7 +310,7 @@ export function AuctionPage() {
           </button>
           <button
             onClick={handleReadyNext}
-            disabled={loading || round.status !== "OPEN" || isReadyByMe}
+            disabled={loading || round.status !== "OPEN" || isReadyByMe || hasBidOnRound}
             style={{ marginLeft: 8 }}
           >
             {isReadyByMe ? "Ready Sent" : "Ready Next"}

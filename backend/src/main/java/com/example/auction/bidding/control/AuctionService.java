@@ -241,17 +241,16 @@ public class AuctionService {
                 .map(this::toResponse)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "Round is not open"));
         }
+        if (round.getHighestBidderId() != null) {
+            throw new ResponseStatusException(
+                HttpStatus.CONFLICT,
+                "ready-next is only allowed when there is no bid on the round"
+            );
+        }
 
         round.registerReady(userId);
         if (round.areBothReady()) {
-            round.markPassed();
-            sseEmitterRegistry.broadcast(
-                sessionId,
-                "round_ended",
-                Map.of("round", toResponse(round), "result", "PASSED", "reason", "both_players_ready_next")
-            );
-            maybeFinalizeSession(sessionId);
-            maybeStartNextRound(sessionId);
+            closeRound(round);
             return auctionRoundRepository
                 .findFirstBySession_IdAndStatusOrderByStartsAtDesc(sessionId, RoundStatus.OPEN)
                 .map(this::toResponse)
