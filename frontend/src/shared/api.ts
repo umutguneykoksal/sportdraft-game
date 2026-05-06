@@ -33,6 +33,19 @@ export interface AuctionRoundResponse {
   status: string;
 }
 
+export interface AuctionTeamCardResponse {
+  cardId: string;
+  cardName: string;
+  position: string;
+  amountCents: number;
+}
+
+export interface AuctionStateResponse {
+  currentRound: AuctionRoundResponse | null;
+  myTeam: AuctionTeamCardResponse[];
+  opponentTeam: AuctionTeamCardResponse[];
+}
+
 const API_BASE = process.env.REACT_APP_API_BASE ?? "http://localhost:8080";
 
 export function getApiBase(): string {
@@ -184,4 +197,15 @@ export async function passRound(sessionId: string, roundId: string): Promise<Auc
     throw new Error(await readErrorMessage(response, `passRound failed: ${response.status}`));
   }
   return (await response.json()) as AuctionRoundResponse;
+}
+
+export async function getAuctionState(sessionId: string): Promise<AuctionStateResponse> {
+  const response = await fetch(`${API_BASE}/api/sessions/${sessionId}/auction/state`, {
+    method: "GET",
+    headers: authHeaders(),
+  });
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response, `getAuctionState failed: ${response.status}`));
+  }
+  return (await response.json()) as AuctionStateResponse;
 }

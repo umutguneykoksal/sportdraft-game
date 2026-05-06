@@ -4,6 +4,7 @@ import com.example.auction.bidding.control.AuctionService;
 import jakarta.validation.Valid;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -25,6 +26,15 @@ public class AuctionController {
     @PostMapping("/auction/rounds/start")
     public AuctionRoundResponse startRound(@PathVariable UUID sessionId) {
         return auctionService.startRound(sessionId);
+    }
+
+    @GetMapping("/auction/state")
+    public AuctionStateResponse getAuctionState(
+        @PathVariable UUID sessionId,
+        @RequestHeader("Authorization") String authorization
+    ) {
+        UUID userId = extractUserId(authorization);
+        return auctionService.getAuctionState(sessionId, userId);
     }
 
     @PostMapping("/bids")

@@ -12,5 +12,7 @@ public interface AuctionRoundRepository extends JpaRepository<AuctionRound, UUID
 
     Optional<AuctionRound> findFirstBySession_IdOrderByStartsAtDesc(UUID sessionId);
 
+    List<AuctionRound> findBySession_IdAndStatusOrderByStartsAtAsc(UUID sessionId, RoundStatus status);
+
     List<AuctionRound> findByStatusAndEndsAtLessThanEqual(RoundStatus status, Instant now);
 }

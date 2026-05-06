@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { AuctionRoundResponse, getSessionSnapshot, passRound, placeBid, readyNextRound, startRound } from "../../shared/api";
+import { AuctionRoundResponse, getAuctionState, getSessionSnapshot, passRound, placeBid, readyNextRound, startRound } from "../../shared/api";
 import { clearActiveSessionId, setActiveSessionId } from "../../shared/session";
 import { useSessionStream } from "../../shared/sse";
 
@@ -50,7 +50,26 @@ export function AuctionPage() {
         }
         if (snapshot.status !== "AUCTIONING" && snapshot.status !== "AWAITING_RESULT") {
           navigate("/lobby");
+          return;
         }
+        const auctionState = await getAuctionState(sessionId);
+        setRound(auctionState.currentRound);
+        setMyTeam(
+          auctionState.myTeam.map((card) => ({
+            roundId: card.cardId,
+            cardName: card.cardName,
+            position: card.position,
+            amountCents: card.amountCents,
+          }))
+        );
+        setOpponentTeam(
+          auctionState.opponentTeam.map((card) => ({
+            roundId: card.cardId,
+            cardName: card.cardName,
+            position: card.position,
+            amountCents: card.amountCents,
+          }))
+        );
       } catch {
         if (!cancelled) {
           clearActiveSessionId();

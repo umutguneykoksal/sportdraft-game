@@ -1,6 +1,8 @@
 package com.example.auction.bidding.control;
 
 import com.example.auction.bidding.boundary.AuctionRoundResponse;
+import com.example.auction.bidding.boundary.AuctionStateResponse;
+import com.example.auction.bidding.boundary.AuctionTeamCardResponse;
 import com.example.auction.bidding.boundary.PlaceBidRequest;
 import com.example.auction.bidding.entity.AuctionRound;
 import com.example.auction.bidding.entity.AuctionRoundRepository;
@@ -26,6 +28,7 @@ import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.ArrayList;
 import org.springframework.http.HttpStatus;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
@@ -288,6 +291,45 @@ public class AuctionService {
             .findFirstBySession_IdAndStatusOrderByStartsAtDesc(sessionId, RoundStatus.OPEN)
             .map(this::toResponse)
             .orElse(toResponse(round));
+    }
+
+    public AuctionStateResponse getAuctionState(UUID sessionId, UUID userId) {
+        List<SessionPlayer> players = sessionPlayerRepository.findBySession_Id(sessionId);
+        if (players.size() < 2) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Session does not have two players");
+        }
+        SessionPlayer me = players.stream()
+            .filter(player -> player.getUserId().equals(userId))
+            .findFirst()
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Player not found in session"));
+        SessionPlayer opponent = players.stream()
+            .filter(player -> !player.getUserId().equals(userId))
+            .findFirst()
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Opponent not found in session"));
+
+        List<AuctionRound> soldRounds = auctionRoundRepository.findBySession_IdAndStatusOrderByStartsAtAsc(sessionId, RoundStatus.SOLD);
+        List<AuctionTeamCardResponse> myTeam = new ArrayList<>();
+        List<AuctionTeamCardResponse> opponentTeam = new ArrayList<>();
+        for (AuctionRound soldRound : soldRounds) {
+            AuctionTeamCardResponse card = new AuctionTeamCardResponse(
+                soldRound.getCard().getId(),
+                soldRound.getCard().getName(),
+                soldRound.getCard().getPosition().name(),
+                soldRound.getHighestBidCents()
+            );
+            if (me.getId().equals(soldRound.getHighestBidderId())) {
+                myTeam.add(card);
+            } else if (opponent.getId().equals(soldRound.getHighestBidderId())) {
+                opponentTeam.add(card);
+            }
+        }
+
+        AuctionRoundResponse currentRound = auctionRoundRepository
+            .findFirstBySession_IdAndStatusOrderByStartsAtDesc(sessionId, RoundStatus.OPEN)
+            .map(this::toResponse)
+            .orElse(null);
+
+        return new AuctionStateResponse(currentRound, myTeam, opponentTeam);
     }
 
     @Scheduled(fixedDelay = 1000)
