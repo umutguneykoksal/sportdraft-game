@@ -174,3 +174,14 @@ export async function readyNextRound(sessionId: string, roundId: string): Promis
   }
   return (await response.json()) as AuctionRoundResponse;
 }
+
+export async function passRound(sessionId: string, roundId: string): Promise<AuctionRoundResponse> {
+  const response = await fetch(`${API_BASE}/api/sessions/${sessionId}/auction/rounds/${roundId}/pass`, {
+    method: "POST",
+    headers: authHeaders(),
+  });
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response, `passRound failed: ${response.status}`));
+  }
+  return (await response.json()) as AuctionRoundResponse;
+}

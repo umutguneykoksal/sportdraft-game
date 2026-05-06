@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { AuctionRoundResponse, getSessionSnapshot, placeBid, readyNextRound, startRound } from "../../shared/api";
+import { AuctionRoundResponse, getSessionSnapshot, passRound, placeBid, readyNextRound, startRound } from "../../shared/api";
 import { clearActiveSessionId, setActiveSessionId } from "../../shared/session";
 import { useSessionStream } from "../../shared/sse";
 
@@ -232,6 +232,22 @@ export function AuctionPage() {
     }
   };
 
+  const handlePassRound = async () => {
+    if (!round) {
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await passRound(sessionId, round.roundId);
+      setRound(response);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to pass round");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div style={{ padding: 16, maxWidth: 900, margin: "0 auto", fontFamily: "Arial, sans-serif" }}>
       <h2>Auction</h2>
@@ -283,6 +299,13 @@ export function AuctionPage() {
           </button>
           <button onClick={handleBid} disabled={loading || !isMyTurn}>
             Place Bid
+          </button>
+          <button
+            onClick={handlePassRound}
+            disabled={loading || !isMyTurn || round.highestBidderId === null}
+            style={{ marginLeft: 8 }}
+          >
+            Pass (End Round)
           </button>
           <button
             onClick={handleReadyNext}

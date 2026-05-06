@@ -233,11 +233,14 @@ public class AuctionService {
         if (!round.getSession().getId().equals(sessionId)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Round does not belong to session");
         }
-        if (round.getStatus() != RoundStatus.OPEN) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Round is not open");
-        }
         sessionPlayerRepository.findBySession_IdAndUserId(sessionId, userId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Player not found in session"));
+        if (round.getStatus() != RoundStatus.OPEN) {
+            return auctionRoundRepository
+                .findFirstBySession_IdAndStatusOrderByStartsAtDesc(sessionId, RoundStatus.OPEN)
+                .map(this::toResponse)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "Round is not open"));
+        }
 
         round.registerReady(userId);
         if (round.areBothReady()) {
@@ -249,14 +252,43 @@ public class AuctionService {
             );
             maybeFinalizeSession(sessionId);
             maybeStartNextRound(sessionId);
+            return auctionRoundRepository
+                .findFirstBySession_IdAndStatusOrderByStartsAtDesc(sessionId, RoundStatus.OPEN)
+                .map(this::toResponse)
+                .orElse(toResponse(round));
         } else {
             sseEmitterRegistry.broadcast(
                 sessionId,
                 "round_ready",
                 Map.of("round", toResponse(round), "userId", userId)
             );
+            return toResponse(round);
         }
-        return toResponse(round);
+    }
+
+    public AuctionRoundResponse passRound(UUID sessionId, UUID userId, UUID roundId) {
+        AuctionRound round = auctionRoundRepository.findById(roundId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Round not found"));
+        if (!round.getSession().getId().equals(sessionId)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Round does not belong to session");
+        }
+        sessionPlayerRepository.findBySession_IdAndUserId(sessionId, userId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Player not found in session"));
+        if (round.getStatus() != RoundStatus.OPEN) {
+            return auctionRoundRepository
+                .findFirstBySession_IdAndStatusOrderByStartsAtDesc(sessionId, RoundStatus.OPEN)
+                .map(this::toResponse)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "Round is not open"));
+        }
+        if (round.getCurrentTurnUserId() != null && !round.getCurrentTurnUserId().equals(userId)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Not your turn");
+        }
+
+        closeRound(round);
+        return auctionRoundRepository
+            .findFirstBySession_IdAndStatusOrderByStartsAtDesc(sessionId, RoundStatus.OPEN)
+            .map(this::toResponse)
+            .orElse(toResponse(round));
     }
 
     @Scheduled(fixedDelay = 1000)
@@ -320,6 +352,7 @@ public class AuctionService {
     }
 
     private void maybeStartNextRound(UUID sessionId) {
+        auctionRoundRepository.flush();
         GameSession session = gameSessionRepository.findById(sessionId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Session not found"));
         if (session.getStatus() != SessionStatus.AUCTIONING) {
