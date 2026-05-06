@@ -125,6 +125,10 @@ public class AuctionService {
                 RoundStatus.OPEN
             );
             auctionRoundRepository.save(round);
+            normalizeTurnForRound(round, sessionId);
+            if (round.getStatus() == RoundStatus.PASSED) {
+                continue;
+            }
             break;
         }
 
@@ -169,6 +173,10 @@ public class AuctionService {
 
         SessionPlayer bidder = sessionPlayerRepository.findBySession_IdAndUserId(sessionId, userId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Player not found in session"));
+        normalizeTurnForRound(round, sessionId);
+        if (round.getStatus() != RoundStatus.OPEN) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Round is not open");
+        }
         if (round.getCurrentTurnUserId() != null && !round.getCurrentTurnUserId().equals(userId)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Not your turn to bid");
         }
@@ -208,6 +216,7 @@ public class AuctionService {
         Bid bid = new Bid(UUID.randomUUID(), round, bidder, request.amountCents(), idem, Instant.now());
         bidRepository.save(bid);
         round.registerBid(bidder.getId(), request.amountCents(), newEndsAt, nextTurnUserId);
+        normalizeTurnForRound(round, sessionId);
 
         AuctionRoundResponse response = toResponse(round);
         sseEmitterRegistry.broadcast(
@@ -241,6 +250,28 @@ public class AuctionService {
 
         SessionPlayer winner = sessionPlayerRepository.findById(round.getHighestBidderId())
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "Winner not found"));
+        if (winner.getCards().size() >= ROSTER_SIZE) {
+            round.markPassed();
+            sseEmitterRegistry.broadcast(
+                round.getSession().getId(),
+                "round_ended",
+                Map.of("round", toResponse(round), "result", "PASSED", "reason", "winner_roster_full")
+            );
+            maybeFinalizeSession(round.getSession().getId());
+            maybeStartNextRound(round.getSession().getId());
+            return;
+        }
+        if (openSlotsForPosition(winner, round.getCard().getPosition()) <= 0) {
+            round.markPassed();
+            sseEmitterRegistry.broadcast(
+                round.getSession().getId(),
+                "round_ended",
+                Map.of("round", toResponse(round), "result", "PASSED", "reason", "winner_position_full")
+            );
+            maybeFinalizeSession(round.getSession().getId());
+            maybeStartNextRound(round.getSession().getId());
+            return;
+        }
         winner.spendBudget(round.getHighestBidCents());
         winner.addCard(round.getCard());
         round.markSold();
@@ -267,6 +298,37 @@ public class AuctionService {
             return;
         }
         startRound(sessionId);
+    }
+
+    private void normalizeTurnForRound(AuctionRound round, UUID sessionId) {
+        if (round.getStatus() != RoundStatus.OPEN || round.getCurrentTurnUserId() == null) {
+            return;
+        }
+        UUID currentTurnUserId = round.getCurrentTurnUserId();
+        SessionPlayer currentPlayer = sessionPlayerRepository.findBySession_IdAndUserId(sessionId, currentTurnUserId).orElse(null);
+        long minimumAllowed = round.getHighestBidCents() == 0
+            ? STARTING_BID
+            : round.getHighestBidCents() + MIN_INCREMENT;
+
+        if (currentPlayer != null && canPlayerBidRound(currentPlayer, round, minimumAllowed)) {
+            return;
+        }
+
+        UUID otherUserId = otherPlayerUserId(sessionId, currentTurnUserId);
+        SessionPlayer otherPlayer = sessionPlayerRepository.findBySession_IdAndUserId(sessionId, otherUserId).orElse(null);
+        if (otherPlayer != null && canPlayerBidRound(otherPlayer, round, minimumAllowed)) {
+            round.setCurrentTurnUserId(otherUserId);
+            return;
+        }
+
+        round.markPassed();
+        sseEmitterRegistry.broadcast(
+            sessionId,
+            "round_ended",
+            Map.of("round", toResponse(round), "result", "PASSED", "reason", "no_eligible_turn_bidder")
+        );
+        maybeFinalizeSession(sessionId);
+        maybeStartNextRound(sessionId);
     }
 
     private AuctionRoundResponse toResponse(AuctionRound round) {
@@ -328,6 +390,19 @@ public class AuctionService {
 
     private boolean canBidForPosition(SessionPlayer player, Position position) {
         return openSlotsForPosition(player, position) > 0 && player.getRemainingBudgetCents() >= STARTING_BID;
+    }
+
+    private boolean canPlayerBidRound(SessionPlayer player, AuctionRound round, long amountCents) {
+        if (openSlotsForPosition(player, round.getCard().getPosition()) <= 0) {
+            return false;
+        }
+        if (amountCents > player.getRemainingBudgetCents()) {
+            return false;
+        }
+        int totalOpenSlots = totalOpenSlots(player);
+        long remainingAfterBid = player.getRemainingBudgetCents() - amountCents;
+        long reserveRequired = Math.max(totalOpenSlots - 1, 0);
+        return remainingAfterBid >= reserveRequired;
     }
 
     private int openSlotsForPosition(SessionPlayer player, Position position) {

@@ -25,6 +25,8 @@ export function AuctionPage() {
   const [opponentTeam, setOpponentTeam] = useState<WonCard[]>([]);
   const [secondsLeft, setSecondsLeft] = useState<number>(0);
   const processedRoundsRef = useRef<Set<string>>(new Set());
+  const previousRoundIdRef = useRef<string | null>(null);
+  const serverClockOffsetMsRef = useRef<number>(0);
   const isMyTurn = !!myUserId && !!round && round.currentTurnUserId === myUserId;
 
   useEffect(() => {
@@ -92,6 +94,10 @@ export function AuctionPage() {
       winnerUserId?: string;
     };
     if ((latest.eventType === "round_started" || latest.eventType === "bid_placed" || latest.eventType === "round_ended") && payload.round) {
+      const serverEventTime = Date.parse(latest.occurredAt);
+      if (!Number.isNaN(serverEventTime)) {
+        serverClockOffsetMsRef.current = serverEventTime - Date.now();
+      }
       setRound(payload.round);
     }
     if (
@@ -126,6 +132,12 @@ export function AuctionPage() {
       return;
     }
     const minimum = Math.max(1, round.highestBidCents + 1);
+    const roundChanged = previousRoundIdRef.current !== round.roundId;
+    if (roundChanged) {
+      previousRoundIdRef.current = round.roundId;
+      setAmount(String(minimum));
+      return;
+    }
     setAmount((prev) => {
       const parsed = Number(prev);
       if (!Number.isFinite(parsed) || parsed < minimum) {
@@ -141,7 +153,8 @@ export function AuctionPage() {
       return;
     }
     const computeSecondsLeft = () => {
-      const diffMs = new Date(round.endsAt).getTime() - Date.now();
+      const adjustedNow = Date.now() + serverClockOffsetMsRef.current;
+      const diffMs = new Date(round.endsAt).getTime() - adjustedNow;
       return Math.max(0, Math.ceil(diffMs / 1000));
     };
     setSecondsLeft(computeSecondsLeft());
@@ -281,14 +294,6 @@ export function AuctionPage() {
         </div>
       </div>
 
-      <h4 style={{ marginTop: 20 }}>Recent SSE Events</h4>
-      <div style={{ background: "#f5f5f5", padding: 8, maxHeight: 320, overflow: "auto" }}>
-        {events.slice().reverse().map((event, idx) => (
-          <pre key={`${event.occurredAt}-${idx}`} style={{ whiteSpace: "pre-wrap", margin: 0 }}>
-            {JSON.stringify(event, null, 2)}
-          </pre>
-        ))}
-      </div>
     </div>
   );
 }

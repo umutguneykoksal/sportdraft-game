@@ -112,6 +112,10 @@ public class AuctionRound {
         return currentTurnUserId;
     }
 
+    public void setCurrentTurnUserId(UUID currentTurnUserId) {
+        this.currentTurnUserId = currentTurnUserId;
+    }
+
     public RoundStatus getStatus() {
         return status;
     }

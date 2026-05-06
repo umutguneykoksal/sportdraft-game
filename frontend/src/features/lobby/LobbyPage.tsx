@@ -26,7 +26,7 @@ export function LobbyPage() {
 
   const session = getOrCreateClientSession();
   const sessionId = snapshot?.sessionId ?? null;
-  const { events, isConnected } = useSessionStream(sessionId);
+  const { isConnected } = useSessionStream(sessionId);
 
   useEffect(() => {
     const restore = async () => {
@@ -175,14 +175,6 @@ export function LobbyPage() {
         <p style={{ color: "#a15c00" }}>Reconnecting live updates...</p>
       )}
 
-      <h4 style={{ marginTop: 20 }}>Recent SSE Events</h4>
-      <div style={{ background: "#f5f5f5", padding: 8, maxHeight: 240, overflow: "auto" }}>
-        {events.slice().reverse().map((event, idx) => (
-          <pre key={`${event.occurredAt}-${idx}`} style={{ whiteSpace: "pre-wrap", margin: 0 }}>
-            {JSON.stringify(event, null, 2)}
-          </pre>
-        ))}
-      </div>
     </div>
   );
 }

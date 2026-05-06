@@ -20,6 +20,8 @@ import java.util.UUID;
 @Table(name = "session_player")
 public class SessionPlayer {
 
+    private static final int MAX_ROSTER_SIZE = 11;
+
     @Id
     private UUID id;
 
@@ -89,6 +91,9 @@ public class SessionPlayer {
     }
 
     public void addCard(Card card) {
+        if (cards.size() >= MAX_ROSTER_SIZE) {
+            throw new IllegalStateException("Roster is already full");
+        }
         this.cards.add(card);
     }
 }
