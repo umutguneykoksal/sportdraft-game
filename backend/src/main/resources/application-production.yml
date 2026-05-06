@@ -4,6 +4,8 @@ spring:
       on-profile: production
 
 management:
+  tracing:
+    enabled: ${MANAGEMENT_TRACING_ENABLED:false}
   otlp:
     tracing:
       enabled: ${OTLP_TRACING_ENABLED:false}
