@@ -12,5 +12,7 @@ public interface GameSessionRepository extends JpaRepository<GameSession, UUID> 
 
     List<GameSession> findByStatusAndCountdownEndsAtLessThanEqual(SessionStatus status, Instant now);
 
+    List<GameSession> findByStatusNot(SessionStatus status);
+
     Optional<GameSession> findByIdAndStatus(UUID id, SessionStatus status);
 }

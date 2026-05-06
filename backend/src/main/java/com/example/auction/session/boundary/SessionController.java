@@ -2,9 +2,12 @@ package com.example.auction.session.boundary;
 
 import com.example.auction.lobby.boundary.SessionSnapshotResponse;
 import com.example.auction.lobby.control.LobbyService;
+import com.example.auction.session.control.SessionAdminService;
 import jakarta.validation.Valid;
+import java.util.Map;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -19,9 +22,11 @@ import org.springframework.web.server.ResponseStatusException;
 public class SessionController {
 
     private final LobbyService lobbyService;
+    private final SessionAdminService sessionAdminService;
 
-    public SessionController(LobbyService lobbyService) {
+    public SessionController(LobbyService lobbyService, SessionAdminService sessionAdminService) {
         this.lobbyService = lobbyService;
+        this.sessionAdminService = sessionAdminService;
     }
 
     @GetMapping("/{sessionId}")
@@ -39,6 +44,16 @@ public class SessionController {
         @RequestHeader("Authorization") String authorization
     ) {
         return lobbyService.selectFormation(sessionId, extractUserId(authorization), request.formation());
+    }
+
+    @DeleteMapping("/{sessionId}")
+    public void deleteSession(@PathVariable UUID sessionId) {
+        sessionAdminService.deleteSession(sessionId);
+    }
+
+    @DeleteMapping
+    public Map<String, Integer> deleteActiveSessions() {
+        return sessionAdminService.deleteActiveSessions();
     }
 
     private UUID extractUserId(String authorization) {
