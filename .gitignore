@@ -12,3 +12,10 @@ frontend/build/
 # Environment
 .env
 .env.*
+
+# Deployment / platform local files
+.railway/
+.vercel/
+.idea/
+.vscode/
+*.iml
