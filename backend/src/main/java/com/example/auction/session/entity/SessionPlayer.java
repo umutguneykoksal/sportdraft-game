@@ -36,6 +36,9 @@ public class SessionPlayer {
     @Column(nullable = false, length = 30)
     private Formation formation;
 
+    @Column(name = "formation_confirmed", nullable = false)
+    private boolean formationConfirmed;
+
     @Column(name = "remaining_budget_cents", nullable = false)
     private long remainingBudgetCents;
 
@@ -55,6 +58,7 @@ public class SessionPlayer {
         this.session = session;
         this.userId = userId;
         this.formation = formation;
+        this.formationConfirmed = false;
         this.remainingBudgetCents = remainingBudgetCents;
     }
 
@@ -78,12 +82,24 @@ public class SessionPlayer {
         return remainingBudgetCents;
     }
 
+    public boolean isFormationConfirmed() {
+        return formationConfirmed;
+    }
+
     public Set<Card> getCards() {
         return cards;
     }
 
-    public void setFormation(Formation formation) {
+    public void selectFormation(Formation formation) {
         this.formation = formation;
+        this.formationConfirmed = true;
+    }
+
+    public void confirmDefaultFormationIfMissing() {
+        if (!this.formationConfirmed) {
+            this.formation = Formation.FOUR_FOUR_TWO;
+            this.formationConfirmed = true;
+        }
     }
 
     public void spendBudget(long amountCents) {

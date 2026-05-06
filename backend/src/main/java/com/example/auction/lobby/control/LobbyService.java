@@ -115,14 +115,15 @@ public class LobbyService {
         SessionPlayer player = sessionPlayerRepository.findBySession_IdAndUserId(sessionId, userId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Player not in session"));
 
-        player.setFormation(formation);
+        player.selectFormation(formation);
         sseEmitterRegistry.broadcast(
             sessionId,
             "formation_chosen",
             Map.of("sessionId", sessionId, "userId", userId, "formation", formation)
         );
 
-        if (sessionPlayerRepository.countBySession_Id(sessionId) == 2) {
+        List<SessionPlayer> players = sessionPlayerRepository.findBySession_Id(sessionId);
+        if (players.size() == 2 && players.stream().allMatch(SessionPlayer::isFormationConfirmed)) {
             session.moveToAuctioning();
             sseEmitterRegistry.broadcast(
                 sessionId,
@@ -166,6 +167,8 @@ public class LobbyService {
         );
         for (GameSession session : formationDone) {
             if (sessionPlayerRepository.countBySession_Id(session.getId()) == 2) {
+                List<SessionPlayer> players = sessionPlayerRepository.findBySession_Id(session.getId());
+                players.forEach(SessionPlayer::confirmDefaultFormationIfMissing);
                 session.moveToAuctioning();
                 sseEmitterRegistry.broadcast(
                     session.getId(),
@@ -191,7 +194,7 @@ public class LobbyService {
             session.getCountdownEndsAt(),
             Math.toIntExact(playerCount),
             me != null,
-            me != null ? me.getFormation() : null
+            me != null && me.isFormationConfirmed() ? me.getFormation() : null
         );
     }
 }
