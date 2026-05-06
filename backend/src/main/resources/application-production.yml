@@ -6,12 +6,14 @@ spring:
 management:
   otlp:
     tracing:
-      endpoint: ${OTLP_TRACES_URL:}
+      enabled: ${OTLP_TRACING_ENABLED:false}
+      endpoint: ${OTLP_TRACES_URL:http://localhost:4318/v1/traces}
       headers:
         Authorization: ${OTLP_AUTH:}
     metrics:
       export:
-        url: ${OTLP_METRICS_URL:}
+        enabled: ${OTLP_METRICS_ENABLED:false}
+        url: ${OTLP_METRICS_URL:http://localhost:4318/v1/metrics}
         headers:
           Authorization: ${OTLP_AUTH:}
 
