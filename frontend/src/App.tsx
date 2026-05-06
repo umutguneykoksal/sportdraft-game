@@ -1,16 +1,7 @@
 import { Navigate, Route, Routes } from "react-router-dom";
-
-function LobbyPage() {
-  return <div>Lobby page (coming soon)</div>;
-}
-
-function AuctionPage() {
-  return <div>Auction page (coming soon)</div>;
-}
-
-function MatchResultPage() {
-  return <div>Match result page (coming soon)</div>;
-}
+import { LobbyPage } from "./features/lobby/LobbyPage";
+import { AuctionPage } from "./features/auction/AuctionPage";
+import { MatchPage } from "./features/match/MatchPage";
 
 export function App() {
   return (
@@ -18,7 +9,7 @@ export function App() {
       <Route path="/" element={<Navigate to="/lobby" replace />} />
       <Route path="/lobby" element={<LobbyPage />} />
       <Route path="/auction/:sessionId" element={<AuctionPage />} />
-      <Route path="/match/:sessionId" element={<MatchResultPage />} />
+      <Route path="/match/:sessionId" element={<MatchPage />} />
     </Routes>
   );
 }

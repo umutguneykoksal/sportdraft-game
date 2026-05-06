@@ -1,0 +1,14 @@
+# Cursor (rules, skills, IDE state)
+.cursor/
+
+# Java / Maven
+backend/target/
+*.log
+
+# Node / CRA
+frontend/node_modules/
+frontend/build/
+
+# Environment
+.env
+.env.*
