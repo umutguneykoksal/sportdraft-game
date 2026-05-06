@@ -41,6 +41,12 @@ public class AuctionRound {
     @Column(name = "highest_bidder_id")
     private UUID highestBidderId;
 
+    @Column(name = "opening_bidder_user_id")
+    private UUID openingBidderUserId;
+
+    @Column(name = "current_turn_user_id")
+    private UUID currentTurnUserId;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private RoundStatus status;
@@ -51,12 +57,22 @@ public class AuctionRound {
     protected AuctionRound() {
     }
 
-    public AuctionRound(UUID id, GameSession session, Card card, Instant startsAt, Instant endsAt, RoundStatus status) {
+    public AuctionRound(
+        UUID id,
+        GameSession session,
+        Card card,
+        Instant startsAt,
+        Instant endsAt,
+        UUID openingBidderUserId,
+        RoundStatus status
+    ) {
         this.id = id;
         this.session = session;
         this.card = card;
         this.startsAt = startsAt;
         this.endsAt = endsAt;
+        this.openingBidderUserId = openingBidderUserId;
+        this.currentTurnUserId = openingBidderUserId;
         this.status = status;
     }
 
@@ -88,6 +104,14 @@ public class AuctionRound {
         return highestBidderId;
     }
 
+    public UUID getOpeningBidderUserId() {
+        return openingBidderUserId;
+    }
+
+    public UUID getCurrentTurnUserId() {
+        return currentTurnUserId;
+    }
+
     public RoundStatus getStatus() {
         return status;
     }
@@ -96,10 +120,11 @@ public class AuctionRound {
         return version;
     }
 
-    public void registerBid(UUID bidderId, long amountCents, Instant endsAt) {
+    public void registerBid(UUID bidderId, long amountCents, Instant endsAt, UUID nextTurnUserId) {
         this.highestBidderId = bidderId;
         this.highestBidCents = amountCents;
         this.endsAt = endsAt;
+        this.currentTurnUserId = nextTurnUserId;
     }
 
     public void markSold() {

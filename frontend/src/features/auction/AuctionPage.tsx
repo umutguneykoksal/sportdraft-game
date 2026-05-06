@@ -23,7 +23,9 @@ export function AuctionPage() {
   const [loading, setLoading] = useState(false);
   const [myTeam, setMyTeam] = useState<WonCard[]>([]);
   const [opponentTeam, setOpponentTeam] = useState<WonCard[]>([]);
+  const [secondsLeft, setSecondsLeft] = useState<number>(0);
   const processedRoundsRef = useRef<Set<string>>(new Set());
+  const isMyTurn = !!myUserId && !!round && round.currentTurnUserId === myUserId;
 
   useEffect(() => {
     if (!sessionId) {
@@ -109,6 +111,22 @@ export function AuctionPage() {
     }
   }, [events, myUserId, navigate, sessionId]);
 
+  useEffect(() => {
+    if (!round) {
+      setSecondsLeft(0);
+      return;
+    }
+    const computeSecondsLeft = () => {
+      const diffMs = new Date(round.endsAt).getTime() - Date.now();
+      return Math.max(0, Math.ceil(diffMs / 1000));
+    };
+    setSecondsLeft(computeSecondsLeft());
+    const timer = setInterval(() => {
+      setSecondsLeft(computeSecondsLeft());
+    }, 250);
+    return () => clearInterval(timer);
+  }, [round]);
+
   if (!sessionId) {
     return <div>Session id missing</div>;
   }
@@ -129,6 +147,10 @@ export function AuctionPage() {
   const handleBid = async () => {
     if (!round) {
       setError("Start a round first");
+      return;
+    }
+    if (!isMyTurn) {
+      setError("It is not your turn");
       return;
     }
     const amountCents = Number(amount);
@@ -164,7 +186,7 @@ export function AuctionPage() {
           <p>Round: {round.roundId}</p>
           <p>Card: {round.cardName} ({round.position})</p>
           <p>Highest Bid (cents): {round.highestBidCents}</p>
-          <p>Ends At: {round.endsAt}</p>
+          <p>Time Left: {secondsLeft}s</p>
           <p>Status: {round.status}</p>
 
           <input
@@ -172,11 +194,15 @@ export function AuctionPage() {
             onChange={(e) => setAmount(e.target.value)}
             type="number"
             min={1}
+            disabled={loading || !isMyTurn}
             style={{ marginRight: 8 }}
           />
-          <button onClick={handleBid} disabled={loading}>
+          <button onClick={handleBid} disabled={loading || !isMyTurn}>
             Place Bid
           </button>
+          <p style={{ marginTop: 8, marginBottom: 0, fontSize: 13 }}>
+            {isMyTurn ? "Your turn to bid." : "Waiting for opponent turn."}
+          </p>
           <p style={{ marginTop: 8, marginBottom: 0, fontSize: 13 }}>
             Rule: You can bid repeatedly, but after any winning bid you must still keep
             at least 1 cent per remaining empty squad slot.

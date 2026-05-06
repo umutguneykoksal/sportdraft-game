@@ -110,7 +110,8 @@ class CoreFlowIntegrationTest {
         persistedRound.registerBid(
             persistedRound.getHighestBidderId(),
             persistedRound.getHighestBidCents(),
-            Instant.now().minusSeconds(1)
+            Instant.now().minusSeconds(1),
+            user2
         );
         auctionRoundRepository.save(persistedRound);
         auctionService.closeExpiredRounds();

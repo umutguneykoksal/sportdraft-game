@@ -102,6 +102,7 @@ public class AuctionService {
                     card,
                     now,
                     now,
+                    null,
                     RoundStatus.SKIPPED
                 );
                 auctionRoundRepository.save(skipped);
@@ -112,12 +113,14 @@ public class AuctionService {
                 );
                 continue;
             }
+            UUID openingBidderUserId = determineOpeningBidderUserId(sessionId, players);
             round = new AuctionRound(
                 UUID.randomUUID(),
                 session,
                 card,
                 now,
                 now.plus(15, ChronoUnit.SECONDS),
+                openingBidderUserId,
                 RoundStatus.OPEN
             );
             auctionRoundRepository.save(round);
@@ -165,6 +168,9 @@ public class AuctionService {
 
         SessionPlayer bidder = sessionPlayerRepository.findBySession_IdAndUserId(sessionId, userId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Player not found in session"));
+        if (round.getCurrentTurnUserId() != null && !round.getCurrentTurnUserId().equals(userId)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Not your turn to bid");
+        }
 
         long minimumAllowed = round.getHighestBidCents() == 0
             ? STARTING_BID
@@ -197,9 +203,10 @@ public class AuctionService {
             newEndsAt = proposed.isAfter(capped) ? capped : proposed;
         }
 
+        UUID nextTurnUserId = otherPlayerUserId(sessionId, userId);
         Bid bid = new Bid(UUID.randomUUID(), round, bidder, request.amountCents(), idem, Instant.now());
         bidRepository.save(bid);
-        round.registerBid(bidder.getId(), request.amountCents(), newEndsAt);
+        round.registerBid(bidder.getId(), request.amountCents(), newEndsAt, nextTurnUserId);
 
         AuctionRoundResponse response = toResponse(round);
         sseEmitterRegistry.broadcast(
@@ -270,9 +277,44 @@ public class AuctionService {
             round.getCard().getPosition().name(),
             round.getHighestBidCents(),
             round.getHighestBidderId(),
+            round.getCurrentTurnUserId(),
             round.getEndsAt(),
             round.getStatus().name()
         );
+    }
+
+    private UUID determineOpeningBidderUserId(UUID sessionId, List<SessionPlayer> players) {
+        return auctionRoundRepository.findFirstBySession_IdOrderByStartsAtDesc(sessionId)
+            .map(previousRound -> {
+                if (previousRound.getStatus() == RoundStatus.SOLD) {
+                    SessionPlayer winner = sessionPlayerRepository.findById(previousRound.getHighestBidderId()).orElse(null);
+                    if (winner != null) {
+                        return otherPlayerUserId(sessionId, winner.getUserId());
+                    }
+                }
+                UUID previousOpening = previousRound.getOpeningBidderUserId();
+                if (previousOpening != null) {
+                    return otherPlayerUserId(sessionId, previousOpening);
+                }
+                return players.stream()
+                    .map(SessionPlayer::getUserId)
+                    .sorted()
+                    .findFirst()
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "Cannot determine opening bidder"));
+            })
+            .orElseGet(() -> players.stream()
+                .map(SessionPlayer::getUserId)
+                .sorted()
+                .findFirst()
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "Cannot determine opening bidder")));
+    }
+
+    private UUID otherPlayerUserId(UUID sessionId, UUID currentUserId) {
+        return sessionPlayerRepository.findBySession_Id(sessionId).stream()
+            .map(SessionPlayer::getUserId)
+            .filter(userId -> !userId.equals(currentUserId))
+            .findFirst()
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "Opponent not found"));
     }
 
     private UUID parseUuid(String raw, String message) {
