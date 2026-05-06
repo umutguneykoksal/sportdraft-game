@@ -375,6 +375,8 @@ public class AuctionService {
             round.getHighestBidCents(),
             round.getHighestBidderId(),
             round.getCurrentTurnUserId(),
+            round.getReadyUserOneId(),
+            round.getReadyUserTwoId(),
             round.getEndsAt(),
             round.getStatus().name()
         );

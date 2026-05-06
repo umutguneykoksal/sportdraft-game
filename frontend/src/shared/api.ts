@@ -27,6 +27,8 @@ export interface AuctionRoundResponse {
   highestBidCents: number;
   highestBidderId: string | null;
   currentTurnUserId: string | null;
+  readyUserOneId: string | null;
+  readyUserTwoId: string | null;
   endsAt: string;
   status: string;
 }

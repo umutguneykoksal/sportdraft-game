@@ -28,6 +28,8 @@ export function AuctionPage() {
   const previousRoundIdRef = useRef<string | null>(null);
   const serverClockOffsetMsRef = useRef<number>(0);
   const isMyTurn = !!myUserId && !!round && round.currentTurnUserId === myUserId;
+  const isReadyByMe = !!myUserId && !!round && (round.readyUserOneId === myUserId || round.readyUserTwoId === myUserId);
+  const readyCount = round ? [round.readyUserOneId, round.readyUserTwoId].filter(Boolean).length : 0;
 
   useEffect(() => {
     if (!sessionId) {
@@ -93,7 +95,13 @@ export function AuctionPage() {
       result?: string;
       winnerUserId?: string;
     };
-    if ((latest.eventType === "round_started" || latest.eventType === "bid_placed" || latest.eventType === "round_ended") && payload.round) {
+    if (
+      (latest.eventType === "round_started"
+        || latest.eventType === "bid_placed"
+        || latest.eventType === "round_ended"
+        || latest.eventType === "round_ready")
+      && payload.round
+    ) {
       const serverEventTime = Date.parse(latest.occurredAt);
       if (!Number.isNaN(serverEventTime)) {
         serverClockOffsetMsRef.current = serverEventTime - Date.now();
@@ -278,11 +286,14 @@ export function AuctionPage() {
           </button>
           <button
             onClick={handleReadyNext}
-            disabled={loading || round.status !== "OPEN"}
+            disabled={loading || round.status !== "OPEN" || isReadyByMe}
             style={{ marginLeft: 8 }}
           >
-            Ready Next
+            {isReadyByMe ? "Ready Sent" : "Ready Next"}
           </button>
+          <p style={{ marginTop: 8, marginBottom: 0, fontSize: 13 }}>
+            Ready votes: {readyCount}/2
+          </p>
           <p style={{ marginTop: 8, marginBottom: 0, fontSize: 13 }}>
             {isMyTurn ? "Your turn to bid." : "Waiting for opponent turn."}
           </p>

@@ -12,6 +12,8 @@ public record AuctionRoundResponse(
     long highestBidCents,
     UUID highestBidderId,
     UUID currentTurnUserId,
+    UUID readyUserOneId,
+    UUID readyUserTwoId,
     Instant endsAt,
     String status
 ) {

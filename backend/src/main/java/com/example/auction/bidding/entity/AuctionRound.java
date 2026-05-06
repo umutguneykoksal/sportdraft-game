@@ -165,4 +165,12 @@ public class AuctionRound {
     public boolean areBothReady() {
         return readyUserOneId != null && readyUserTwoId != null;
     }
+
+    public UUID getReadyUserOneId() {
+        return readyUserOneId;
+    }
+
+    public UUID getReadyUserTwoId() {
+        return readyUserTwoId;
+    }
 }
