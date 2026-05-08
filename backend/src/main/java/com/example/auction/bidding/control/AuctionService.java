@@ -25,6 +25,7 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Collections;
 import java.util.EnumMap;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -375,24 +376,26 @@ public class AuctionService {
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Opponent not found in session"));
 
         List<AuctionRound> soldRounds = auctionRoundRepository.findBySession_IdAndStatusOrderByStartsAtAsc(sessionId, RoundStatus.SOLD);
-        List<AuctionTeamCardResponse> myTeam = new ArrayList<>();
-        List<AuctionTeamCardResponse> opponentTeam = new ArrayList<>();
-        Set<UUID> seenMyCardIds = new HashSet<>();
-        Set<UUID> seenOpponentCardIds = new HashSet<>();
+        Map<UUID, Long> soldAmountByCardId = new HashMap<>();
         for (AuctionRound soldRound : soldRounds) {
-            UUID soldCardId = soldRound.getCard().getId();
-            AuctionTeamCardResponse card = new AuctionTeamCardResponse(
-                soldCardId,
-                soldRound.getCard().getName(),
-                soldRound.getCard().getPosition().name(),
-                soldRound.getHighestBidCents()
-            );
-            if (me.getId().equals(soldRound.getHighestBidderId()) && seenMyCardIds.add(soldCardId)) {
-                myTeam.add(card);
-            } else if (opponent.getId().equals(soldRound.getHighestBidderId()) && seenOpponentCardIds.add(soldCardId)) {
-                opponentTeam.add(card);
-            }
+            soldAmountByCardId.put(soldRound.getCard().getId(), soldRound.getHighestBidCents());
         }
+        List<AuctionTeamCardResponse> myTeam = me.getCards().stream()
+            .map(card -> new AuctionTeamCardResponse(
+                card.getId(),
+                card.getName(),
+                card.getPosition().name(),
+                soldAmountByCardId.getOrDefault(card.getId(), 0L)
+            ))
+            .toList();
+        List<AuctionTeamCardResponse> opponentTeam = opponent.getCards().stream()
+            .map(card -> new AuctionTeamCardResponse(
+                card.getId(),
+                card.getName(),
+                card.getPosition().name(),
+                soldAmountByCardId.getOrDefault(card.getId(), 0L)
+            ))
+            .toList();
 
         AuctionRoundResponse currentRound = auctionRoundRepository
             .findFirstBySession_IdAndStatusOrderByStartsAtDesc(sessionId, RoundStatus.OPEN)
