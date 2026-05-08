@@ -1,6 +1,7 @@
 package com.example.auction.simulation.control;
 
 import com.example.auction.common.events.ProcessedEventRepository;
+import com.example.auction.common.events.ProcessedEvent;
 import com.example.auction.simulation.entity.MatchResult;
 import com.example.auction.simulation.entity.MatchResultRepository;
 import com.example.auction.session.entity.GameSession;
@@ -9,6 +10,7 @@ import jakarta.transaction.Transactional;
 import java.time.Instant;
 import java.util.UUID;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
@@ -39,12 +41,15 @@ public class MatchSimulationListener {
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     @Transactional
     public void onSessionFinalized(SessionFinalizedEvent event) {
-        boolean isNew = processedEventRepository.insertIfAbsent(
-            event.eventId(),
-            "SessionFinalizedEvent",
-            Instant.now()
-        ) > 0;
-        if (!isNew) {
+        if (processedEventRepository.existsById(event.eventId())) {
+            return;
+        }
+        try {
+            processedEventRepository.save(
+                new ProcessedEvent(event.eventId(), "SessionFinalizedEvent", Instant.now())
+            );
+        } catch (DataIntegrityViolationException duplicate) {
+            // Another concurrent consumer already marked this event.
             return;
         }
 
