@@ -383,6 +383,14 @@ public class AuctionService {
     }
 
     @Scheduled(fixedDelay = 1000)
+    public void normalizeOpenRounds() {
+        List<AuctionRound> openRounds = auctionRoundRepository.findByStatus(RoundStatus.OPEN);
+        for (AuctionRound round : openRounds) {
+            normalizeTurnForRound(round, round.getSession().getId());
+        }
+    }
+
+    @Scheduled(fixedDelay = 1000)
     public void reconcileRostersCompleteAuctions() {
         List<GameSession> auctioning = gameSessionRepository.findByStatusOrderByCreatedAtAsc(SessionStatus.AUCTIONING);
         for (GameSession gameSession : auctioning) {

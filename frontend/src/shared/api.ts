@@ -50,6 +50,16 @@ export interface AuctionStateResponse {
   opponentTeam: AuctionTeamCardResponse[];
 }
 
+export class ApiError extends Error {
+  status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
+
 const API_BASE = process.env.REACT_APP_API_BASE ?? "http://localhost:8080";
 
 export function getApiBase(): string {
@@ -80,6 +90,10 @@ async function readErrorMessage(response: Response, fallback: string): Promise<s
   }
 }
 
+function asApiError(message: string, status: number): ApiError {
+  return new ApiError(message, status);
+}
+
 async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number): Promise<Response> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -97,7 +111,7 @@ export async function joinLobby(nickname: string): Promise<SessionSnapshotRespon
     body: JSON.stringify({ nickname }),
   });
   if (!response.ok) {
-    throw new Error(await readErrorMessage(response, `joinLobby failed: ${response.status}`));
+    throw asApiError(await readErrorMessage(response, `joinLobby failed: ${response.status}`), response.status);
   }
   return (await response.json()) as SessionSnapshotResponse;
 }
@@ -108,7 +122,7 @@ export async function leaveLobby(sessionId: string): Promise<SessionSnapshotResp
     headers: authHeaders(),
   });
   if (!response.ok) {
-    throw new Error(await readErrorMessage(response, `leaveLobby failed: ${response.status}`));
+    throw asApiError(await readErrorMessage(response, `leaveLobby failed: ${response.status}`), response.status);
   }
   return (await response.json()) as SessionSnapshotResponse;
 }
@@ -127,7 +141,7 @@ export async function getMatchResult(sessionId: string): Promise<MatchResultResp
     return null;
   }
   if (!response.ok) {
-    throw new Error(await readErrorMessage(response, `getMatchResult failed: ${response.status}`));
+    throw asApiError(await readErrorMessage(response, `getMatchResult failed: ${response.status}`), response.status);
   }
   return (await response.json()) as MatchResultResponse;
 }
@@ -145,7 +159,10 @@ export async function getSessionSnapshot(sessionId: string): Promise<SessionSnap
         3500
       );
       if (!response.ok) {
-        throw new Error(await readErrorMessage(response, `getSessionSnapshot failed: ${response.status}`));
+        throw asApiError(
+          await readErrorMessage(response, `getSessionSnapshot failed: ${response.status}`),
+          response.status
+        );
       }
       return (await response.json()) as SessionSnapshotResponse;
     } catch (error) {
@@ -165,7 +182,7 @@ export async function selectFormation(sessionId: string, formation: Formation): 
     body: JSON.stringify({ formation }),
   });
   if (!response.ok) {
-    throw new Error(await readErrorMessage(response, `selectFormation failed: ${response.status}`));
+    throw asApiError(await readErrorMessage(response, `selectFormation failed: ${response.status}`), response.status);
   }
   return (await response.json()) as SessionSnapshotResponse;
 }
@@ -176,7 +193,7 @@ export async function confirmMatchStart(sessionId: string): Promise<SessionSnaps
     headers: authHeaders(),
   });
   if (!response.ok) {
-    throw new Error(await readErrorMessage(response, `confirmMatchStart failed: ${response.status}`));
+    throw asApiError(await readErrorMessage(response, `confirmMatchStart failed: ${response.status}`), response.status);
   }
   return (await response.json()) as SessionSnapshotResponse;
 }
@@ -187,7 +204,7 @@ export async function startRound(sessionId: string): Promise<AuctionRoundRespons
     headers: authHeaders(),
   });
   if (!response.ok) {
-    throw new Error(await readErrorMessage(response, `startRound failed: ${response.status}`));
+    throw asApiError(await readErrorMessage(response, `startRound failed: ${response.status}`), response.status);
   }
   return (await response.json()) as AuctionRoundResponse;
 }
@@ -206,7 +223,7 @@ export async function placeBid(
     body: JSON.stringify({ roundId, amountCents }),
   });
   if (!response.ok) {
-    throw new Error(await readErrorMessage(response, `placeBid failed: ${response.status}`));
+    throw asApiError(await readErrorMessage(response, `placeBid failed: ${response.status}`), response.status);
   }
   return (await response.json()) as AuctionRoundResponse;
 }
@@ -217,7 +234,7 @@ export async function readyNextRound(sessionId: string, roundId: string): Promis
     headers: authHeaders(),
   });
   if (!response.ok) {
-    throw new Error(await readErrorMessage(response, `readyNextRound failed: ${response.status}`));
+    throw asApiError(await readErrorMessage(response, `readyNextRound failed: ${response.status}`), response.status);
   }
   return (await response.json()) as AuctionRoundResponse;
 }
@@ -228,7 +245,7 @@ export async function passRound(sessionId: string, roundId: string): Promise<Auc
     headers: authHeaders(),
   });
   if (!response.ok) {
-    throw new Error(await readErrorMessage(response, `passRound failed: ${response.status}`));
+    throw asApiError(await readErrorMessage(response, `passRound failed: ${response.status}`), response.status);
   }
   return (await response.json()) as AuctionRoundResponse;
 }
@@ -239,7 +256,7 @@ export async function getAuctionState(sessionId: string): Promise<AuctionStateRe
     headers: authHeaders(),
   });
   if (!response.ok) {
-    throw new Error(await readErrorMessage(response, `getAuctionState failed: ${response.status}`));
+    throw asApiError(await readErrorMessage(response, `getAuctionState failed: ${response.status}`), response.status);
   }
   return (await response.json()) as AuctionStateResponse;
 }

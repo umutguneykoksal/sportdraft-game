@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
+  ApiError,
   AuctionRoundResponse,
   confirmMatchStart,
   getAuctionState,
@@ -16,7 +17,7 @@ import { clearActiveSessionId, setActiveSessionId } from "../../shared/session";
 import { useSessionStream } from "../../shared/sse";
 
 interface WonCard {
-  roundId: string;
+  cardId: string;
   cardName: string;
   position: string;
   amountCents: number;
@@ -37,7 +38,6 @@ export function AuctionPage() {
   const [secondsLeft, setSecondsLeft] = useState<number>(0);
   const [sessionSnap, setSessionSnap] = useState<SessionSnapshotResponse | null>(null);
   const [matchStartSecondsLeft, setMatchStartSecondsLeft] = useState<number>(0);
-  const processedRoundsRef = useRef<Set<string>>(new Set());
   const previousRoundIdRef = useRef<string | null>(null);
   const serverClockOffsetMsRef = useRef<number>(0);
   const isMyTurn = !!myUserId && !!round && round.currentTurnUserId === myUserId;
@@ -77,7 +77,7 @@ export function AuctionPage() {
         setRound(auctionState.currentRound);
         setMyTeam(
           auctionState.myTeam.map((card) => ({
-            roundId: card.cardId,
+            cardId: card.cardId,
             cardName: card.cardName,
             position: card.position,
             amountCents: card.amountCents,
@@ -85,16 +85,20 @@ export function AuctionPage() {
         );
         setOpponentTeam(
           auctionState.opponentTeam.map((card) => ({
-            roundId: card.cardId,
+            cardId: card.cardId,
             cardName: card.cardName,
             position: card.position,
             amountCents: card.amountCents,
           }))
         );
-      } catch {
-        if (!cancelled) {
+      } catch (e) {
+        if (!cancelled && e instanceof ApiError && (e.status === 401 || e.status === 404)) {
           clearActiveSessionId();
           navigate("/lobby");
+          return;
+        }
+        if (!cancelled) {
+          setError("Connection issue while loading auction state. Retrying...");
         }
       }
     };
@@ -162,7 +166,7 @@ export function AuctionPage() {
         setRound(auctionState.currentRound);
         setMyTeam(
           auctionState.myTeam.map((card) => ({
-            roundId: card.cardId,
+            cardId: card.cardId,
             cardName: card.cardName,
             position: card.position,
             amountCents: card.amountCents,
@@ -170,7 +174,7 @@ export function AuctionPage() {
         );
         setOpponentTeam(
           auctionState.opponentTeam.map((card) => ({
-            roundId: card.cardId,
+            cardId: card.cardId,
             cardName: card.cardName,
             position: card.position,
             amountCents: card.amountCents,
@@ -253,7 +257,7 @@ export function AuctionPage() {
           setRound(auctionState.currentRound);
           setMyTeam(
             auctionState.myTeam.map((card) => ({
-              roundId: card.cardId,
+              cardId: card.cardId,
               cardName: card.cardName,
               position: card.position,
               amountCents: card.amountCents,
@@ -261,7 +265,7 @@ export function AuctionPage() {
           );
           setOpponentTeam(
             auctionState.opponentTeam.map((card) => ({
-              roundId: card.cardId,
+              cardId: card.cardId,
               cardName: card.cardName,
               position: card.position,
               amountCents: card.amountCents,
@@ -309,7 +313,7 @@ export function AuctionPage() {
             setRound(auctionState.currentRound);
             setMyTeam(
               auctionState.myTeam.map((card) => ({
-                roundId: card.cardId,
+                cardId: card.cardId,
                 cardName: card.cardName,
                 position: card.position,
                 amountCents: card.amountCents,
@@ -317,7 +321,7 @@ export function AuctionPage() {
             );
             setOpponentTeam(
               auctionState.opponentTeam.map((card) => ({
-                roundId: card.cardId,
+                cardId: card.cardId,
                 cardName: card.cardName,
                 position: card.position,
                 amountCents: card.amountCents,
@@ -328,28 +332,6 @@ export function AuctionPage() {
           // ignore
         }
       })();
-    }
-    if (
-      latest.eventType === "round_ended" &&
-      payload.result === "SOLD" &&
-      payload.round &&
-      payload.winnerUserId
-    ) {
-      const endedRoundId = payload.round.roundId;
-      if (!processedRoundsRef.current.has(endedRoundId)) {
-        processedRoundsRef.current.add(endedRoundId);
-        const wonCard: WonCard = {
-          roundId: endedRoundId,
-          cardName: payload.round.cardName,
-          position: payload.round.position,
-          amountCents: payload.round.highestBidCents,
-        };
-        if (payload.winnerUserId === myUserId) {
-          setMyTeam((prev) => [...prev, wonCard]);
-        } else {
-          setOpponentTeam((prev) => [...prev, wonCard]);
-        }
-      }
     }
     if (
       (latest.eventType === "match_start_pending"
@@ -610,7 +592,7 @@ export function AuctionPage() {
           </button>
           <button
             onClick={handlePassRound}
-            disabled={loading || !isMyTurn || round.highestBidderId === null}
+            disabled={loading || !isMyTurn}
             style={{ marginLeft: 8 }}
           >
             Pass (End Round)
@@ -651,7 +633,7 @@ export function AuctionPage() {
           <h4 style={{ marginTop: 0 }}>My Team ({myTeam.length}/11)</h4>
           {myTeam.length === 0 && <p style={{ margin: 0 }}>No players won yet.</p>}
           {myTeam.map((card) => (
-            <p key={card.roundId} style={{ margin: "4px 0" }}>
+            <p key={card.cardId} style={{ margin: "4px 0" }}>
               {card.cardName} ({card.position}) - {card.amountCents}
             </p>
           ))}
@@ -660,7 +642,7 @@ export function AuctionPage() {
           <h4 style={{ marginTop: 0 }}>Opponent Team ({opponentTeam.length}/11)</h4>
           {opponentTeam.length === 0 && <p style={{ margin: 0 }}>No players won yet.</p>}
           {opponentTeam.map((card) => (
-            <p key={card.roundId} style={{ margin: "4px 0" }}>
+            <p key={card.cardId} style={{ margin: "4px 0" }}>
               {card.cardName} ({card.position}) - {card.amountCents}
             </p>
           ))}

@@ -7,7 +7,7 @@ Browser-based 2-player football card auction draft game.
 - **Backend**: Java 21, Spring Boot 3.x, PostgreSQL, Redis
 - **Frontend**: React 18 + TypeScript (Create React App), TanStack Query, Zustand
 - **Real-time**: REST + SSE (`EventSource`)
-- **Infra**: Docker Compose (local), Railway + Vercel
+- **Infra**: Docker Compose (local), Railway (backend + frontend)
 
 ## Current Status
 

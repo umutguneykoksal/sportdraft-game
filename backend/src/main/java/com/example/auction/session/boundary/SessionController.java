@@ -4,6 +4,7 @@ import com.example.auction.bidding.control.AuctionService;
 import com.example.auction.lobby.boundary.SessionSnapshotResponse;
 import com.example.auction.lobby.control.LobbyService;
 import com.example.auction.session.control.SessionAdminService;
+import com.example.auction.session.entity.SessionPlayerRepository;
 import com.example.auction.simulation.boundary.MatchResultResponse;
 import com.example.auction.simulation.entity.MatchResultRepository;
 import jakarta.validation.Valid;
@@ -29,17 +30,20 @@ public class SessionController {
     private final SessionAdminService sessionAdminService;
     private final AuctionService auctionService;
     private final MatchResultRepository matchResultRepository;
+    private final SessionPlayerRepository sessionPlayerRepository;
 
     public SessionController(
         LobbyService lobbyService,
         SessionAdminService sessionAdminService,
         AuctionService auctionService,
-        MatchResultRepository matchResultRepository
+        MatchResultRepository matchResultRepository,
+        SessionPlayerRepository sessionPlayerRepository
     ) {
         this.lobbyService = lobbyService;
         this.sessionAdminService = sessionAdminService;
         this.auctionService = auctionService;
         this.matchResultRepository = matchResultRepository;
+        this.sessionPlayerRepository = sessionPlayerRepository;
     }
 
     @GetMapping("/{sessionId}")
@@ -70,7 +74,14 @@ public class SessionController {
     }
 
     @GetMapping("/{sessionId}/match-result")
-    public ResponseEntity<MatchResultResponse> getMatchResult(@PathVariable UUID sessionId) {
+    public ResponseEntity<MatchResultResponse> getMatchResult(
+        @PathVariable UUID sessionId,
+        @RequestHeader("Authorization") String authorization
+    ) {
+        UUID userId = extractUserId(authorization);
+        if (!sessionPlayerRepository.existsBySession_IdAndUserId(sessionId, userId)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Player not found in session");
+        }
         return matchResultRepository.findBySession_Id(sessionId)
             .map(m -> ResponseEntity.ok(new MatchResultResponse(m.getHomeScore(), m.getAwayScore())))
             .orElse(ResponseEntity.notFound().build());
