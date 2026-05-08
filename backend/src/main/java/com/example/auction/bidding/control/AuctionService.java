@@ -708,35 +708,11 @@ public class AuctionService {
 
         boolean allRostersFull = players.stream()
             .allMatch(player -> sessionPlayerRepository.countCardsByPlayerId(player.getId()) >= ROSTER_SIZE);
-        boolean everyoneBlocked = players.stream().allMatch(player -> {
-            int openSlots = totalOpenSlots(player);
-            if (openSlots <= 0) {
-                return true;
-            }
-            long reserveRequiredAfterMinimumBid = Math.max(openSlots - 1, 0);
-            return player.getRemainingBudgetCents() < STARTING_BID
-                || (player.getRemainingBudgetCents() - STARTING_BID) < reserveRequiredAfterMinimumBid;
-        });
-        if (!allRostersFull && !everyoneBlocked) {
+        if (!allRostersFull) {
             return;
         }
 
-        if (allRostersFull) {
-            enterMatchStartPending(sessionId);
-            return;
-        }
-
-        session.moveToFinalizing(session.getId().getMostSignificantBits());
-        publishSessionFinalized(session, players);
-        sseEmitterRegistry.broadcast(
-            sessionId,
-            "session_finalizing",
-            Map.of(
-                "sessionId", sessionId,
-                "reason", "players_blocked",
-                "seed", session.getMatchSeed()
-            )
-        );
+        enterMatchStartPending(sessionId);
     }
 
     private void enterMatchStartPending(UUID sessionId) {
@@ -792,6 +768,11 @@ public class AuctionService {
         }
         UUID sessionId = session.getId();
         List<SessionPlayer> players = sessionPlayerRepository.findBySession_Id(sessionId);
+        boolean allFull = players.stream()
+            .allMatch(player -> sessionPlayerRepository.countCardsByPlayerId(player.getId()) >= ROSTER_SIZE);
+        if (!allFull) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Cannot finalize before both rosters are full");
+        }
         session.moveToFinalizing(session.getId().getMostSignificantBits());
         publishSessionFinalized(session, players);
         sseEmitterRegistry.broadcast(
