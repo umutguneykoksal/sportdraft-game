@@ -357,7 +357,34 @@ export function AuctionPage() {
       if (!Number.isNaN(serverEventTime)) {
         serverClockOffsetMsRef.current = serverEventTime - Date.now();
       }
-      getSessionSnapshot(sessionId).then(setSessionSnap).catch(() => {});
+      (async () => {
+        try {
+          const [snap, auctionState] = await Promise.all([
+            getSessionSnapshot(sessionId),
+            getAuctionState(sessionId),
+          ]);
+          setSessionSnap(snap);
+          setRound(auctionState.currentRound);
+          setMyTeam(
+            auctionState.myTeam.map((card) => ({
+              cardId: card.cardId,
+              cardName: card.cardName,
+              position: card.position,
+              amountCents: card.amountCents,
+            }))
+          );
+          setOpponentTeam(
+            auctionState.opponentTeam.map((card) => ({
+              cardId: card.cardId,
+              cardName: card.cardName,
+              position: card.position,
+              amountCents: card.amountCents,
+            }))
+          );
+        } catch {
+          // ignore transient sync errors
+        }
+      })();
     }
     if (latest.eventType === "match_completed" && sessionId) {
       navigate(`/match/${sessionId}`);
