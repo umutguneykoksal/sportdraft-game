@@ -7,6 +7,7 @@ import com.example.auction.session.control.SessionAdminService;
 import com.example.auction.session.entity.SessionPlayerRepository;
 import com.example.auction.simulation.boundary.MatchResultResponse;
 import com.example.auction.simulation.entity.MatchResultRepository;
+import com.example.auction.simulation.control.MatchResultRecoveryService;
 import jakarta.validation.Valid;
 import java.util.Map;
 import java.util.UUID;
@@ -31,19 +32,22 @@ public class SessionController {
     private final AuctionService auctionService;
     private final MatchResultRepository matchResultRepository;
     private final SessionPlayerRepository sessionPlayerRepository;
+    private final MatchResultRecoveryService matchResultRecoveryService;
 
     public SessionController(
         LobbyService lobbyService,
         SessionAdminService sessionAdminService,
         AuctionService auctionService,
         MatchResultRepository matchResultRepository,
-        SessionPlayerRepository sessionPlayerRepository
+        SessionPlayerRepository sessionPlayerRepository,
+        MatchResultRecoveryService matchResultRecoveryService
     ) {
         this.lobbyService = lobbyService;
         this.sessionAdminService = sessionAdminService;
         this.auctionService = auctionService;
         this.matchResultRepository = matchResultRepository;
         this.sessionPlayerRepository = sessionPlayerRepository;
+        this.matchResultRecoveryService = matchResultRecoveryService;
     }
 
     @GetMapping("/{sessionId}")
@@ -82,6 +86,7 @@ public class SessionController {
         if (!sessionPlayerRepository.existsBySession_IdAndUserId(sessionId, userId)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Player not found in session");
         }
+        matchResultRecoveryService.recoverIfMissing(sessionId);
         return matchResultRepository.findBySession_Id(sessionId)
             .map(m -> ResponseEntity.ok(new MatchResultResponse(m.getHomeScore(), m.getAwayScore())))
             .orElse(ResponseEntity.notFound().build());
