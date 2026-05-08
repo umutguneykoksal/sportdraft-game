@@ -40,6 +40,7 @@ export function AuctionPage() {
   const [matchStartSecondsLeft, setMatchStartSecondsLeft] = useState<number>(0);
   const previousRoundIdRef = useRef<string | null>(null);
   const serverClockOffsetMsRef = useRef<number>(0);
+  const syncSeqRef = useRef(0);
   const isMyTurn = !!myUserId && !!round && round.currentTurnUserId === myUserId;
   const isReadyByMe = !!myUserId && !!round && (round.readyUserOneId === myUserId || round.readyUserTwoId === myUserId);
   const readyCount = round ? [round.readyUserOneId, round.readyUserTwoId].filter(Boolean).length : 0;
@@ -54,9 +55,10 @@ export function AuctionPage() {
     setActiveSessionId(sessionId);
     let cancelled = false;
     const syncSnapshot = async () => {
+      const seq = ++syncSeqRef.current;
       try {
         const snapshot = await getSessionSnapshot(sessionId);
-        if (cancelled) {
+        if (cancelled || seq !== syncSeqRef.current) {
           return;
         }
         setSessionSnap(snapshot);
@@ -74,6 +76,9 @@ export function AuctionPage() {
           return;
         }
         const auctionState = await getAuctionState(sessionId);
+        if (cancelled || seq !== syncSeqRef.current) {
+          return;
+        }
         setRound(auctionState.currentRound);
         setMyTeam(
           auctionState.myTeam.map((card) => ({
@@ -142,12 +147,13 @@ export function AuctionPage() {
     }
     let cancelled = false;
     const pull = async () => {
+      const seq = ++syncSeqRef.current;
       try {
         const [snapshot, auctionState] = await Promise.all([
           getSessionSnapshot(sessionId),
           getAuctionState(sessionId),
         ]);
-        if (cancelled) {
+        if (cancelled || seq !== syncSeqRef.current) {
           return;
         }
         setSessionSnap(snapshot);
@@ -305,11 +311,18 @@ export function AuctionPage() {
     }
     if (latest.eventType === "round_ended" && sessionId) {
       (async () => {
+        const seq = ++syncSeqRef.current;
         try {
           const snapshot = await getSessionSnapshot(sessionId);
+          if (seq !== syncSeqRef.current) {
+            return;
+          }
           setSessionSnap(snapshot);
           if (snapshot.status === "AUCTIONING") {
             const auctionState = await getAuctionState(sessionId);
+            if (seq !== syncSeqRef.current) {
+              return;
+            }
             setRound(auctionState.currentRound);
             setMyTeam(
               auctionState.myTeam.map((card) => ({

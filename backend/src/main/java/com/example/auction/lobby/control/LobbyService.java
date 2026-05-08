@@ -39,7 +39,7 @@ public class LobbyService {
     }
 
     public SessionSnapshotResponse joinLobby(UUID userId) {
-        List<GameSession> waitingSessions = gameSessionRepository.findByStatusOrderByCreatedAtAsc(SessionStatus.WAITING);
+        List<GameSession> waitingSessions = gameSessionRepository.lockByStatusOrderByCreatedAtAsc(SessionStatus.WAITING);
         GameSession target = waitingSessions.stream()
             .filter(session -> sessionPlayerRepository.countBySession_Id(session.getId()) < 2)
             .findFirst()
@@ -47,6 +47,12 @@ public class LobbyService {
                 GameSession created = new GameSession(UUID.randomUUID(), SessionStatus.WAITING, Instant.now());
                 return gameSessionRepository.save(created);
             });
+
+        long existingPlayerCount = sessionPlayerRepository.countBySession_Id(target.getId());
+        if (existingPlayerCount >= 2 && !sessionPlayerRepository.existsBySession_IdAndUserId(target.getId(), userId)) {
+            GameSession created = new GameSession(UUID.randomUUID(), SessionStatus.WAITING, Instant.now());
+            target = gameSessionRepository.save(created);
+        }
 
         if (!sessionPlayerRepository.existsBySession_IdAndUserId(target.getId(), userId)) {
             SessionPlayer player = new SessionPlayer(

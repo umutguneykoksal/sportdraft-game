@@ -18,7 +18,9 @@ export function useSessionStream(sessionId: string | null) {
   const [events, setEvents] = useState<SseEventEnvelope[]>([]);
   const [isConnected, setIsConnected] = useState(false);
   const sourceRef = useRef<EventSource | null>(null);
+  const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimerRef = useRef<number | null>(null);
+  const reconnectAttemptsRef = useRef<number>(0);
 
   useEffect(() => {
     if (!sessionId) {
@@ -30,11 +32,13 @@ export function useSessionStream(sessionId: string | null) {
     }
     let closedByHook = false;
 
-    const connect = () => {
+    const wsEnabled = (process.env.REACT_APP_REALTIME_TRANSPORT ?? "sse").toLowerCase() === "websocket";
+    const connectSse = () => {
       if (reconnectTimerRef.current !== null) {
         window.clearTimeout(reconnectTimerRef.current);
         reconnectTimerRef.current = null;
       }
+      wsRef.current?.close();
       sourceRef.current?.close();
       const base = getApiBase().replace(/\/$/, "");
       const url = `${base}/api/sessions/${encodeURIComponent(sessionId)}/events?token=${encodeURIComponent(token)}`;
@@ -59,12 +63,65 @@ export function useSessionStream(sessionId: string | null) {
         setIsConnected(false);
         es.close();
         if (!closedByHook) {
-          reconnectTimerRef.current = window.setTimeout(connect, 1500);
+          reconnectAttemptsRef.current += 1;
+          const delayMs = Math.min(5000, 1000 + reconnectAttemptsRef.current * 500);
+          reconnectTimerRef.current = window.setTimeout(connectSse, delayMs);
         }
       };
     };
 
-    connect();
+    const connectWebSocket = () => {
+      if (reconnectTimerRef.current !== null) {
+        window.clearTimeout(reconnectTimerRef.current);
+        reconnectTimerRef.current = null;
+      }
+      sourceRef.current?.close();
+      wsRef.current?.close();
+      const httpBase = getApiBase().replace(/\/$/, "");
+      const wsBase = httpBase.startsWith("https://")
+        ? httpBase.replace(/^https:\/\//, "wss://")
+        : httpBase.replace(/^http:\/\//, "ws://");
+      const wsUrl =
+        `${wsBase}/ws/sessions?sessionId=${encodeURIComponent(sessionId)}` +
+        `&token=${encodeURIComponent(token)}`;
+      const ws = new WebSocket(wsUrl);
+      wsRef.current = ws;
+      setIsConnected(false);
+
+      ws.onopen = () => {
+        reconnectAttemptsRef.current = 0;
+        setIsConnected(true);
+      };
+      ws.onmessage = (evt) => {
+        try {
+          const parsed = JSON.parse(String(evt.data)) as SseEventEnvelope;
+          setEvents((prev) => [...prev.slice(-30), parsed]);
+        } catch {
+          // ignore malformed chunks
+        }
+      };
+      ws.onclose = () => {
+        setIsConnected(false);
+        if (!closedByHook) {
+          reconnectAttemptsRef.current += 1;
+          const delayMs = Math.min(5000, 1000 + reconnectAttemptsRef.current * 500);
+          reconnectTimerRef.current = window.setTimeout(connectWebSocket, delayMs);
+        }
+      };
+      ws.onerror = () => {
+        // Fall back to SSE if WS handshake fails repeatedly.
+        if (!closedByHook && reconnectAttemptsRef.current >= 2) {
+          ws.close();
+          connectSse();
+        }
+      };
+    };
+
+    if (wsEnabled) {
+      connectWebSocket();
+    } else {
+      connectSse();
+    }
 
     return () => {
       closedByHook = true;
@@ -74,6 +131,8 @@ export function useSessionStream(sessionId: string | null) {
         reconnectTimerRef.current = null;
       }
       sourceRef.current?.close();
+      wsRef.current?.close();
+      wsRef.current = null;
       sourceRef.current = null;
     };
   }, [sessionId]);

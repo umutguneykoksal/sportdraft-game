@@ -1,5 +1,6 @@
 package com.example.auction.common.sse;
 
+import com.example.auction.common.realtime.WebSocketSessionRegistry;
 import java.io.IOException;
 import java.time.Duration;
 import java.time.Instant;
@@ -24,9 +25,11 @@ public class SseEmitterRegistry {
     private final Map<UUID, List<SseEmitter>> bySession = new ConcurrentHashMap<>();
     private final Map<UUID, Instant> disconnectedAtBySession = new ConcurrentHashMap<>();
     private final ObjectMapper objectMapper;
+    private final WebSocketSessionRegistry webSocketSessionRegistry;
 
-    public SseEmitterRegistry(ObjectMapper objectMapper) {
+    public SseEmitterRegistry(ObjectMapper objectMapper, WebSocketSessionRegistry webSocketSessionRegistry) {
         this.objectMapper = objectMapper;
+        this.webSocketSessionRegistry = webSocketSessionRegistry;
     }
 
     public SseEmitter register(UUID sessionId) {
@@ -40,6 +43,7 @@ public class SseEmitterRegistry {
     }
 
     public void broadcast(UUID sessionId, String eventType, Object payload) {
+        webSocketSessionRegistry.broadcast(sessionId, eventType, payload);
         Map<String, Object> envelope = Map.of(
             "eventType", eventType,
             "occurredAt", Instant.now().toString(),
@@ -65,6 +69,7 @@ public class SseEmitterRegistry {
 
     public List<UUID> sessionIds() {
         Set<UUID> sessionIds = new HashSet<>(bySession.keySet());
+        sessionIds.addAll(webSocketSessionRegistry.sessionIds());
         return List.copyOf(sessionIds);
     }
 
@@ -81,7 +86,7 @@ public class SseEmitterRegistry {
     }
 
     public boolean hasActiveConnections(UUID sessionId) {
-        return !bySession.getOrDefault(sessionId, List.of()).isEmpty();
+        return !bySession.getOrDefault(sessionId, List.of()).isEmpty() || webSocketSessionRegistry.hasActiveConnections(sessionId);
     }
 
     public boolean isDisconnectedLongerThan(UUID sessionId, Duration threshold) {
@@ -94,6 +99,7 @@ public class SseEmitterRegistry {
 
     public void forgetSession(UUID sessionId) {
         disconnectedAtBySession.remove(sessionId);
+        webSocketSessionRegistry.forgetSession(sessionId);
     }
 
     private void markDisconnectedIfNoActiveConnections(UUID sessionId) {

@@ -231,7 +231,10 @@ export async function placeBid(
 export async function readyNextRound(sessionId: string, roundId: string): Promise<AuctionRoundResponse> {
   const response = await fetch(`${API_BASE}/api/sessions/${sessionId}/auction/rounds/${roundId}/ready-next`, {
     method: "POST",
-    headers: authHeaders(),
+    headers: {
+      ...authHeaders(),
+      "Idempotency-Key": crypto.randomUUID(),
+    },
   });
   if (!response.ok) {
     throw asApiError(await readErrorMessage(response, `readyNextRound failed: ${response.status}`), response.status);
@@ -242,7 +245,10 @@ export async function readyNextRound(sessionId: string, roundId: string): Promis
 export async function passRound(sessionId: string, roundId: string): Promise<AuctionRoundResponse> {
   const response = await fetch(`${API_BASE}/api/sessions/${sessionId}/auction/rounds/${roundId}/pass`, {
     method: "POST",
-    headers: authHeaders(),
+    headers: {
+      ...authHeaders(),
+      "Idempotency-Key": crypto.randomUUID(),
+    },
   });
   if (!response.ok) {
     throw asApiError(await readErrorMessage(response, `passRound failed: ${response.status}`), response.status);

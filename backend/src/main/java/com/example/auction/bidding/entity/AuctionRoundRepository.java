@@ -16,6 +16,13 @@ public interface AuctionRoundRepository extends JpaRepository<AuctionRound, UUID
     @Query("select r from AuctionRound r where r.id = :id")
     Optional<AuctionRound> lockById(@Param("id") UUID id);
 
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select r from AuctionRound r where r.session.id = :sessionId and r.status = :status order by r.startsAt desc")
+    List<AuctionRound> lockBySessionIdAndStatusOrderByStartsAtDesc(
+        @Param("sessionId") UUID sessionId,
+        @Param("status") RoundStatus status
+    );
+
     Optional<AuctionRound> findFirstBySession_IdAndStatusOrderByStartsAtDesc(UUID sessionId, RoundStatus status);
 
     Optional<AuctionRound> findFirstBySession_IdOrderByStartsAtDesc(UUID sessionId);

@@ -30,6 +30,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.ArrayList;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.http.HttpStatus;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
@@ -54,6 +55,7 @@ public class AuctionService {
     private final BidRepository bidRepository;
     private final SseEmitterRegistry sseEmitterRegistry;
     private final ApplicationEventPublisher publisher;
+    private final MeterRegistry meterRegistry;
 
     public AuctionService(
         GameSessionRepository gameSessionRepository,
@@ -62,7 +64,8 @@ public class AuctionService {
         CardRepository cardRepository,
         BidRepository bidRepository,
         SseEmitterRegistry sseEmitterRegistry,
-        ApplicationEventPublisher publisher
+        ApplicationEventPublisher publisher,
+        MeterRegistry meterRegistry
     ) {
         this.gameSessionRepository = gameSessionRepository;
         this.sessionPlayerRepository = sessionPlayerRepository;
@@ -71,6 +74,7 @@ public class AuctionService {
         this.bidRepository = bidRepository;
         this.sseEmitterRegistry = sseEmitterRegistry;
         this.publisher = publisher;
+        this.meterRegistry = meterRegistry;
     }
 
     public void confirmMatchStart(UUID sessionId, UUID userId) {
@@ -101,14 +105,15 @@ public class AuctionService {
     }
 
     public AuctionRoundResponse startRound(UUID sessionId) {
-        GameSession session = gameSessionRepository.findById(sessionId)
+        GameSession session = gameSessionRepository.lockById(sessionId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Session not found"));
 
         if (session.getStatus() != SessionStatus.AUCTIONING) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Session is not auctioning");
         }
 
-        auctionRoundRepository.findFirstBySession_IdAndStatusOrderByStartsAtDesc(sessionId, RoundStatus.OPEN)
+        auctionRoundRepository.lockBySessionIdAndStatusOrderByStartsAtDesc(sessionId, RoundStatus.OPEN).stream()
+            .findFirst()
             .ifPresent(round -> {
                 throw new ResponseStatusException(HttpStatus.CONFLICT, "An active round already exists");
             });
@@ -191,6 +196,7 @@ public class AuctionService {
             "round_started",
             Map.of("round", response)
         );
+        meterRegistry.counter("auction.round.started").increment();
         return response;
     }
 
@@ -269,11 +275,12 @@ public class AuctionService {
             "bid_placed",
             Map.of("round", response, "userId", userId, "amountCents", request.amountCents())
         );
+        meterRegistry.counter("auction.bid.placed").increment();
         return response;
     }
 
     public AuctionRoundResponse readyNext(UUID sessionId, UUID userId, UUID roundId) {
-        AuctionRound round = auctionRoundRepository.findById(roundId)
+        AuctionRound round = auctionRoundRepository.lockById(roundId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Round not found"));
         if (!round.getSession().getId().equals(sessionId)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Round does not belong to session");
@@ -311,7 +318,7 @@ public class AuctionService {
     }
 
     public AuctionRoundResponse passRound(UUID sessionId, UUID userId, UUID roundId) {
-        AuctionRound round = auctionRoundRepository.findById(roundId)
+        AuctionRound round = auctionRoundRepository.lockById(roundId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Round not found"));
         if (!round.getSession().getId().equals(sessionId)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Round does not belong to session");
@@ -422,16 +429,18 @@ public class AuctionService {
     }
 
     private void closeRound(AuctionRound round) {
+        UUID sessionId = round.getSession().getId();
+        GameSession lockedSession = gameSessionRepository.lockById(sessionId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Session not found"));
+
         AuctionRound locked = auctionRoundRepository.lockById(round.getId())
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "Round not found"));
         if (locked.getStatus() != RoundStatus.OPEN) {
             return;
         }
-        if (locked.getSession().getStatus() != SessionStatus.AUCTIONING) {
+        if (lockedSession.getStatus() != SessionStatus.AUCTIONING) {
             return;
         }
-
-        UUID sessionId = locked.getSession().getId();
 
         if (locked.getHighestBidderId() == null) {
             locked.markPassed();
@@ -442,6 +451,7 @@ public class AuctionService {
             );
             maybeFinalizeSession(sessionId);
             maybeStartNextRound(sessionId);
+            meterRegistry.counter("auction.round.closed", "result", "PASSED").increment();
             return;
         }
 
@@ -456,6 +466,7 @@ public class AuctionService {
             );
             maybeFinalizeSession(sessionId);
             maybeStartNextRound(sessionId);
+            meterRegistry.counter("auction.round.closed", "result", "PASSED").increment();
             return;
         }
         if (openSlotsForPosition(winner, locked.getCard().getPosition()) <= 0) {
@@ -467,6 +478,7 @@ public class AuctionService {
             );
             maybeFinalizeSession(sessionId);
             maybeStartNextRound(sessionId);
+            meterRegistry.counter("auction.round.closed", "result", "PASSED").increment();
             return;
         }
         winner.spendBudget(locked.getHighestBidCents());
@@ -482,11 +494,12 @@ public class AuctionService {
         );
         maybeFinalizeSession(sessionId);
         maybeStartNextRound(sessionId);
+        meterRegistry.counter("auction.round.closed", "result", "SOLD").increment();
     }
 
     private void maybeStartNextRound(UUID sessionId) {
         auctionRoundRepository.flush();
-        GameSession session = gameSessionRepository.findById(sessionId)
+        GameSession session = gameSessionRepository.lockById(sessionId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Session not found"));
         if (session.getStatus() != SessionStatus.AUCTIONING) {
             return;
@@ -662,7 +675,7 @@ public class AuctionService {
     }
 
     private void maybeFinalizeSession(UUID sessionId) {
-        GameSession session = gameSessionRepository.findById(sessionId)
+        GameSession session = gameSessionRepository.lockById(sessionId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Session not found"));
         if (session.getStatus() != SessionStatus.AUCTIONING) {
             return;

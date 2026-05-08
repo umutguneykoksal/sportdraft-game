@@ -14,6 +14,10 @@ public interface GameSessionRepository extends JpaRepository<GameSession, UUID> 
 
     List<GameSession> findByStatusOrderByCreatedAtAsc(SessionStatus status);
 
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select s from GameSession s where s.status = :status order by s.createdAt asc")
+    List<GameSession> lockByStatusOrderByCreatedAtAsc(@Param("status") SessionStatus status);
+
     List<GameSession> findByStatusAndCountdownEndsAtLessThanEqual(SessionStatus status, Instant now);
 
     List<GameSession> findByStatusAndMatchStartDeadlineAtLessThanEqual(SessionStatus status, Instant now);
