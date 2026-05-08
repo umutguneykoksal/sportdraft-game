@@ -1,0 +1,37 @@
+package com.example.auction.bidding.control;
+
+import com.example.auction.bidding.boundary.AuctionRoundResponse;
+import com.example.auction.bidding.boundary.AuctionStateResponse;
+import com.example.auction.bidding.boundary.PlaceBidRequest;
+import java.util.UUID;
+import org.springframework.stereotype.Component;
+
+@Component
+public class AuctionEngine {
+
+    private final AuctionService auctionService;
+
+    public AuctionEngine(AuctionService auctionService) {
+        this.auctionService = auctionService;
+    }
+
+    public AuctionRoundResponse startRound(UUID sessionId) {
+        return auctionService.startRound(sessionId);
+    }
+
+    public AuctionRoundResponse placeBid(UUID sessionId, UUID userId, String idempotencyKey, PlaceBidRequest request) {
+        return auctionService.placeBid(sessionId, userId, idempotencyKey, request);
+    }
+
+    public AuctionRoundResponse readyNext(UUID sessionId, UUID userId, UUID roundId) {
+        return auctionService.readyNext(sessionId, userId, roundId);
+    }
+
+    public AuctionRoundResponse passRound(UUID sessionId, UUID userId, UUID roundId) {
+        return auctionService.passRound(sessionId, userId, roundId);
+    }
+
+    public AuctionStateResponse getAuctionState(UUID sessionId, UUID userId) {
+        return auctionService.getAuctionState(sessionId, userId);
+    }
+}

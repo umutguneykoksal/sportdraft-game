@@ -25,9 +25,11 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Collections;
 import java.util.EnumMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.ArrayList;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -128,6 +130,8 @@ public class AuctionService {
         }
 
         List<Card> cards = cardRepository.findAll();
+        Set<UUID> usedCardIds = new HashSet<>(auctionRoundRepository.findUsedCardIdsBySessionId(sessionId));
+        cards.removeIf(card -> usedCardIds.contains(card.getId()));
         if (cards.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "No cards available");
         }
@@ -373,16 +377,19 @@ public class AuctionService {
         List<AuctionRound> soldRounds = auctionRoundRepository.findBySession_IdAndStatusOrderByStartsAtAsc(sessionId, RoundStatus.SOLD);
         List<AuctionTeamCardResponse> myTeam = new ArrayList<>();
         List<AuctionTeamCardResponse> opponentTeam = new ArrayList<>();
+        Set<UUID> seenMyCardIds = new HashSet<>();
+        Set<UUID> seenOpponentCardIds = new HashSet<>();
         for (AuctionRound soldRound : soldRounds) {
+            UUID soldCardId = soldRound.getCard().getId();
             AuctionTeamCardResponse card = new AuctionTeamCardResponse(
-                soldRound.getCard().getId(),
+                soldCardId,
                 soldRound.getCard().getName(),
                 soldRound.getCard().getPosition().name(),
                 soldRound.getHighestBidCents()
             );
-            if (me.getId().equals(soldRound.getHighestBidderId())) {
+            if (me.getId().equals(soldRound.getHighestBidderId()) && seenMyCardIds.add(soldCardId)) {
                 myTeam.add(card);
-            } else if (opponent.getId().equals(soldRound.getHighestBidderId())) {
+            } else if (opponent.getId().equals(soldRound.getHighestBidderId()) && seenOpponentCardIds.add(soldCardId)) {
                 opponentTeam.add(card);
             }
         }

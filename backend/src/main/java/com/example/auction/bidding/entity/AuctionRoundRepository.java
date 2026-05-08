@@ -32,4 +32,7 @@ public interface AuctionRoundRepository extends JpaRepository<AuctionRound, UUID
     List<AuctionRound> findByStatus(RoundStatus status);
 
     List<AuctionRound> findByStatusAndEndsAtLessThanEqual(RoundStatus status, Instant now);
+
+    @Query("select r.card.id from AuctionRound r where r.session.id = :sessionId")
+    List<UUID> findUsedCardIdsBySessionId(@Param("sessionId") UUID sessionId);
 }

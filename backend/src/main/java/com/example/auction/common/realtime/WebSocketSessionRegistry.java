@@ -1,37 +1,35 @@
 package com.example.auction.common.realtime;
 
-import com.example.auction.session.entity.SessionPlayerRepository;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import java.io.IOException;
 import java.net.URI;
 import java.time.Duration;
-import java.time.Instant;
-import java.util.HashSet;
+import java.io.IOException;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CopyOnWriteArrayList;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.socket.CloseStatus;
-import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
 import org.springframework.web.util.UriComponentsBuilder;
 
 @Component
 public class WebSocketSessionRegistry {
 
-    private final Map<UUID, List<WebSocketSession>> bySession = new ConcurrentHashMap<>();
-    private final Map<UUID, Instant> disconnectedAtBySession = new ConcurrentHashMap<>();
-    private final ObjectMapper objectMapper;
-    private final SessionPlayerRepository sessionPlayerRepository;
+    private final SessionRealtimeHub sessionRealtimeHub;
+    private final RealtimeConnectionAuthorizer realtimeConnectionAuthorizer;
+    private final RealtimeGateway realtimeGateway;
+    private final Map<String, UUID> wsSessionToGameSession = new ConcurrentHashMap<>();
 
-    public WebSocketSessionRegistry(ObjectMapper objectMapper, SessionPlayerRepository sessionPlayerRepository) {
-        this.objectMapper = objectMapper;
-        this.sessionPlayerRepository = sessionPlayerRepository;
+    public WebSocketSessionRegistry(
+        SessionRealtimeHub sessionRealtimeHub,
+        RealtimeConnectionAuthorizer realtimeConnectionAuthorizer,
+        RealtimeGateway realtimeGateway
+    ) {
+        this.sessionRealtimeHub = sessionRealtimeHub;
+        this.realtimeConnectionAuthorizer = realtimeConnectionAuthorizer;
+        this.realtimeGateway = realtimeGateway;
     }
 
     public UUID register(WebSocketSession session) {
@@ -44,82 +42,36 @@ public class WebSocketSessionRegistry {
         UUID sessionId = parseUuid(params.get("sessionId"), "Missing or invalid sessionId");
         UUID userId = parseUuid(params.get("token"), "Missing or invalid token");
 
-        if (!sessionPlayerRepository.existsBySession_IdAndUserId(sessionId, userId)) {
-            closeSilently(session, CloseStatus.POLICY_VIOLATION);
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Token is not part of this session");
-        }
-        bySession.computeIfAbsent(sessionId, key -> new CopyOnWriteArrayList<>()).add(session);
-        disconnectedAtBySession.remove(sessionId);
+        realtimeConnectionAuthorizer.assertSessionMembership(sessionId, userId);
+        sessionRealtimeHub.registerWs(sessionId, session);
+        wsSessionToGameSession.put(session.getId(), sessionId);
         return sessionId;
     }
 
     public void remove(UUID sessionId, WebSocketSession session) {
-        if (sessionId == null) {
-            return;
-        }
-        List<WebSocketSession> sessions = bySession.get(sessionId);
-        if (sessions == null) {
-            return;
-        }
-        sessions.remove(session);
-        if (sessions.isEmpty()) {
-            bySession.remove(sessionId);
-            markDisconnectedIfNoActiveConnections(sessionId);
-        }
+        UUID resolvedSessionId = sessionId == null ? wsSessionToGameSession.get(session.getId()) : sessionId;
+        sessionRealtimeHub.removeWs(resolvedSessionId, session);
+        wsSessionToGameSession.remove(session.getId());
     }
 
     public void broadcast(UUID sessionId, String eventType, Object payload) {
-        Map<String, Object> envelope = Map.of(
-            "eventType", eventType,
-            "occurredAt", Instant.now().toString(),
-            "payload", payload
-        );
-        String json;
-        try {
-            json = objectMapper.writeValueAsString(envelope);
-        } catch (Exception ex) {
-            return;
-        }
-
-        for (WebSocketSession session : bySession.getOrDefault(sessionId, List.of())) {
-            try {
-                if (session.isOpen()) {
-                    session.sendMessage(new TextMessage(json));
-                } else {
-                    remove(sessionId, session);
-                }
-            } catch (IOException ex) {
-                closeSilently(session, CloseStatus.SERVER_ERROR);
-                remove(sessionId, session);
-            }
-        }
+        realtimeGateway.publish(sessionId, eventType, payload);
     }
 
     public List<UUID> sessionIds() {
-        Set<UUID> ids = new HashSet<>(bySession.keySet());
-        return List.copyOf(ids);
+        return sessionRealtimeHub.sessionIds();
     }
 
     public boolean hasActiveConnections(UUID sessionId) {
-        return bySession.getOrDefault(sessionId, List.of()).stream().anyMatch(WebSocketSession::isOpen);
+        return sessionRealtimeHub.hasActiveConnections(sessionId);
     }
 
     public boolean isDisconnectedLongerThan(UUID sessionId, Duration threshold) {
-        if (hasActiveConnections(sessionId)) {
-            return false;
-        }
-        Instant disconnectedAt = disconnectedAtBySession.computeIfAbsent(sessionId, key -> Instant.now());
-        return disconnectedAt.plus(threshold).isBefore(Instant.now());
+        return sessionRealtimeHub.isDisconnectedLongerThan(sessionId, threshold);
     }
 
     public void forgetSession(UUID sessionId) {
-        disconnectedAtBySession.remove(sessionId);
-    }
-
-    private void markDisconnectedIfNoActiveConnections(UUID sessionId) {
-        if (!hasActiveConnections(sessionId)) {
-            disconnectedAtBySession.putIfAbsent(sessionId, Instant.now());
-        }
+        sessionRealtimeHub.forgetSession(sessionId);
     }
 
     private UUID parseUuid(String raw, String message) {

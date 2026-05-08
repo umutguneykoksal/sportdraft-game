@@ -15,6 +15,7 @@ import {
 } from "../../shared/api";
 import { clearActiveSessionId, setActiveSessionId } from "../../shared/session";
 import { useSessionStream } from "../../shared/sse";
+import { AuctionView } from "./components/AuctionView";
 
 interface WonCard {
   cardId: string;
@@ -514,8 +515,7 @@ export function AuctionPage() {
   };
 
   return (
-    <div style={{ padding: 16, maxWidth: 900, margin: "0 auto", fontFamily: "Arial, sans-serif" }}>
-      <h2>Auction</h2>
+    <AuctionView title="Auction">
       <p>Session: {sessionId}</p>
 
       {sessionSnap?.status === "MATCH_START_PENDING" && (
@@ -661,7 +661,6 @@ export function AuctionPage() {
           ))}
         </div>
       </div>
-
-    </div>
+    </AuctionView>
   );
 }

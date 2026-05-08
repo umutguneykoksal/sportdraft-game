@@ -1,0 +1,56 @@
+export type SessionStatus =
+  | "WAITING"
+  | "COUNTDOWN"
+  | "FORMATION_SELECT"
+  | "AUCTIONING"
+  | "MATCH_START_PENDING"
+  | "FINALIZING"
+  | "AWAITING_RESULT"
+  | "FINISHED";
+
+export type Formation = "FOUR_FOUR_TWO" | "FOUR_THREE_THREE" | "THREE_FIVE_TWO";
+
+export interface SessionSnapshotResponse {
+  sessionId: string;
+  status: SessionStatus;
+  countdownEndsAt: string | null;
+  playerCount: number;
+  joined: boolean;
+  myFormation: Formation | null;
+  matchStartDeadlineAt: string | null;
+  matchStartReadyCount: number;
+  matchStartConfirmedByMe: boolean;
+}
+
+export interface AuctionRoundResponse {
+  roundId: string;
+  sessionId: string;
+  cardId: string;
+  cardName: string;
+  position: string;
+  highestBidCents: number;
+  highestBidderId: string | null;
+  currentTurnUserId: string | null;
+  readyUserOneId: string | null;
+  readyUserTwoId: string | null;
+  endsAt: string;
+  status: string;
+}
+
+export interface AuctionTeamCardResponse {
+  cardId: string;
+  cardName: string;
+  position: string;
+  amountCents: number;
+}
+
+export interface AuctionStateResponse {
+  currentRound: AuctionRoundResponse | null;
+  myTeam: AuctionTeamCardResponse[];
+  opponentTeam: AuctionTeamCardResponse[];
+}
+
+export interface MatchResultResponse {
+  homeScore: number;
+  awayScore: number;
+}
