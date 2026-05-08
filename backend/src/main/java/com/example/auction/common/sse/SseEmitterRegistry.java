@@ -1,8 +1,8 @@
 package com.example.auction.common.sse;
 
 import java.io.IOException;
-import java.time.Instant;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -11,18 +11,17 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import org.springframework.stereotype.Component;
-import org.springframework.web.socket.TextMessage;
-import org.springframework.web.socket.WebSocketSession;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 @Component
 public class SseEmitterRegistry {
 
     private static final long TIMEOUT_MS = 30L * 60L * 1000L;
+    /** Single SSE event name so browsers can use one EventSource.addEventListener. */
+    public static final String SSE_EVENT_NAME = "game";
+
     private final Map<UUID, List<SseEmitter>> bySession = new ConcurrentHashMap<>();
-    private final Map<UUID, List<WebSocketSession>> wsBySession = new ConcurrentHashMap<>();
     private final Map<UUID, Instant> disconnectedAtBySession = new ConcurrentHashMap<>();
     private final ObjectMapper objectMapper;
 
@@ -52,8 +51,8 @@ public class SseEmitterRegistry {
                 emitter.send(
                     SseEmitter.event()
                         .id(UUID.randomUUID().toString())
-                        .name(eventType)
-                        .data(envelope)
+                        .name(SSE_EVENT_NAME)
+                        .data(objectMapper.writeValueAsString(envelope))
                 );
             } catch (IOException | IllegalStateException ex) {
                 emitter.completeWithError(ex);
@@ -62,49 +61,11 @@ public class SseEmitterRegistry {
                 remove(sessionId, emitter);
             }
         }
-
-        List<WebSocketSession> wsSessions = wsBySession.getOrDefault(sessionId, List.of());
-        String jsonMessage;
-        try {
-            jsonMessage = objectMapper.writeValueAsString(envelope);
-        } catch (JsonProcessingException ex) {
-            return;
-        }
-        TextMessage textMessage = new TextMessage(jsonMessage);
-        for (WebSocketSession wsSession : wsSessions) {
-            try {
-                if (wsSession.isOpen()) {
-                    wsSession.sendMessage(textMessage);
-                } else {
-                    removeWebSocket(sessionId, wsSession);
-                }
-            } catch (IOException | IllegalStateException ex) {
-                removeWebSocket(sessionId, wsSession);
-            }
-        }
     }
 
     public List<UUID> sessionIds() {
         Set<UUID> sessionIds = new HashSet<>(bySession.keySet());
-        sessionIds.addAll(wsBySession.keySet());
         return List.copyOf(sessionIds);
-    }
-
-    public void registerWebSocket(UUID sessionId, WebSocketSession session) {
-        wsBySession.computeIfAbsent(sessionId, key -> new CopyOnWriteArrayList<>()).add(session);
-        disconnectedAtBySession.remove(sessionId);
-    }
-
-    public void removeWebSocket(UUID sessionId, WebSocketSession session) {
-        List<WebSocketSession> sessions = wsBySession.get(sessionId);
-        if (sessions == null) {
-            return;
-        }
-        sessions.remove(session);
-        if (sessions.isEmpty()) {
-            wsBySession.remove(sessionId);
-            markDisconnectedIfNoActiveConnections(sessionId);
-        }
     }
 
     private void remove(UUID sessionId, SseEmitter emitter) {
@@ -120,8 +81,7 @@ public class SseEmitterRegistry {
     }
 
     public boolean hasActiveConnections(UUID sessionId) {
-        return !bySession.getOrDefault(sessionId, List.of()).isEmpty()
-            || !wsBySession.getOrDefault(sessionId, List.of()).isEmpty();
+        return !bySession.getOrDefault(sessionId, List.of()).isEmpty();
     }
 
     public boolean isDisconnectedLongerThan(UUID sessionId, Duration threshold) {

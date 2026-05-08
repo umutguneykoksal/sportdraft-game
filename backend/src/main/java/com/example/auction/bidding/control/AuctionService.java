@@ -117,6 +117,10 @@ public class AuctionService {
         if (players.size() < 2) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Cannot start auction round without two players");
         }
+        if (isSessionRostersFull(players)) {
+            enterMatchStartPending(sessionId);
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Rosters complete; confirm match start");
+        }
 
         List<Card> cards = cardRepository.findAll();
         if (cards.isEmpty()) {
@@ -479,6 +483,11 @@ public class AuctionService {
         if (session.getStatus() != SessionStatus.AUCTIONING) {
             return;
         }
+        List<SessionPlayer> players = sessionPlayerRepository.findBySession_Id(sessionId);
+        if (isSessionRostersFull(players)) {
+            enterMatchStartPending(sessionId);
+            return;
+        }
         boolean hasOpenRound = auctionRoundRepository
             .findFirstBySession_IdAndStatusOrderByStartsAtDesc(sessionId, RoundStatus.OPEN)
             .isPresent();
@@ -637,6 +646,11 @@ public class AuctionService {
             }
         }
         return slots.getOrDefault(position, 0);
+    }
+
+    private boolean isSessionRostersFull(List<SessionPlayer> players) {
+        return players.stream()
+            .allMatch(player -> sessionPlayerRepository.countCardsByPlayerId(player.getId()) >= ROSTER_SIZE);
     }
 
     private void maybeFinalizeSession(UUID sessionId) {

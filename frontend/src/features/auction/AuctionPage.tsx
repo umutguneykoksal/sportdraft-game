@@ -125,6 +125,70 @@ export function AuctionPage() {
     };
   }, [sessionId, sessionSnap?.status]);
 
+  /**
+   * Rakip güncellemesi: bid / round değişince sunucu SSE ile `bid_placed`, `round_ended` vb. gönderir (tek uzun GET).
+   * Bu interval sadece “yedek senkron”: SSE koptuysa daha sık, sağlamsa seyrek REST (sunucu yükü düşük).
+   */
+  useEffect(() => {
+    if (!sessionId) {
+      return;
+    }
+    if (sessionSnap && sessionSnap.status !== "AUCTIONING") {
+      return;
+    }
+    let cancelled = false;
+    const pull = async () => {
+      try {
+        const [snapshot, auctionState] = await Promise.all([
+          getSessionSnapshot(sessionId),
+          getAuctionState(sessionId),
+        ]);
+        if (cancelled) {
+          return;
+        }
+        setSessionSnap(snapshot);
+        if (snapshot.status === "FINISHED") {
+          navigate(`/match/${sessionId}`);
+          return;
+        }
+        const stayHere =
+          snapshot.status === "AUCTIONING"
+          || snapshot.status === "MATCH_START_PENDING"
+          || snapshot.status === "FINALIZING"
+          || snapshot.status === "AWAITING_RESULT";
+        if (!stayHere) {
+          return;
+        }
+        setRound(auctionState.currentRound);
+        setMyTeam(
+          auctionState.myTeam.map((card) => ({
+            roundId: card.cardId,
+            cardName: card.cardName,
+            position: card.position,
+            amountCents: card.amountCents,
+          }))
+        );
+        setOpponentTeam(
+          auctionState.opponentTeam.map((card) => ({
+            roundId: card.cardId,
+            cardName: card.cardName,
+            position: card.position,
+            amountCents: card.amountCents,
+          }))
+        );
+      } catch {
+        // transient network — keep last known UI
+      }
+    };
+    pull();
+    const intervalMs = isConnected ? 5000 : 2000;
+    const id = window.setInterval(pull, intervalMs);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [sessionId, sessionSnap?.status, navigate, isConnected]);
+
   useEffect(() => {
     if (!sessionId) {
       return;
@@ -181,8 +245,28 @@ export function AuctionPage() {
           || snapshot.status === "AWAITING_RESULT";
         if (!onAuctionPage) {
           navigate("/lobby");
-        } else {
-          setSessionSnap(snapshot);
+          return;
+        }
+        setSessionSnap(snapshot);
+        if (snapshot.status === "AUCTIONING") {
+          const auctionState = await getAuctionState(sessionId);
+          setRound(auctionState.currentRound);
+          setMyTeam(
+            auctionState.myTeam.map((card) => ({
+              roundId: card.cardId,
+              cardName: card.cardName,
+              position: card.position,
+              amountCents: card.amountCents,
+            }))
+          );
+          setOpponentTeam(
+            auctionState.opponentTeam.map((card) => ({
+              roundId: card.cardId,
+              cardName: card.cardName,
+              position: card.position,
+              amountCents: card.amountCents,
+            }))
+          );
         }
       } catch {
         // ignore sync issues
@@ -216,7 +300,34 @@ export function AuctionPage() {
       setRound(payload.round);
     }
     if (latest.eventType === "round_ended" && sessionId) {
-      getSessionSnapshot(sessionId).then(setSessionSnap).catch(() => {});
+      (async () => {
+        try {
+          const snapshot = await getSessionSnapshot(sessionId);
+          setSessionSnap(snapshot);
+          if (snapshot.status === "AUCTIONING") {
+            const auctionState = await getAuctionState(sessionId);
+            setRound(auctionState.currentRound);
+            setMyTeam(
+              auctionState.myTeam.map((card) => ({
+                roundId: card.cardId,
+                cardName: card.cardName,
+                position: card.position,
+                amountCents: card.amountCents,
+              }))
+            );
+            setOpponentTeam(
+              auctionState.opponentTeam.map((card) => ({
+                roundId: card.cardId,
+                cardName: card.cardName,
+                position: card.position,
+                amountCents: card.amountCents,
+              }))
+            );
+          }
+        } catch {
+          // ignore
+        }
+      })();
     }
     if (
       latest.eventType === "round_ended" &&

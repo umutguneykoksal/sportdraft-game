@@ -7,10 +7,17 @@ export interface SseEventEnvelope {
   payload: unknown;
 }
 
+const SSE_EVENT = "game";
+
+/**
+ * Server-Sent Events (EventSource): one-way server push over HTTP.
+ * Mutations stay on REST; this is only for live notifications.
+ * Token is passed as a query param because EventSource cannot set headers.
+ */
 export function useSessionStream(sessionId: string | null) {
   const [events, setEvents] = useState<SseEventEnvelope[]>([]);
   const [isConnected, setIsConnected] = useState(false);
-  const socketRef = useRef<WebSocket | null>(null);
+  const sourceRef = useRef<EventSource | null>(null);
   const reconnectTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -23,36 +30,40 @@ export function useSessionStream(sessionId: string | null) {
     }
     let closedByHook = false;
 
-    const wsBase = getApiBase().replace(/^http/, "ws");
     const connect = () => {
-      const socket = new WebSocket(`${wsBase}/ws/sessions/${sessionId}?token=${token}`);
-      socketRef.current = socket;
+      if (reconnectTimerRef.current !== null) {
+        window.clearTimeout(reconnectTimerRef.current);
+        reconnectTimerRef.current = null;
+      }
+      sourceRef.current?.close();
+      const base = getApiBase().replace(/\/$/, "");
+      const url = `${base}/api/sessions/${encodeURIComponent(sessionId)}/events?token=${encodeURIComponent(token)}`;
+      const es = new EventSource(url);
+      sourceRef.current = es;
       setIsConnected(false);
 
-      socket.onopen = () => {
+      es.addEventListener("open", () => {
         setIsConnected(true);
-      };
+      });
 
-      socket.onmessage = (event) => {
+      es.addEventListener(SSE_EVENT, (evt: MessageEvent) => {
         try {
-          const parsed = JSON.parse(event.data) as SseEventEnvelope;
+          const parsed = JSON.parse(String(evt.data)) as SseEventEnvelope;
           setEvents((prev) => [...prev.slice(-30), parsed]);
         } catch {
-          // ignore parse issues for now
+          // ignore malformed chunks
         }
-      };
+      });
 
-      socket.onclose = () => {
+      es.onerror = () => {
         setIsConnected(false);
+        es.close();
         if (!closedByHook) {
-          reconnectTimerRef.current = window.setTimeout(connect, 1000);
+          reconnectTimerRef.current = window.setTimeout(connect, 1500);
         }
-      };
-
-      socket.onerror = () => {
-        setIsConnected(false);
       };
     };
+
     connect();
 
     return () => {
@@ -62,8 +73,8 @@ export function useSessionStream(sessionId: string | null) {
         window.clearTimeout(reconnectTimerRef.current);
         reconnectTimerRef.current = null;
       }
-      socketRef.current?.close();
-      socketRef.current = null;
+      sourceRef.current?.close();
+      sourceRef.current = null;
     };
   }, [sessionId]);
 
