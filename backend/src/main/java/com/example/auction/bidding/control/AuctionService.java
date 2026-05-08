@@ -201,11 +201,25 @@ public class AuctionService {
     }
 
     public AuctionRoundResponse placeBid(UUID sessionId, UUID userId, String idempotencyKey, PlaceBidRequest request) {
-        AuctionRound round = auctionRoundRepository.findById(request.roundId())
+        AuctionRound round = auctionRoundRepository.lockById(request.roundId())
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Round not found"));
 
         if (!round.getSession().getId().equals(sessionId)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Round does not belong to session");
+        }
+        GameSession session = gameSessionRepository.lockById(sessionId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Session not found"));
+        if (session.getStatus() != SessionStatus.AUCTIONING) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Session is not auctioning");
+        }
+
+        List<SessionPlayer> players = sessionPlayerRepository.findBySession_Id(sessionId);
+        if (players.size() < 2) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Session does not have two players");
+        }
+        if (isSessionRostersFull(players)) {
+            enterMatchStartPending(sessionId);
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Rosters complete; confirm match start");
         }
         if (round.getStatus() != RoundStatus.OPEN) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Round is not open");

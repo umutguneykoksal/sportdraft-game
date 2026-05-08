@@ -111,7 +111,7 @@ class AuctionServiceTest {
             RoundStatus.OPEN
         );
 
-        when(auctionRoundRepository.findById(round.getId())).thenReturn(Optional.of(round));
+        when(auctionRoundRepository.lockById(round.getId())).thenReturn(Optional.of(round));
 
         assertThatThrownBy(() -> auctionService.placeBid(sessionId, userId, UUID.randomUUID().toString(), new PlaceBidRequest(round.getId(), 10)))
             .isInstanceOf(ResponseStatusException.class);
