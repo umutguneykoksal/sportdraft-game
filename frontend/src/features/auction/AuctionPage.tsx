@@ -27,7 +27,6 @@ interface WonCard {
 export function AuctionPage() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
-  const { events, isConnected } = useSessionStream(sessionId ?? null);
   const myUserId = localStorage.getItem("sessionToken");
 
   const [round, setRound] = useState<AuctionRoundResponse | null>(null);
@@ -48,6 +47,8 @@ export function AuctionPage() {
   const hasBidOnRound = !!round?.highestBidderId;
   const mySquadFull = myTeam.length >= 11;
   const auctionPhaseActive = sessionSnap?.status === "AUCTIONING";
+  const streamSessionId = sessionId && sessionSnap?.joined ? sessionId : null;
+  const { events, isConnected } = useSessionStream(streamSessionId);
 
   useEffect(() => {
     if (!sessionId) {

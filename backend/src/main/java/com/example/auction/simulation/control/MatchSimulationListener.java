@@ -39,7 +39,11 @@ public class MatchSimulationListener {
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     @Transactional
     public void onSessionFinalized(SessionFinalizedEvent event) {
-        boolean isNew = processedEventRepository.markIfNew(event.eventId(), "SessionFinalizedEvent");
+        boolean isNew = processedEventRepository.insertIfAbsent(
+            event.eventId(),
+            "SessionFinalizedEvent",
+            Instant.now()
+        ) > 0;
         if (!isNew) {
             return;
         }

@@ -6,10 +6,12 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import org.springframework.transaction.annotation.Transactional;
 
 public interface ProcessedEventRepository extends JpaRepository<ProcessedEvent, UUID> {
 
     @Modifying
+    @Transactional
     @Query(
         value = """
             INSERT INTO processed_event(event_id, event_type, processed_at)
@@ -23,8 +25,4 @@ public interface ProcessedEventRepository extends JpaRepository<ProcessedEvent, 
         @Param("eventType") String eventType,
         @Param("processedAt") Instant processedAt
     );
-
-    default boolean markIfNew(UUID eventId, String eventType) {
-        return insertIfAbsent(eventId, eventType, Instant.now()) > 0;
-    }
 }
