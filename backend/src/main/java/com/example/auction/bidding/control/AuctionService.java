@@ -670,10 +670,11 @@ public class AuctionService {
     }
 
     private int totalOpenSlots(SessionPlayer player) {
-        return openSlotsForPosition(player, Position.GK)
-            + openSlotsForPosition(player, Position.DEF)
-            + openSlotsForPosition(player, Position.MID)
-            + openSlotsForPosition(player, Position.FWD);
+        int total = 0;
+        for (Position pos : Position.values()) {
+            total += openSlotsForPosition(player, pos);
+        }
+        return total;
     }
 
     private int formationSlotCount(Formation formation, Position position) {

@@ -35,14 +35,20 @@ public class MatchSimulator {
 
     private double attackScore(Formation formation, List<SessionFinalizedEvent.RatedCard> roster) {
         Map<Position, Double> avg = averages(roster);
-        double score = avg.getOrDefault(Position.MID, 40.0) * 0.5 + avg.getOrDefault(Position.FWD, 40.0) * 0.5;
+        double score = avg.getOrDefault(Position.FWD, 40.0) * 0.4
+            + avg.getOrDefault(Position.CAM, 40.0) * 0.3
+            + avg.getOrDefault(Position.CM, 40.0) * 0.2
+            + avg.getOrDefault(Position.CDM, 40.0) * 0.1;
         score *= formation.getAttackMod();
         return score;
     }
 
     private double defenseScore(Formation formation, List<SessionFinalizedEvent.RatedCard> roster) {
         Map<Position, Double> avg = averages(roster);
-        double score = avg.getOrDefault(Position.GK, 40.0) * 0.4 + avg.getOrDefault(Position.DEF, 40.0) * 0.6;
+        double score = avg.getOrDefault(Position.DEF, 40.0) * 0.4
+            + avg.getOrDefault(Position.GK, 40.0) * 0.3
+            + avg.getOrDefault(Position.CDM, 40.0) * 0.2
+            + avg.getOrDefault(Position.CM, 40.0) * 0.1;
         score *= formation.getDefenseMod();
         return score;
     }

@@ -331,7 +331,9 @@ export function AuctionPage() {
   const positionColors: Record<string, string> = {
     GK: "bg-yellow-500",
     DEF: "bg-blue-500",
-    MID: "bg-green-500",
+    CDM: "bg-indigo-500",
+    CM: "bg-green-500",
+    CAM: "bg-orange-500",
     FWD: "bg-red-500",
   };
 

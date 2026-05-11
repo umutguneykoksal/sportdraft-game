@@ -71,7 +71,7 @@ class AuctionServiceTest {
     void startRoundRejectsWhenOpenRoundAlreadyExists() {
         UUID sessionId = UUID.randomUUID();
         GameSession session = new GameSession(sessionId, SessionStatus.AUCTIONING, Instant.now());
-        Card card = new Card(UUID.randomUUID(), "A", Position.MID, 70);
+        Card card = new Card(UUID.randomUUID(), "A", Position.CM, 70);
         AuctionRound openRound = new AuctionRound(
             UUID.randomUUID(),
             session,

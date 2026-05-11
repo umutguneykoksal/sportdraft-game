@@ -20,7 +20,7 @@ export type Formation =
   | "FOUR_THREE_TWO_ONE"
   | "FOUR_FOUR_ONE_ONE";
 
-export type Position = "GK" | "DEF" | "MID" | "FWD";
+export type Position = "GK" | "DEF" | "CDM" | "CM" | "CAM" | "FWD";
 
 export interface SessionSnapshotResponse {
   sessionId: string;
