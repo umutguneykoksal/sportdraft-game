@@ -99,20 +99,10 @@ export function AuctionPage() {
   }, [sessionId, navigate]);
 
   useEffect(() => {
-    if (!sessionId || sessionSnap?.status !== "MATCH_START_PENDING") return;
-    let cancelled = false;
-    const id = window.setInterval(async () => {
-      try {
-        const snap = await getSessionSnapshot(sessionId);
-        if (!cancelled) setSessionSnap(snap);
-      } catch { /* ignore */ }
-    }, 1000);
-    return () => { cancelled = true; window.clearInterval(id); };
-  }, [sessionId, sessionSnap?.status]);
-
-  useEffect(() => {
     if (!sessionId) return;
-    if (sessionSnap && sessionSnap.status !== "AUCTIONING") return;
+    // SSE connected: only poll during AUCTIONING as a 30s safety net
+    // SSE disconnected: poll all active states at 3s as the primary fallback
+    if (isConnected && sessionSnap && sessionSnap.status !== "AUCTIONING") return;
     let cancelled = false;
     const pull = async () => {
       const seq = ++syncSeqRef.current;
@@ -134,30 +124,10 @@ export function AuctionPage() {
       } catch { /* transient */ }
     };
     pull();
-    const intervalMs = isConnected ? 5000 : 2000;
+    const intervalMs = isConnected ? 30000 : 3000;
     const id = window.setInterval(pull, intervalMs);
     return () => { cancelled = true; window.clearInterval(id); };
   }, [sessionId, sessionSnap?.status, navigate, isConnected]);
-
-  useEffect(() => {
-    if (!sessionId) return;
-    const simulating = sessionSnap?.status === "AWAITING_RESULT" || sessionSnap?.status === "FINALIZING";
-    if (!simulating) return;
-    let cancelled = false;
-    const tick = async () => {
-      try {
-        const snap = await getSessionSnapshot(sessionId);
-        if (cancelled) return;
-        setSessionSnap(snap);
-        if (snap.status === "FINISHED") { navigate(`/match/${sessionId}`); return; }
-        const result = await getMatchResult(sessionId);
-        if (!cancelled && result !== null) navigate(`/match/${sessionId}`);
-      } catch { /* ignore */ }
-    };
-    tick();
-    const id = window.setInterval(tick, 1000);
-    return () => { cancelled = true; window.clearInterval(id); };
-  }, [sessionId, sessionSnap?.status, navigate]);
 
   useEffect(() => {
     if (!sessionId || !isConnected) return;
