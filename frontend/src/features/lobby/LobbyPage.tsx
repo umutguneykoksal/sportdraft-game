@@ -1,7 +1,31 @@
 import { useLobbyFlow } from "./hooks/useLobbyFlow";
-import { TeamPitch } from "../../shared/components/TeamPitch";
-import { FORMATION_LABELS, ALL_FORMATIONS } from "../../shared/formations";
+import { FORMATION_LABELS } from "../../shared/formations";
 import type { Formation } from "../../shared/api/contracts";
+
+/**
+ * Dot coordinates for each formation on a mini pitch (percentage-based).
+ * y=0 is top (forwards), y=100 is bottom (goalkeeper).
+ */
+const FORMATION_DOTS: Record<Formation, { x: number; y: number }[]> = {
+  FOUR_FOUR_TWO: [
+    { x: 50, y: 92 },
+    { x: 20, y: 70 }, { x: 40, y: 70 }, { x: 60, y: 70 }, { x: 80, y: 70 },
+    { x: 20, y: 42 }, { x: 40, y: 42 }, { x: 60, y: 42 }, { x: 80, y: 42 },
+    { x: 35, y: 16 }, { x: 65, y: 16 },
+  ],
+  FOUR_THREE_THREE: [
+    { x: 50, y: 92 },
+    { x: 20, y: 70 }, { x: 40, y: 70 }, { x: 60, y: 70 }, { x: 80, y: 70 },
+    { x: 30, y: 42 }, { x: 50, y: 42 }, { x: 70, y: 42 },
+    { x: 25, y: 16 }, { x: 50, y: 16 }, { x: 75, y: 16 },
+  ],
+  THREE_FIVE_TWO: [
+    { x: 50, y: 92 },
+    { x: 25, y: 70 }, { x: 50, y: 70 }, { x: 75, y: 70 },
+    { x: 15, y: 42 }, { x: 32, y: 42 }, { x: 50, y: 42 }, { x: 68, y: 42 }, { x: 85, y: 42 },
+    { x: 35, y: 16 }, { x: 65, y: 16 },
+  ],
+};
 
 function FormationCard({
   formation,
@@ -14,6 +38,8 @@ function FormationCard({
   onSelect: () => void;
   disabled: boolean;
 }) {
+  const dots = FORMATION_DOTS[formation];
+
   return (
     <button
       onClick={onSelect}
@@ -21,25 +47,38 @@ function FormationCard({
       className={`
         relative rounded-xl overflow-hidden border-2 transition-all duration-200
         ${selected
-          ? "border-accent ring-2 ring-accent/40 scale-105"
+          ? "border-accent ring-2 ring-accent/40 sm:scale-105"
           : "border-white/10 hover:border-white/30"
         }
         ${disabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}
-        bg-surface-card
+        bg-surface-card w-full flex flex-row sm:flex-col items-stretch
       `}
     >
-      <div className="p-2">
-        <div className="w-full" style={{ maxWidth: 200 }}>
-          <TeamPitch
-            formation={formation}
-            cards={[]}
-            size="small"
-            color="#1a5c30"
+      {/* Mini pitch with dots -- aspect-ratio keeps proportions without JS */}
+      <div
+        className="relative shrink-0 w-24 sm:w-full"
+        style={{
+          aspectRatio: "5 / 7",
+          background: "linear-gradient(180deg, #1a5c30 0%, #1e6e3a 50%, #1a5c30 100%)",
+        }}
+      >
+        <div className="absolute left-[10%] right-[10%] top-1/2 border-t border-white/20" />
+        <div
+          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[30%] border border-white/20 rounded-full"
+          style={{ aspectRatio: "1 / 1" }}
+        />
+        {dots.map((dot, i) => (
+          <div
+            key={i}
+            className={`absolute w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full -translate-x-1/2 -translate-y-1/2 ${
+              selected ? "bg-accent shadow-lg shadow-accent/50" : "bg-white/70"
+            }`}
+            style={{ left: `${dot.x}%`, top: `${dot.y}%` }}
           />
-        </div>
+        ))}
       </div>
       <div className={`
-        py-2 px-3 text-center font-bold text-lg
+        py-2.5 px-4 font-bold text-lg flex items-center justify-center flex-1
         ${selected ? "bg-accent text-white" : "bg-surface-elevated text-slate-300"}
       `}>
         {FORMATION_LABELS[formation]}
@@ -144,7 +183,7 @@ export function LobbyPage() {
               <h3 className="text-xl font-bold text-white text-center mb-4">
                 Choose Your Formation
               </h3>
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-lg sm:max-w-none mx-auto">
                 {formations.map((f) => (
                   <FormationCard
                     key={f}

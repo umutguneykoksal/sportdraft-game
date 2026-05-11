@@ -7,27 +7,13 @@ export function useMatchFlow(sessionId: string | undefined) {
   const [homeScore, setHomeScore] = useState<number | null>(null);
   const [awayScore, setAwayScore] = useState<number | null>(null);
 
-  useEffect(() => {
-    const latest = events
-      .slice()
-      .reverse()
-      .find((event) => event.eventType === "match_completed");
-    if (!latest) {
-      return;
-    }
-    const payload = latest.payload as { homeScore?: number; awayScore?: number };
-    if (typeof payload.homeScore === "number") {
-      setHomeScore(payload.homeScore);
-    }
-    if (typeof payload.awayScore === "number") {
-      setAwayScore(payload.awayScore);
-    }
-  }, [events]);
+  const matchCompletedReceived = useMemo(
+    () => events.some((e) => e.eventType === "match_completed"),
+    [events]
+  );
 
   useEffect(() => {
-    if (!sessionId || (homeScore !== null && awayScore !== null)) {
-      return;
-    }
+    if (!sessionId) return;
     let cancelled = false;
     const load = async () => {
       try {
@@ -46,7 +32,7 @@ export function useMatchFlow(sessionId: string | undefined) {
       cancelled = true;
       window.clearInterval(id);
     };
-  }, [sessionId, homeScore, awayScore]);
+  }, [sessionId, matchCompletedReceived]);
 
   const ready = useMemo(
     () => typeof homeScore === "number" && typeof awayScore === "number",

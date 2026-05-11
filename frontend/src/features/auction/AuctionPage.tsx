@@ -335,29 +335,28 @@ export function AuctionPage() {
     <div className="min-h-screen bg-surface">
       {/* Top Bar */}
       <div className="bg-surface-card border-b border-white/10 px-4 py-3">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <h1 className="text-xl font-bold text-white">Auction Draft</h1>
+        <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2 sm:gap-4">
+            <h1 className="text-lg sm:text-xl font-bold text-white">Auction Draft</h1>
             <span className="text-xs bg-surface-elevated text-slate-400 px-2 py-1 rounded">
               {FORMATION_LABELS[myFormation]}
             </span>
           </div>
-          <div className="flex items-center gap-4">
-            {/* Budget */}
+          <div className="flex items-center gap-3">
             <div className="text-right">
               <p className="text-xs text-slate-400">Budget</p>
-              <p className="text-lg font-bold text-white">{(budget / 100).toFixed(2)} <span className="text-xs text-slate-400">credits</span></p>
+              <p className="text-base sm:text-lg font-bold text-white">{(budget / 100).toFixed(2)} <span className="text-xs text-slate-400">cr</span></p>
             </div>
-            <div className="w-32 h-2 bg-surface-elevated rounded-full overflow-hidden">
+            <div className="w-20 sm:w-32 h-2 bg-surface-elevated rounded-full overflow-hidden">
               <div
                 className={`h-full rounded-full transition-all duration-300 ${budgetPercent > 30 ? "bg-accent-green" : budgetPercent > 10 ? "bg-amber-500" : "bg-red-500"}`}
                 style={{ width: `${budgetPercent}%` }}
               />
             </div>
+            {!isConnected && (
+              <span className="text-amber-400 text-xs animate-pulse">Reconnecting...</span>
+            )}
           </div>
-          {!isConnected && (
-            <span className="text-amber-400 text-xs animate-pulse">Reconnecting...</span>
-          )}
         </div>
       </div>
 

@@ -4,11 +4,13 @@ import com.example.auction.bidding.control.AuctionService;
 import com.example.auction.lobby.boundary.SessionSnapshotResponse;
 import com.example.auction.lobby.control.LobbyService;
 import com.example.auction.session.control.SessionAdminService;
+import com.example.auction.session.entity.SessionPlayer;
 import com.example.auction.session.entity.SessionPlayerRepository;
 import com.example.auction.simulation.boundary.MatchResultResponse;
 import com.example.auction.simulation.entity.MatchResultRepository;
 import com.example.auction.simulation.control.MatchResultRecoveryService;
 import jakarta.validation.Valid;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
@@ -83,12 +85,19 @@ public class SessionController {
         @RequestHeader("Authorization") String authorization
     ) {
         UUID userId = extractUserId(authorization);
-        if (!sessionPlayerRepository.existsBySession_IdAndUserId(sessionId, userId)) {
+        List<SessionPlayer> players = sessionPlayerRepository.findBySession_Id(sessionId);
+        boolean inSession = players.stream().anyMatch(p -> p.getUserId().equals(userId));
+        if (!inSession) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Player not found in session");
         }
         matchResultRecoveryService.recoverIfMissing(sessionId);
+        boolean isHome = players.size() >= 1 && players.get(0).getUserId().equals(userId);
         return matchResultRepository.findBySession_Id(sessionId)
-            .map(m -> ResponseEntity.ok(new MatchResultResponse(m.getHomeScore(), m.getAwayScore())))
+            .map(m -> {
+                int myScore = isHome ? m.getHomeScore() : m.getAwayScore();
+                int oppScore = isHome ? m.getAwayScore() : m.getHomeScore();
+                return ResponseEntity.ok(new MatchResultResponse(myScore, oppScore));
+            })
             .orElse(ResponseEntity.notFound().build());
     }
 

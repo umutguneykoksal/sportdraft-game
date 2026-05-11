@@ -24,6 +24,7 @@ import jakarta.transaction.Transactional;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -377,8 +378,11 @@ public class AuctionService {
 
         List<AuctionRound> soldRounds = auctionRoundRepository.findBySession_IdAndStatusOrderByStartsAtAsc(sessionId, RoundStatus.SOLD);
         Map<UUID, Long> soldAmountByCardId = new HashMap<>();
+        Map<UUID, Integer> draftOrderByCardId = new HashMap<>();
+        int draftIndex = 0;
         for (AuctionRound soldRound : soldRounds) {
             soldAmountByCardId.put(soldRound.getCard().getId(), soldRound.getHighestBidCents());
+            draftOrderByCardId.put(soldRound.getCard().getId(), draftIndex++);
         }
         List<AuctionTeamCardResponse> myTeam = me.getCards().stream()
             .map(card -> new AuctionTeamCardResponse(
@@ -388,6 +392,7 @@ public class AuctionService {
                 card.getRating(),
                 soldAmountByCardId.getOrDefault(card.getId(), 0L)
             ))
+            .sorted(Comparator.comparingInt(c -> draftOrderByCardId.getOrDefault(c.cardId(), Integer.MAX_VALUE)))
             .toList();
         List<AuctionTeamCardResponse> opponentTeam = opponent.getCards().stream()
             .map(card -> new AuctionTeamCardResponse(
@@ -397,6 +402,7 @@ public class AuctionService {
                 card.getRating(),
                 soldAmountByCardId.getOrDefault(card.getId(), 0L)
             ))
+            .sorted(Comparator.comparingInt(c -> draftOrderByCardId.getOrDefault(c.cardId(), Integer.MAX_VALUE)))
             .toList();
 
         AuctionRoundResponse currentRound = auctionRoundRepository
