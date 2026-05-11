@@ -55,9 +55,7 @@ public class MatchResultRecoveryService {
             return Optional.empty();
         }
 
-        List<SessionPlayer> players = sessionPlayerRepository.findBySession_Id(sessionId).stream()
-            .sorted(Comparator.comparing(SessionPlayer::getUserId))
-            .toList();
+        List<SessionPlayer> players = sessionPlayerRepository.findBySession_IdOrderByIdAsc(sessionId);
         if (players.size() < 2 || players.get(0).getCards().size() < 11 || players.get(1).getCards().size() < 11) {
             return Optional.empty();
         }

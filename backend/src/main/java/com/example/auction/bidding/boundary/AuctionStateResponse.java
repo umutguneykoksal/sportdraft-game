@@ -5,6 +5,7 @@ import java.util.List;
 public record AuctionStateResponse(
     AuctionRoundResponse currentRound,
     List<AuctionTeamCardResponse> myTeam,
-    List<AuctionTeamCardResponse> opponentTeam
+    List<AuctionTeamCardResponse> opponentTeam,
+    String opponentFormation
 ) {
 }

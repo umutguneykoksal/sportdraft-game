@@ -15,8 +15,7 @@ import {
   setActiveSessionId,
 } from "../../../shared/session";
 import { useSessionStream } from "../../../shared/sse";
-
-const formations: Formation[] = ["FOUR_FOUR_TWO", "FOUR_THREE_THREE", "THREE_FIVE_TWO"];
+import { ALL_FORMATIONS } from "../../../shared/formations";
 
 export function useLobbyFlow() {
   const navigate = useNavigate();
@@ -136,7 +135,7 @@ export function useLobbyFlow() {
     error,
     isConnected,
     countdownSecondsLeft,
-    formations,
+    formations: ALL_FORMATIONS,
     handleJoin,
     handleLeave,
     chooseFormation,

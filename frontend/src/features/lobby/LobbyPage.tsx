@@ -25,6 +25,52 @@ const FORMATION_DOTS: Record<Formation, { x: number; y: number }[]> = {
     { x: 15, y: 42 }, { x: 32, y: 42 }, { x: 50, y: 42 }, { x: 68, y: 42 }, { x: 85, y: 42 },
     { x: 35, y: 16 }, { x: 65, y: 16 },
   ],
+  FOUR_TWO_THREE_ONE: [
+    { x: 50, y: 92 },
+    { x: 20, y: 72 }, { x: 40, y: 72 }, { x: 60, y: 72 }, { x: 80, y: 72 },
+    { x: 35, y: 54 }, { x: 65, y: 54 },
+    { x: 25, y: 34 }, { x: 50, y: 34 }, { x: 75, y: 34 },
+    { x: 50, y: 14 },
+  ],
+  THREE_FOUR_THREE: [
+    { x: 50, y: 92 },
+    { x: 25, y: 70 }, { x: 50, y: 70 }, { x: 75, y: 70 },
+    { x: 20, y: 42 }, { x: 40, y: 42 }, { x: 60, y: 42 }, { x: 80, y: 42 },
+    { x: 25, y: 16 }, { x: 50, y: 16 }, { x: 75, y: 16 },
+  ],
+  FIVE_THREE_TWO: [
+    { x: 50, y: 92 },
+    { x: 12, y: 70 }, { x: 30, y: 70 }, { x: 50, y: 70 }, { x: 70, y: 70 }, { x: 88, y: 70 },
+    { x: 30, y: 42 }, { x: 50, y: 42 }, { x: 70, y: 42 },
+    { x: 35, y: 16 }, { x: 65, y: 16 },
+  ],
+  FOUR_ONE_FOUR_ONE: [
+    { x: 50, y: 92 },
+    { x: 20, y: 72 }, { x: 40, y: 72 }, { x: 60, y: 72 }, { x: 80, y: 72 },
+    { x: 50, y: 54 },
+    { x: 15, y: 34 }, { x: 38, y: 34 }, { x: 62, y: 34 }, { x: 85, y: 34 },
+    { x: 50, y: 14 },
+  ],
+  FOUR_FIVE_ONE: [
+    { x: 50, y: 92 },
+    { x: 20, y: 70 }, { x: 40, y: 70 }, { x: 60, y: 70 }, { x: 80, y: 70 },
+    { x: 15, y: 42 }, { x: 32, y: 42 }, { x: 50, y: 42 }, { x: 68, y: 42 }, { x: 85, y: 42 },
+    { x: 50, y: 16 },
+  ],
+  FOUR_THREE_TWO_ONE: [
+    { x: 50, y: 92 },
+    { x: 20, y: 72 }, { x: 40, y: 72 }, { x: 60, y: 72 }, { x: 80, y: 72 },
+    { x: 30, y: 52 }, { x: 50, y: 52 }, { x: 70, y: 52 },
+    { x: 35, y: 32 }, { x: 65, y: 32 },
+    { x: 50, y: 14 },
+  ],
+  FOUR_FOUR_ONE_ONE: [
+    { x: 50, y: 92 },
+    { x: 20, y: 72 }, { x: 40, y: 72 }, { x: 60, y: 72 }, { x: 80, y: 72 },
+    { x: 20, y: 48 }, { x: 40, y: 48 }, { x: 60, y: 48 }, { x: 80, y: 48 },
+    { x: 50, y: 28 },
+    { x: 50, y: 12 },
+  ],
 };
 
 function FormationCard({
@@ -183,7 +229,7 @@ export function LobbyPage() {
               <h3 className="text-xl font-bold text-white text-center mb-4">
                 Choose Your Formation
               </h3>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-lg sm:max-w-none mx-auto">
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mx-auto">
                 {formations.map((f) => (
                   <FormationCard
                     key={f}

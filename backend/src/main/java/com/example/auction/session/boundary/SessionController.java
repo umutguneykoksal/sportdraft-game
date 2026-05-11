@@ -85,7 +85,7 @@ public class SessionController {
         @RequestHeader("Authorization") String authorization
     ) {
         UUID userId = extractUserId(authorization);
-        List<SessionPlayer> players = sessionPlayerRepository.findBySession_Id(sessionId);
+        List<SessionPlayer> players = sessionPlayerRepository.findBySession_IdOrderByIdAsc(sessionId);
         boolean inSession = players.stream().anyMatch(p -> p.getUserId().equals(userId));
         if (!inSession) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Player not found in session");

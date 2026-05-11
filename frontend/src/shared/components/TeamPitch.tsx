@@ -68,7 +68,7 @@ function buildSquad(
   });
 
   const fillRow = (pos: Position, count: number): (Player | null)[] => {
-    const filled = byPosition[pos].map(makePlayer);
+    const filled = byPosition[pos].slice(0, count).map(makePlayer);
     const remaining = count - filled.length;
     for (let i = 0; i < remaining; i++) {
       filled.push(makeEmptyPlayer(pos));

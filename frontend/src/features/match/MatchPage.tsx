@@ -14,6 +14,7 @@ export function MatchPage() {
   const [myTeam, setMyTeam] = useState<AuctionTeamCardResponse[]>([]);
   const [opponentTeam, setOpponentTeam] = useState<AuctionTeamCardResponse[]>([]);
   const [myFormation, setMyFormation] = useState<Formation>("FOUR_FOUR_TWO");
+  const [opponentFormation, setOpponentFormation] = useState<Formation>("FOUR_FOUR_TWO");
 
   useEffect(() => {
     if (!sessionId) return;
@@ -28,6 +29,7 @@ export function MatchPage() {
         setMyTeam(state.myTeam);
         setOpponentTeam(state.opponentTeam);
         if (snap.myFormation) setMyFormation(snap.myFormation);
+        if (state.opponentFormation) setOpponentFormation(state.opponentFormation);
       } catch {
         // teams not critical for match display
       }
@@ -131,11 +133,11 @@ export function MatchPage() {
           }`}>
             <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between">
               <h3 className="font-bold text-white">Opponent</h3>
-              <span className="text-sm text-slate-400">4-4-2</span>
+              <span className="text-sm text-slate-400">{FORMATION_LABELS[opponentFormation]}</span>
             </div>
             <div className="p-2">
               <TeamPitch
-                formation="FOUR_FOUR_TWO"
+                formation={opponentFormation}
                 cards={opponentTeam}
                 away
                 teamColor="#ef4444"

@@ -23,6 +23,8 @@ public interface SessionPlayerRepository extends JpaRepository<SessionPlayer, UU
 
     List<SessionPlayer> findBySession_Id(UUID sessionId);
 
+    List<SessionPlayer> findBySession_IdOrderByIdAsc(UUID sessionId);
+
     @Query(
         value = "SELECT COUNT(*) FROM session_player_cards WHERE session_player_id = :playerId",
         nativeQuery = true

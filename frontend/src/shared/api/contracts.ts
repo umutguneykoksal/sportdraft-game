@@ -8,7 +8,17 @@ export type SessionStatus =
   | "AWAITING_RESULT"
   | "FINISHED";
 
-export type Formation = "FOUR_FOUR_TWO" | "FOUR_THREE_THREE" | "THREE_FIVE_TWO";
+export type Formation =
+  | "FOUR_FOUR_TWO"
+  | "FOUR_THREE_THREE"
+  | "THREE_FIVE_TWO"
+  | "FOUR_TWO_THREE_ONE"
+  | "THREE_FOUR_THREE"
+  | "FIVE_THREE_TWO"
+  | "FOUR_ONE_FOUR_ONE"
+  | "FOUR_FIVE_ONE"
+  | "FOUR_THREE_TWO_ONE"
+  | "FOUR_FOUR_ONE_ONE";
 
 export type Position = "GK" | "DEF" | "MID" | "FWD";
 
@@ -52,6 +62,7 @@ export interface AuctionStateResponse {
   currentRound: AuctionRoundResponse | null;
   myTeam: AuctionTeamCardResponse[];
   opponentTeam: AuctionTeamCardResponse[];
+  opponentFormation: Formation | null;
 }
 
 export interface MatchResultResponse {

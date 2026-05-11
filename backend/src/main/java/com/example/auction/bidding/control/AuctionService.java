@@ -25,7 +25,6 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Collections;
 import java.util.Comparator;
-import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -410,7 +409,7 @@ public class AuctionService {
             .map(this::toResponse)
             .orElse(null);
 
-        return new AuctionStateResponse(currentRound, myTeam, opponentTeam);
+        return new AuctionStateResponse(currentRound, myTeam, opponentTeam, opponent.getFormation().name());
     }
 
     @Scheduled(fixedDelay = 1000)
@@ -678,28 +677,7 @@ public class AuctionService {
     }
 
     private int formationSlotCount(Formation formation, Position position) {
-        Map<Position, Integer> slots = new EnumMap<>(Position.class);
-        switch (formation) {
-            case FOUR_FOUR_TWO -> {
-                slots.put(Position.GK, 1);
-                slots.put(Position.DEF, 4);
-                slots.put(Position.MID, 4);
-                slots.put(Position.FWD, 2);
-            }
-            case FOUR_THREE_THREE -> {
-                slots.put(Position.GK, 1);
-                slots.put(Position.DEF, 4);
-                slots.put(Position.MID, 3);
-                slots.put(Position.FWD, 3);
-            }
-            case THREE_FIVE_TWO -> {
-                slots.put(Position.GK, 1);
-                slots.put(Position.DEF, 3);
-                slots.put(Position.MID, 5);
-                slots.put(Position.FWD, 2);
-            }
-        }
-        return slots.getOrDefault(position, 0);
+        return formation.slotCount(position);
     }
 
     private boolean isSessionRostersFull(List<SessionPlayer> players) {
@@ -802,8 +780,11 @@ public class AuctionService {
         if (players.size() < 2) {
             return;
         }
-        SessionPlayer home = players.get(0);
-        SessionPlayer away = players.get(1);
+        List<SessionPlayer> sorted = players.stream()
+            .sorted(Comparator.comparing(SessionPlayer::getId))
+            .toList();
+        SessionPlayer home = sorted.get(0);
+        SessionPlayer away = sorted.get(1);
         List<SessionFinalizedEvent.RatedCard> homeRoster = home.getCards().stream()
             .map(card -> new SessionFinalizedEvent.RatedCard(card.getId(), card.getPosition(), card.getRating()))
             .toList();

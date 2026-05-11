@@ -41,6 +41,7 @@ export function AuctionPage() {
   const [loading, setLoading] = useState(false);
   const [myTeam, setMyTeam] = useState<AuctionTeamCardResponse[]>([]);
   const [opponentTeam, setOpponentTeam] = useState<AuctionTeamCardResponse[]>([]);
+  const [opponentFormation, setOpponentFormation] = useState<Formation>("FOUR_FOUR_TWO");
   const [secondsLeft, setSecondsLeft] = useState<number>(0);
   const [sessionSnap, setSessionSnap] = useState<SessionSnapshotResponse | null>(null);
   const [matchStartSecondsLeft, setMatchStartSecondsLeft] = useState<number>(0);
@@ -85,6 +86,7 @@ export function AuctionPage() {
         setRound(auctionState.currentRound);
         setMyTeam(mapCards(auctionState.myTeam));
         setOpponentTeam(mapCards(auctionState.opponentTeam));
+        if (auctionState.opponentFormation) setOpponentFormation(auctionState.opponentFormation);
       } catch (e) {
         if (!cancelled && e instanceof ApiError && (e.status === 401 || e.status === 404)) {
           clearActiveSessionId(); navigate("/lobby"); return;
@@ -128,6 +130,7 @@ export function AuctionPage() {
         setRound(auctionState.currentRound);
         setMyTeam(mapCards(auctionState.myTeam));
         setOpponentTeam(mapCards(auctionState.opponentTeam));
+        if (auctionState.opponentFormation) setOpponentFormation(auctionState.opponentFormation);
       } catch { /* transient */ }
     };
     pull();
@@ -171,6 +174,7 @@ export function AuctionPage() {
           setRound(auctionState.currentRound);
           setMyTeam(mapCards(auctionState.myTeam));
           setOpponentTeam(mapCards(auctionState.opponentTeam));
+        if (auctionState.opponentFormation) setOpponentFormation(auctionState.opponentFormation);
         }
       } catch { /* ignore */ }
     };
@@ -208,6 +212,7 @@ export function AuctionPage() {
             setRound(auctionState.currentRound);
             setMyTeam(mapCards(auctionState.myTeam));
             setOpponentTeam(mapCards(auctionState.opponentTeam));
+        if (auctionState.opponentFormation) setOpponentFormation(auctionState.opponentFormation);
           }
         } catch { /* ignore */ }
       })();
@@ -228,6 +233,7 @@ export function AuctionPage() {
           setRound(auctionState.currentRound);
           setMyTeam(mapCards(auctionState.myTeam));
           setOpponentTeam(mapCards(auctionState.opponentTeam));
+        if (auctionState.opponentFormation) setOpponentFormation(auctionState.opponentFormation);
         } catch { /* ignore */ }
       })();
     }
@@ -608,7 +614,7 @@ export function AuctionPage() {
             </div>
             <div className="p-2">
               <TeamPitch
-                formation="FOUR_FOUR_TWO"
+                formation={opponentFormation}
                 cards={opponentTeam}
                 away
                 teamColor="#ef4444"
