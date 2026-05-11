@@ -35,6 +35,13 @@ export function useLobbyFlow() {
       }
       try {
         const restored = await getSessionSnapshot(activeSessionId);
+        const terminal = restored.status === "FINISHED"
+          || restored.status === "AWAITING_RESULT"
+          || restored.status === "FINALIZING";
+        if (terminal) {
+          clearActiveSessionId();
+          return;
+        }
         setSnapshot(restored);
       } catch {
         clearActiveSessionId();

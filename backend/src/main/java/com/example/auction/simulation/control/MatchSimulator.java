@@ -33,24 +33,54 @@ public class MatchSimulator {
         return new Score(homeGoals, awayGoals);
     }
 
+    private static final Map<Position, Double> ATTACK_WEIGHT = Map.of(
+        Position.FWD, 1.0,
+        Position.CAM, 0.8,
+        Position.CM,  0.4,
+        Position.CDM, 0.15,
+        Position.DEF, 0.05,
+        Position.GK,  0.0
+    );
+
+    private static final Map<Position, Double> DEFENSE_WEIGHT = Map.of(
+        Position.GK,  1.0,
+        Position.DEF, 0.9,
+        Position.CDM, 0.6,
+        Position.CM,  0.3,
+        Position.CAM, 0.1,
+        Position.FWD, 0.0
+    );
+
     private double attackScore(Formation formation, List<SessionFinalizedEvent.RatedCard> roster) {
-        Map<Position, Double> avg = averages(roster);
-        double score = avg.getOrDefault(Position.FWD, 40.0) * 0.4
-            + avg.getOrDefault(Position.CAM, 40.0) * 0.3
-            + avg.getOrDefault(Position.CM, 40.0) * 0.2
-            + avg.getOrDefault(Position.CDM, 40.0) * 0.1;
-        score *= formation.getAttackMod();
-        return score;
+        return weightedScore(formation, roster, ATTACK_WEIGHT) * formation.getAttackMod();
     }
 
     private double defenseScore(Formation formation, List<SessionFinalizedEvent.RatedCard> roster) {
+        return weightedScore(formation, roster, DEFENSE_WEIGHT) * formation.getDefenseMod();
+    }
+
+    /**
+     * Computes a weighted average rating using only positions the formation
+     * actually contains. Each position's contribution scales by its slot count
+     * and role-based weight, so formations without CDM/CAM are not penalised
+     * by phantom 40-rated defaults.
+     */
+    private double weightedScore(
+        Formation formation,
+        List<SessionFinalizedEvent.RatedCard> roster,
+        Map<Position, Double> roleWeights
+    ) {
         Map<Position, Double> avg = averages(roster);
-        double score = avg.getOrDefault(Position.DEF, 40.0) * 0.4
-            + avg.getOrDefault(Position.GK, 40.0) * 0.3
-            + avg.getOrDefault(Position.CDM, 40.0) * 0.2
-            + avg.getOrDefault(Position.CM, 40.0) * 0.1;
-        score *= formation.getDefenseMod();
-        return score;
+        double weightedSum = 0;
+        double totalWeight = 0;
+        for (Position pos : Position.values()) {
+            int slots = formation.slotCount(pos);
+            if (slots == 0) continue;
+            double w = roleWeights.getOrDefault(pos, 0.0) * slots;
+            weightedSum += avg.getOrDefault(pos, 40.0) * w;
+            totalWeight += w;
+        }
+        return totalWeight > 0 ? weightedSum / totalWeight : 40.0;
     }
 
     private Map<Position, Double> averages(List<SessionFinalizedEvent.RatedCard> roster) {
