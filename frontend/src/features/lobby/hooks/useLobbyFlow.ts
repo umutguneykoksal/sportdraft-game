@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Formation,
@@ -25,14 +25,20 @@ export function useLobbyFlow() {
   const [countdownSecondsLeft, setCountdownSecondsLeft] = useState<number | null>(null);
   const session = getOrCreateClientSession();
   const sessionId = snapshot?.sessionId ?? null;
-  const { isConnected } = useSessionStream(sessionId);
+  const { events, isConnected } = useSessionStream(sessionId);
+  const restoredRef = useRef(false);
+  const prevConnectedRef = useRef(false);
 
+  // ---- Effects ----
+
+  // 1. Restore session on mount (dissolve if no formation was selected)
   useEffect(() => {
-    const restore = async () => {
-      const activeSessionId = getActiveSessionId();
-      if (!activeSessionId || snapshot) {
-        return;
-      }
+    if (restoredRef.current || snapshot) return;
+    restoredRef.current = true;
+    const activeSessionId = getActiveSessionId();
+    if (!activeSessionId) return;
+
+    (async () => {
       try {
         const restored = await getSessionSnapshot(activeSessionId);
         const terminal = restored.status === "FINISHED"
@@ -42,18 +48,21 @@ export function useLobbyFlow() {
           clearActiveSessionId();
           return;
         }
+        if (!restored.myFormation) {
+          try { await leaveLobby(activeSessionId); } catch { /* best-effort */ }
+          clearActiveSessionId();
+          return;
+        }
         setSnapshot(restored);
       } catch {
         clearActiveSessionId();
       }
-    };
-    restore();
+    })();
   }, [snapshot]);
 
+  // 2. Persist / clear active session in localStorage
   useEffect(() => {
-    if (!snapshot) {
-      return;
-    }
+    if (!snapshot) return;
     if (snapshot.joined) {
       setActiveSessionId(snapshot.sessionId);
     } else {
@@ -61,22 +70,37 @@ export function useLobbyFlow() {
     }
   }, [snapshot]);
 
+  // 3. Navigate to auction when session advances
   useEffect(() => {
-    if (!snapshot) {
-      return;
-    }
+    if (!snapshot) return;
     if (snapshot.status === "AUCTIONING" || snapshot.status === "MATCH_START_PENDING") {
       navigate(`/auction/${snapshot.sessionId}`);
     }
   }, [snapshot, navigate]);
 
+  // 4. SSE reconnection catch-up (skips initial connect, only fires on re-connect)
   useEffect(() => {
-    if (!snapshot || !isConnected) {
-      return;
-    }
+    const wasConnected = prevConnectedRef.current;
+    prevConnectedRef.current = isConnected;
+    if (!snapshot || !isConnected || !wasConnected) return;
     getSessionSnapshot(snapshot.sessionId).then(setSnapshot).catch(() => {});
   }, [snapshot, isConnected]);
 
+  // 5. SSE event handler (real-time lobby updates)
+  useEffect(() => {
+    const latest = events.at(-1);
+    if (!latest || !snapshot) return;
+
+    const lobbyEvents = [
+      "lobby_updated", "countdown_started", "countdown_cancelled",
+      "formation_phase_started", "formation_chosen", "auctioning_started",
+    ];
+    if (lobbyEvents.includes(latest.eventType)) {
+      getSessionSnapshot(snapshot.sessionId).then(setSnapshot).catch(() => {});
+    }
+  }, [events, snapshot]);
+
+  // 6. Countdown timer
   useEffect(() => {
     const deadlineAt = snapshot?.countdownEndsAt;
     if (!deadlineAt) {
@@ -88,6 +112,8 @@ export function useLobbyFlow() {
     const timer = setInterval(() => setCountdownSecondsLeft(compute()), 250);
     return () => clearInterval(timer);
   }, [snapshot?.countdownEndsAt]);
+
+  // ---- Handlers ----
 
   const handleJoin = async () => {
     setLoading(true);

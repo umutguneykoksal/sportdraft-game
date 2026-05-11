@@ -3,10 +3,10 @@ import { useNavigate, useParams } from "react-router-dom";
 import {
   ApiError,
   AuctionRoundResponse,
+  AuctionStateResponse,
   AuctionTeamCardResponse,
   confirmMatchStart,
   getAuctionState,
-  getMatchResult,
   getSessionSnapshot,
   passRound,
   placeBid,
@@ -48,6 +48,7 @@ export function AuctionPage() {
   const previousRoundIdRef = useRef<string | null>(null);
   const serverClockOffsetMsRef = useRef<number>(0);
   const syncSeqRef = useRef(0);
+  const prevConnectedRef = useRef(false);
   const isMyTurn = !!myUserId && !!round && round.currentTurnUserId === myUserId;
   const isReadyByMe = !!myUserId && !!round && (round.readyUserOneId === myUserId || round.readyUserTwoId === myUserId);
   const readyCount = round ? [round.readyUserOneId, round.readyUserTwoId].filter(Boolean).length : 0;
@@ -62,49 +63,56 @@ export function AuctionPage() {
   const spent = myTeam.reduce((sum, c) => sum + c.amountCents, 0);
   const budget = 10000 - spent;
 
-  // ---- Effects (unchanged logic, just using mapCards helper) ----
+  // ---- Shared helpers ----
 
+  const applyAuctionState = (
+    snapshot: SessionSnapshotResponse,
+    auctionState: AuctionStateResponse,
+  ) => {
+    setSessionSnap(snapshot);
+    setRound(auctionState.currentRound);
+    setMyTeam(mapCards(auctionState.myTeam));
+    setOpponentTeam(mapCards(auctionState.opponentTeam));
+    if (auctionState.opponentFormation) setOpponentFormation(auctionState.opponentFormation);
+  };
+
+  const isActivePage = (status: string) =>
+    status === "AUCTIONING" || status === "MATCH_START_PENDING"
+    || status === "FINALIZING" || status === "AWAITING_RESULT";
+
+  // ---- Effects ----
+
+  // 1. Initial load (runs once on mount)
   useEffect(() => {
     if (!sessionId) return;
     setActiveSessionId(sessionId);
     let cancelled = false;
-    const syncSnapshot = async () => {
+    (async () => {
       const seq = ++syncSeqRef.current;
       try {
         const snapshot = await getSessionSnapshot(sessionId);
         if (cancelled || seq !== syncSeqRef.current) return;
-        setSessionSnap(snapshot);
         if (snapshot.status === "FINISHED") { navigate(`/match/${sessionId}`); return; }
-        const onAuctionPage =
-          snapshot.status === "AUCTIONING"
-          || snapshot.status === "MATCH_START_PENDING"
-          || snapshot.status === "FINALIZING"
-          || snapshot.status === "AWAITING_RESULT";
-        if (!onAuctionPage) { navigate("/lobby"); return; }
+        if (!isActivePage(snapshot.status)) { navigate("/lobby"); return; }
         const auctionState = await getAuctionState(sessionId);
         if (cancelled || seq !== syncSeqRef.current) return;
-        setRound(auctionState.currentRound);
-        setMyTeam(mapCards(auctionState.myTeam));
-        setOpponentTeam(mapCards(auctionState.opponentTeam));
-        if (auctionState.opponentFormation) setOpponentFormation(auctionState.opponentFormation);
+        applyAuctionState(snapshot, auctionState);
       } catch (e) {
         if (!cancelled && e instanceof ApiError && (e.status === 401 || e.status === 404)) {
           clearActiveSessionId(); navigate("/lobby"); return;
         }
         if (!cancelled) setError("Connection issue while loading auction state. Retrying...");
       }
-    };
-    syncSnapshot();
+    })();
     return () => { cancelled = true; };
   }, [sessionId, navigate]);
 
+  // 2. Safety-net poll (SSE connected → 30s, disconnected → 3s; initial load handled above)
   useEffect(() => {
     if (!sessionId) return;
-    // SSE connected: only poll during AUCTIONING as a 30s safety net
-    // SSE disconnected: poll all active states at 3s as the primary fallback
     if (isConnected && sessionSnap && sessionSnap.status !== "AUCTIONING") return;
     let cancelled = false;
-    const pull = async () => {
+    const poll = async () => {
       const seq = ++syncSeqRef.current;
       try {
         const [snapshot, auctionState] = await Promise.all([
@@ -112,45 +120,39 @@ export function AuctionPage() {
           getAuctionState(sessionId),
         ]);
         if (cancelled || seq !== syncSeqRef.current) return;
-        setSessionSnap(snapshot);
         if (snapshot.status === "FINISHED") { navigate(`/match/${sessionId}`); return; }
-        const stayHere = snapshot.status === "AUCTIONING" || snapshot.status === "MATCH_START_PENDING"
-          || snapshot.status === "FINALIZING" || snapshot.status === "AWAITING_RESULT";
-        if (!stayHere) return;
-        setRound(auctionState.currentRound);
-        setMyTeam(mapCards(auctionState.myTeam));
-        setOpponentTeam(mapCards(auctionState.opponentTeam));
-        if (auctionState.opponentFormation) setOpponentFormation(auctionState.opponentFormation);
+        if (!isActivePage(snapshot.status)) return;
+        applyAuctionState(snapshot, auctionState);
       } catch { /* transient */ }
     };
-    pull();
     const intervalMs = isConnected ? 30000 : 3000;
-    const id = window.setInterval(pull, intervalMs);
+    const id = window.setInterval(poll, intervalMs);
     return () => { cancelled = true; window.clearInterval(id); };
   }, [sessionId, sessionSnap?.status, navigate, isConnected]);
 
+  // 3. SSE reconnection catch-up (skips the initial connect, only fires on re-connect)
   useEffect(() => {
-    if (!sessionId || !isConnected) return;
-    const refresh = async () => {
+    const wasConnected = prevConnectedRef.current;
+    prevConnectedRef.current = isConnected;
+    if (!sessionId || !isConnected || !wasConnected) return;
+    (async () => {
+      const seq = ++syncSeqRef.current;
       try {
         const snapshot = await getSessionSnapshot(sessionId);
+        if (seq !== syncSeqRef.current) return;
         if (snapshot.status === "FINISHED") { navigate(`/match/${sessionId}`); return; }
-        const onAuctionPage = snapshot.status === "AUCTIONING" || snapshot.status === "MATCH_START_PENDING"
-          || snapshot.status === "FINALIZING" || snapshot.status === "AWAITING_RESULT";
-        if (!onAuctionPage) { navigate("/lobby"); return; }
+        if (!isActivePage(snapshot.status)) { navigate("/lobby"); return; }
         setSessionSnap(snapshot);
         if (snapshot.status === "AUCTIONING") {
           const auctionState = await getAuctionState(sessionId);
-          setRound(auctionState.currentRound);
-          setMyTeam(mapCards(auctionState.myTeam));
-          setOpponentTeam(mapCards(auctionState.opponentTeam));
-        if (auctionState.opponentFormation) setOpponentFormation(auctionState.opponentFormation);
+          if (seq !== syncSeqRef.current) return;
+          applyAuctionState(snapshot, auctionState);
         }
       } catch { /* ignore */ }
-    };
-    refresh();
+    })();
   }, [isConnected, navigate, sessionId]);
 
+  // 4. SSE event handler (real-time state updates driven by server push)
   useEffect(() => {
     const latest = events.at(-1);
     if (!latest) return;
@@ -160,6 +162,8 @@ export function AuctionPage() {
       result?: string;
       winnerUserId?: string;
     };
+
+    // Auction round events → update round from payload
     if (
       (latest.eventType === "round_started" || latest.eventType === "bid_placed"
         || latest.eventType === "round_ended" || latest.eventType === "round_ready")
@@ -169,6 +173,8 @@ export function AuctionPage() {
       if (!Number.isNaN(serverEventTime)) serverClockOffsetMsRef.current = serverEventTime - Date.now();
       setRound(payload.round);
     }
+
+    // Round ended → refresh full state (teams, next round)
     if (latest.eventType === "round_ended" && sessionId) {
       (async () => {
         const seq = ++syncSeqRef.current;
@@ -179,14 +185,13 @@ export function AuctionPage() {
           if (snapshot.status === "AUCTIONING") {
             const auctionState = await getAuctionState(sessionId);
             if (seq !== syncSeqRef.current) return;
-            setRound(auctionState.currentRound);
-            setMyTeam(mapCards(auctionState.myTeam));
-            setOpponentTeam(mapCards(auctionState.opponentTeam));
-        if (auctionState.opponentFormation) setOpponentFormation(auctionState.opponentFormation);
+            applyAuctionState(snapshot, auctionState);
           }
         } catch { /* ignore */ }
       })();
     }
+
+    // Session phase transitions → refresh snapshot + auction state
     if (
       (latest.eventType === "match_start_pending" || latest.eventType === "match_start_ready"
         || latest.eventType === "session_finalizing") && sessionId
@@ -199,17 +204,16 @@ export function AuctionPage() {
             getSessionSnapshot(sessionId),
             getAuctionState(sessionId),
           ]);
-          setSessionSnap(snap);
-          setRound(auctionState.currentRound);
-          setMyTeam(mapCards(auctionState.myTeam));
-          setOpponentTeam(mapCards(auctionState.opponentTeam));
-        if (auctionState.opponentFormation) setOpponentFormation(auctionState.opponentFormation);
+          applyAuctionState(snap, auctionState);
         } catch { /* ignore */ }
       })();
     }
+
+    // Match completed → navigate to result page
     if (latest.eventType === "match_completed" && sessionId) navigate(`/match/${sessionId}`);
   }, [events, myUserId, navigate, sessionId]);
 
+  // 5. Bid amount auto-adjust on round change
   useEffect(() => {
     if (!round) return;
     const minimum = Math.max(1, round.highestBidCents + 1);
@@ -222,6 +226,7 @@ export function AuctionPage() {
     });
   }, [round]);
 
+  // 6. Round countdown timer
   useEffect(() => {
     if (!round) { setSecondsLeft(0); return; }
     const computeSecondsLeft = () => {
@@ -233,6 +238,7 @@ export function AuctionPage() {
     return () => clearInterval(timer);
   }, [round]);
 
+  // 7. Match-start deadline countdown timer
   useEffect(() => {
     if (!sessionSnap?.matchStartDeadlineAt) { setMatchStartSecondsLeft(0); return; }
     const deadlineMs = new Date(sessionSnap.matchStartDeadlineAt).getTime();
