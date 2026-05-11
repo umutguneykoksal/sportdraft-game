@@ -3,6 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import {
   ApiError,
   AuctionRoundResponse,
+  AuctionTeamCardResponse,
   confirmMatchStart,
   getAuctionState,
   getMatchResult,
@@ -15,13 +16,18 @@ import {
 } from "../../shared/api";
 import { clearActiveSessionId, setActiveSessionId } from "../../shared/session";
 import { useSessionStream } from "../../shared/sse";
-import { AuctionView } from "./components/AuctionView";
+import { TeamPitch } from "../../shared/components/TeamPitch";
+import { FORMATION_LABELS } from "../../shared/formations";
+import type { Formation, Position } from "../../shared/api/contracts";
 
-interface WonCard {
-  cardId: string;
-  cardName: string;
-  position: string;
-  amountCents: number;
+function mapCards(raw: AuctionTeamCardResponse[]): AuctionTeamCardResponse[] {
+  return raw.map((c) => ({
+    cardId: c.cardId,
+    cardName: c.cardName,
+    position: c.position,
+    rating: c.rating ?? 0,
+    amountCents: c.amountCents,
+  }));
 }
 
 export function AuctionPage() {
@@ -33,8 +39,8 @@ export function AuctionPage() {
   const [amount, setAmount] = useState<string>("1");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [myTeam, setMyTeam] = useState<WonCard[]>([]);
-  const [opponentTeam, setOpponentTeam] = useState<WonCard[]>([]);
+  const [myTeam, setMyTeam] = useState<AuctionTeamCardResponse[]>([]);
+  const [opponentTeam, setOpponentTeam] = useState<AuctionTeamCardResponse[]>([]);
   const [secondsLeft, setSecondsLeft] = useState<number>(0);
   const [sessionSnap, setSessionSnap] = useState<SessionSnapshotResponse | null>(null);
   const [matchStartSecondsLeft, setMatchStartSecondsLeft] = useState<number>(0);
@@ -49,104 +55,62 @@ export function AuctionPage() {
   const auctionPhaseActive = sessionSnap?.status === "AUCTIONING";
   const streamSessionId = sessionId && sessionSnap?.joined ? sessionId : null;
   const { events, isConnected } = useSessionStream(streamSessionId);
+  const myFormation: Formation = sessionSnap?.myFormation ?? "FOUR_FOUR_TWO";
+
+  // Budget: starting 10000 minus spent
+  const spent = myTeam.reduce((sum, c) => sum + c.amountCents, 0);
+  const budget = 10000 - spent;
+
+  // ---- Effects (unchanged logic, just using mapCards helper) ----
 
   useEffect(() => {
-    if (!sessionId) {
-      return;
-    }
+    if (!sessionId) return;
     setActiveSessionId(sessionId);
     let cancelled = false;
     const syncSnapshot = async () => {
       const seq = ++syncSeqRef.current;
       try {
         const snapshot = await getSessionSnapshot(sessionId);
-        if (cancelled || seq !== syncSeqRef.current) {
-          return;
-        }
+        if (cancelled || seq !== syncSeqRef.current) return;
         setSessionSnap(snapshot);
-        if (snapshot.status === "FINISHED") {
-          navigate(`/match/${sessionId}`);
-          return;
-        }
+        if (snapshot.status === "FINISHED") { navigate(`/match/${sessionId}`); return; }
         const onAuctionPage =
           snapshot.status === "AUCTIONING"
           || snapshot.status === "MATCH_START_PENDING"
           || snapshot.status === "FINALIZING"
           || snapshot.status === "AWAITING_RESULT";
-        if (!onAuctionPage) {
-          navigate("/lobby");
-          return;
-        }
+        if (!onAuctionPage) { navigate("/lobby"); return; }
         const auctionState = await getAuctionState(sessionId);
-        if (cancelled || seq !== syncSeqRef.current) {
-          return;
-        }
+        if (cancelled || seq !== syncSeqRef.current) return;
         setRound(auctionState.currentRound);
-        setMyTeam(
-          auctionState.myTeam.map((card) => ({
-            cardId: card.cardId,
-            cardName: card.cardName,
-            position: card.position,
-            amountCents: card.amountCents,
-          }))
-        );
-        setOpponentTeam(
-          auctionState.opponentTeam.map((card) => ({
-            cardId: card.cardId,
-            cardName: card.cardName,
-            position: card.position,
-            amountCents: card.amountCents,
-          }))
-        );
+        setMyTeam(mapCards(auctionState.myTeam));
+        setOpponentTeam(mapCards(auctionState.opponentTeam));
       } catch (e) {
         if (!cancelled && e instanceof ApiError && (e.status === 401 || e.status === 404)) {
-          clearActiveSessionId();
-          navigate("/lobby");
-          return;
+          clearActiveSessionId(); navigate("/lobby"); return;
         }
-        if (!cancelled) {
-          setError("Connection issue while loading auction state. Retrying...");
-        }
+        if (!cancelled) setError("Connection issue while loading auction state. Retrying...");
       }
     };
     syncSnapshot();
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [sessionId, navigate]);
 
   useEffect(() => {
-    if (!sessionId || sessionSnap?.status !== "MATCH_START_PENDING") {
-      return;
-    }
+    if (!sessionId || sessionSnap?.status !== "MATCH_START_PENDING") return;
     let cancelled = false;
     const id = window.setInterval(async () => {
       try {
         const snap = await getSessionSnapshot(sessionId);
-        if (!cancelled) {
-          setSessionSnap(snap);
-        }
-      } catch {
-        // ignore
-      }
+        if (!cancelled) setSessionSnap(snap);
+      } catch { /* ignore */ }
     }, 1000);
-    return () => {
-      cancelled = true;
-      window.clearInterval(id);
-    };
+    return () => { cancelled = true; window.clearInterval(id); };
   }, [sessionId, sessionSnap?.status]);
 
-  /**
-   * Rakip güncellemesi: bid / round değişince sunucu SSE ile `bid_placed`, `round_ended` vb. gönderir (tek uzun GET).
-   * Bu interval sadece “yedek senkron”: SSE koptuysa daha sık, sağlamsa seyrek REST (sunucu yükü düşük).
-   */
   useEffect(() => {
-    if (!sessionId) {
-      return;
-    }
-    if (sessionSnap && sessionSnap.status !== "AUCTIONING") {
-      return;
-    }
+    if (!sessionId) return;
+    if (sessionSnap && sessionSnap.status !== "AUCTIONING") return;
     let cancelled = false;
     const pull = async () => {
       const seq = ++syncSeqRef.current;
@@ -155,143 +119,67 @@ export function AuctionPage() {
           getSessionSnapshot(sessionId),
           getAuctionState(sessionId),
         ]);
-        if (cancelled || seq !== syncSeqRef.current) {
-          return;
-        }
+        if (cancelled || seq !== syncSeqRef.current) return;
         setSessionSnap(snapshot);
-        if (snapshot.status === "FINISHED") {
-          navigate(`/match/${sessionId}`);
-          return;
-        }
-        const stayHere =
-          snapshot.status === "AUCTIONING"
-          || snapshot.status === "MATCH_START_PENDING"
-          || snapshot.status === "FINALIZING"
-          || snapshot.status === "AWAITING_RESULT";
-        if (!stayHere) {
-          return;
-        }
+        if (snapshot.status === "FINISHED") { navigate(`/match/${sessionId}`); return; }
+        const stayHere = snapshot.status === "AUCTIONING" || snapshot.status === "MATCH_START_PENDING"
+          || snapshot.status === "FINALIZING" || snapshot.status === "AWAITING_RESULT";
+        if (!stayHere) return;
         setRound(auctionState.currentRound);
-        setMyTeam(
-          auctionState.myTeam.map((card) => ({
-            cardId: card.cardId,
-            cardName: card.cardName,
-            position: card.position,
-            amountCents: card.amountCents,
-          }))
-        );
-        setOpponentTeam(
-          auctionState.opponentTeam.map((card) => ({
-            cardId: card.cardId,
-            cardName: card.cardName,
-            position: card.position,
-            amountCents: card.amountCents,
-          }))
-        );
-      } catch {
-        // transient network — keep last known UI
-      }
+        setMyTeam(mapCards(auctionState.myTeam));
+        setOpponentTeam(mapCards(auctionState.opponentTeam));
+      } catch { /* transient */ }
     };
     pull();
     const intervalMs = isConnected ? 5000 : 2000;
     const id = window.setInterval(pull, intervalMs);
-    return () => {
-      cancelled = true;
-      window.clearInterval(id);
-    };
+    return () => { cancelled = true; window.clearInterval(id); };
   }, [sessionId, sessionSnap?.status, navigate, isConnected]);
 
   useEffect(() => {
-    if (!sessionId) {
-      return;
-    }
-    const simulating =
-      sessionSnap?.status === "AWAITING_RESULT"
-      || sessionSnap?.status === "FINALIZING";
-    if (!simulating) {
-      return;
-    }
+    if (!sessionId) return;
+    const simulating = sessionSnap?.status === "AWAITING_RESULT" || sessionSnap?.status === "FINALIZING";
+    if (!simulating) return;
     let cancelled = false;
     const tick = async () => {
       try {
         const snap = await getSessionSnapshot(sessionId);
-        if (cancelled) {
-          return;
-        }
+        if (cancelled) return;
         setSessionSnap(snap);
-        if (snap.status === "FINISHED") {
-          navigate(`/match/${sessionId}`);
-          return;
-        }
+        if (snap.status === "FINISHED") { navigate(`/match/${sessionId}`); return; }
         const result = await getMatchResult(sessionId);
-        if (!cancelled && result !== null) {
-          navigate(`/match/${sessionId}`);
-        }
-      } catch {
-        // ignore transient errors while polling
-      }
+        if (!cancelled && result !== null) navigate(`/match/${sessionId}`);
+      } catch { /* ignore */ }
     };
     tick();
     const id = window.setInterval(tick, 1000);
-    return () => {
-      cancelled = true;
-      window.clearInterval(id);
-    };
+    return () => { cancelled = true; window.clearInterval(id); };
   }, [sessionId, sessionSnap?.status, navigate]);
 
   useEffect(() => {
-    if (!sessionId || !isConnected) {
-      return;
-    }
+    if (!sessionId || !isConnected) return;
     const refresh = async () => {
       try {
         const snapshot = await getSessionSnapshot(sessionId);
-        if (snapshot.status === "FINISHED") {
-          navigate(`/match/${sessionId}`);
-          return;
-        }
-        const onAuctionPage =
-          snapshot.status === "AUCTIONING"
-          || snapshot.status === "MATCH_START_PENDING"
-          || snapshot.status === "FINALIZING"
-          || snapshot.status === "AWAITING_RESULT";
-        if (!onAuctionPage) {
-          navigate("/lobby");
-          return;
-        }
+        if (snapshot.status === "FINISHED") { navigate(`/match/${sessionId}`); return; }
+        const onAuctionPage = snapshot.status === "AUCTIONING" || snapshot.status === "MATCH_START_PENDING"
+          || snapshot.status === "FINALIZING" || snapshot.status === "AWAITING_RESULT";
+        if (!onAuctionPage) { navigate("/lobby"); return; }
         setSessionSnap(snapshot);
         if (snapshot.status === "AUCTIONING") {
           const auctionState = await getAuctionState(sessionId);
           setRound(auctionState.currentRound);
-          setMyTeam(
-            auctionState.myTeam.map((card) => ({
-              cardId: card.cardId,
-              cardName: card.cardName,
-              position: card.position,
-              amountCents: card.amountCents,
-            }))
-          );
-          setOpponentTeam(
-            auctionState.opponentTeam.map((card) => ({
-              cardId: card.cardId,
-              cardName: card.cardName,
-              position: card.position,
-              amountCents: card.amountCents,
-            }))
-          );
+          setMyTeam(mapCards(auctionState.myTeam));
+          setOpponentTeam(mapCards(auctionState.opponentTeam));
         }
-      } catch {
-        // ignore sync issues
-      }
+      } catch { /* ignore */ }
     };
     refresh();
   }, [isConnected, navigate, sessionId]);
 
   useEffect(() => {
     const latest = events.at(-1);
-    if (!latest) {
-      return;
-    }
+    if (!latest) return;
     const payload = latest.payload as {
       round?: AuctionRoundResponse;
       sessionId?: string;
@@ -299,16 +187,12 @@ export function AuctionPage() {
       winnerUserId?: string;
     };
     if (
-      (latest.eventType === "round_started"
-        || latest.eventType === "bid_placed"
-        || latest.eventType === "round_ended"
-        || latest.eventType === "round_ready")
+      (latest.eventType === "round_started" || latest.eventType === "bid_placed"
+        || latest.eventType === "round_ended" || latest.eventType === "round_ready")
       && payload.round
     ) {
       const serverEventTime = Date.parse(latest.occurredAt);
-      if (!Number.isNaN(serverEventTime)) {
-        serverClockOffsetMsRef.current = serverEventTime - Date.now();
-      }
+      if (!Number.isNaN(serverEventTime)) serverClockOffsetMsRef.current = serverEventTime - Date.now();
       setRound(payload.round);
     }
     if (latest.eventType === "round_ended" && sessionId) {
@@ -316,48 +200,24 @@ export function AuctionPage() {
         const seq = ++syncSeqRef.current;
         try {
           const snapshot = await getSessionSnapshot(sessionId);
-          if (seq !== syncSeqRef.current) {
-            return;
-          }
+          if (seq !== syncSeqRef.current) return;
           setSessionSnap(snapshot);
           if (snapshot.status === "AUCTIONING") {
             const auctionState = await getAuctionState(sessionId);
-            if (seq !== syncSeqRef.current) {
-              return;
-            }
+            if (seq !== syncSeqRef.current) return;
             setRound(auctionState.currentRound);
-            setMyTeam(
-              auctionState.myTeam.map((card) => ({
-                cardId: card.cardId,
-                cardName: card.cardName,
-                position: card.position,
-                amountCents: card.amountCents,
-              }))
-            );
-            setOpponentTeam(
-              auctionState.opponentTeam.map((card) => ({
-                cardId: card.cardId,
-                cardName: card.cardName,
-                position: card.position,
-                amountCents: card.amountCents,
-              }))
-            );
+            setMyTeam(mapCards(auctionState.myTeam));
+            setOpponentTeam(mapCards(auctionState.opponentTeam));
           }
-        } catch {
-          // ignore
-        }
+        } catch { /* ignore */ }
       })();
     }
     if (
-      (latest.eventType === "match_start_pending"
-        || latest.eventType === "match_start_ready"
-        || latest.eventType === "session_finalizing")
-      && sessionId
+      (latest.eventType === "match_start_pending" || latest.eventType === "match_start_ready"
+        || latest.eventType === "session_finalizing") && sessionId
     ) {
       const serverEventTime = Date.parse(latest.occurredAt);
-      if (!Number.isNaN(serverEventTime)) {
-        serverClockOffsetMsRef.current = serverEventTime - Date.now();
-      }
+      if (!Number.isNaN(serverEventTime)) serverClockOffsetMsRef.current = serverEventTime - Date.now();
       (async () => {
         try {
           const [snap, auctionState] = await Promise.all([
@@ -366,329 +226,420 @@ export function AuctionPage() {
           ]);
           setSessionSnap(snap);
           setRound(auctionState.currentRound);
-          setMyTeam(
-            auctionState.myTeam.map((card) => ({
-              cardId: card.cardId,
-              cardName: card.cardName,
-              position: card.position,
-              amountCents: card.amountCents,
-            }))
-          );
-          setOpponentTeam(
-            auctionState.opponentTeam.map((card) => ({
-              cardId: card.cardId,
-              cardName: card.cardName,
-              position: card.position,
-              amountCents: card.amountCents,
-            }))
-          );
-        } catch {
-          // ignore transient sync errors
-        }
+          setMyTeam(mapCards(auctionState.myTeam));
+          setOpponentTeam(mapCards(auctionState.opponentTeam));
+        } catch { /* ignore */ }
       })();
     }
-    if (latest.eventType === "match_completed" && sessionId) {
-      navigate(`/match/${sessionId}`);
-    }
+    if (latest.eventType === "match_completed" && sessionId) navigate(`/match/${sessionId}`);
   }, [events, myUserId, navigate, sessionId]);
 
   useEffect(() => {
-    if (!round) {
-      return;
-    }
+    if (!round) return;
     const minimum = Math.max(1, round.highestBidCents + 1);
     const roundChanged = previousRoundIdRef.current !== round.roundId;
-    if (roundChanged) {
-      previousRoundIdRef.current = round.roundId;
-      setAmount(String(minimum));
-      return;
-    }
+    if (roundChanged) { previousRoundIdRef.current = round.roundId; setAmount(String(minimum)); return; }
     setAmount((prev) => {
       const parsed = Number(prev);
-      if (!Number.isFinite(parsed) || parsed < minimum) {
-        return String(minimum);
-      }
+      if (!Number.isFinite(parsed) || parsed < minimum) return String(minimum);
       return prev;
     });
   }, [round]);
 
   useEffect(() => {
-    if (!round) {
-      setSecondsLeft(0);
-      return;
-    }
+    if (!round) { setSecondsLeft(0); return; }
     const computeSecondsLeft = () => {
       const adjustedNow = Date.now() + serverClockOffsetMsRef.current;
-      const diffMs = new Date(round.endsAt).getTime() - adjustedNow;
-      return Math.max(0, Math.ceil(diffMs / 1000));
+      return Math.max(0, Math.ceil((new Date(round.endsAt).getTime() - adjustedNow) / 1000));
     };
     setSecondsLeft(computeSecondsLeft());
-    const timer = setInterval(() => {
-      setSecondsLeft(computeSecondsLeft());
-    }, 250);
+    const timer = setInterval(() => setSecondsLeft(computeSecondsLeft()), 250);
     return () => clearInterval(timer);
   }, [round]);
 
   useEffect(() => {
-    if (!sessionSnap?.matchStartDeadlineAt) {
-      setMatchStartSecondsLeft(0);
-      return;
-    }
+    if (!sessionSnap?.matchStartDeadlineAt) { setMatchStartSecondsLeft(0); return; }
     const deadlineMs = new Date(sessionSnap.matchStartDeadlineAt).getTime();
     const tick = () => {
       const adjustedNow = Date.now() + serverClockOffsetMsRef.current;
       return Math.max(0, Math.ceil((deadlineMs - adjustedNow) / 1000));
     };
     setMatchStartSecondsLeft(tick());
-    const timer = window.setInterval(() => {
-      setMatchStartSecondsLeft(tick());
-    }, 250);
+    const timer = window.setInterval(() => setMatchStartSecondsLeft(tick()), 250);
     return () => window.clearInterval(timer);
   }, [sessionSnap?.matchStartDeadlineAt]);
 
-  if (!sessionId) {
-    return <div>Session id missing</div>;
-  }
+  // ---- Handlers ----
+
+  if (!sessionId) return <div className="p-8 text-white">Session ID missing</div>;
 
   const handleStartRound = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const response = await startRound(sessionId);
-      setRound(response);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to start round");
-    } finally {
-      setLoading(false);
-    }
+    setLoading(true); setError(null);
+    try { setRound(await startRound(sessionId)); }
+    catch (e) { setError(e instanceof Error ? e.message : "Failed to start round"); }
+    finally { setLoading(false); }
   };
 
   const handleBid = async () => {
-    if (!round) {
-      setError("Start a round first");
-      return;
-    }
-    if (myTeam.length >= 11) {
-      setError("Your squad is full");
-      return;
-    }
-    if (!isMyTurn) {
-      setError("It is not your turn");
-      return;
-    }
+    if (!round) { setError("Start a round first"); return; }
+    if (myTeam.length >= 11) { setError("Your squad is full"); return; }
+    if (!isMyTurn) { setError("It is not your turn"); return; }
     const amountCents = Number(amount);
-    if (!Number.isFinite(amountCents) || amountCents <= 0) {
-      setError("Amount must be a positive number (cents)");
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-    try {
-      const response = await placeBid(sessionId, round.roundId, amountCents);
-      setRound(response);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to place bid");
-    } finally {
-      setLoading(false);
-    }
+    if (!Number.isFinite(amountCents) || amountCents <= 0) { setError("Amount must be a positive number"); return; }
+    setLoading(true); setError(null);
+    try { setRound(await placeBid(sessionId, round.roundId, amountCents)); }
+    catch (e) { setError(e instanceof Error ? e.message : "Failed to place bid"); }
+    finally { setLoading(false); }
   };
 
   const handleReadyNext = async () => {
-    if (!round) {
-      return;
-    }
-    setLoading(true);
-    setError(null);
-    try {
-      const response = await readyNextRound(sessionId, round.roundId);
-      setRound(response);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to ready next");
-    } finally {
-      setLoading(false);
-    }
+    if (!round) return;
+    setLoading(true); setError(null);
+    try { setRound(await readyNextRound(sessionId, round.roundId)); }
+    catch (e) { setError(e instanceof Error ? e.message : "Failed to ready next"); }
+    finally { setLoading(false); }
   };
 
   const handlePassRound = async () => {
-    if (!round) {
-      return;
-    }
-    setLoading(true);
-    setError(null);
-    try {
-      const response = await passRound(sessionId, round.roundId);
-      setRound(response);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to pass round");
-    } finally {
-      setLoading(false);
-    }
+    if (!round) return;
+    setLoading(true); setError(null);
+    try { setRound(await passRound(sessionId, round.roundId)); }
+    catch (e) { setError(e instanceof Error ? e.message : "Failed to pass round"); }
+    finally { setLoading(false); }
   };
 
   const handleConfirmMatchStart = async () => {
-    if (!sessionId) {
-      return;
-    }
-    setLoading(true);
-    setError(null);
-    try {
-      const snap = await confirmMatchStart(sessionId);
-      setSessionSnap(snap);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to confirm match start");
-    } finally {
-      setLoading(false);
-    }
+    if (!sessionId) return;
+    setLoading(true); setError(null);
+    try { setSessionSnap(await confirmMatchStart(sessionId)); }
+    catch (e) { setError(e instanceof Error ? e.message : "Failed to confirm match start"); }
+    finally { setLoading(false); }
   };
 
+  // ---- Computed ----
+
+  const timerPercent = round ? Math.min(100, (secondsLeft / 30) * 100) : 0;
+  const timerColor = secondsLeft <= 5 ? "bg-red-500" : secondsLeft <= 10 ? "bg-amber-500" : "bg-accent";
+  const budgetPercent = Math.max(0, (budget / 10000) * 100);
+
+  const positionColors: Record<string, string> = {
+    GK: "bg-yellow-500",
+    DEF: "bg-blue-500",
+    MID: "bg-green-500",
+    FWD: "bg-red-500",
+  };
+
+  // ---- Render ----
+
   return (
-    <AuctionView title="Auction">
-      <p>Session: {sessionId}</p>
-
-      {sessionSnap?.status === "MATCH_START_PENDING" && (
-        <div
-          style={{
-            marginTop: 12,
-            marginBottom: 16,
-            padding: 16,
-            background: "#e8f4fc",
-            border: "1px solid #7eb8da",
-            borderRadius: 8,
-          }}
-        >
-          <h3 style={{ marginTop: 0 }}>Maç başlatma</h3>
-          <p style={{ margin: "8px 0" }}>
-            Her iki takım da 11 oyuncuya ulaştı. Aşağıdaki süre dolmadan ikiniz de &quot;Maçı başlat&quot; demelisiniz; aksi halde süre bitince maç yine de başlar.
-          </p>
-          <p style={{ margin: "8px 0", fontSize: 18, fontWeight: "bold" }}>
-            Kalan süre: {matchStartSecondsLeft}s
-          </p>
-          <p style={{ margin: "8px 0", fontSize: 14 }}>
-            Onaylar: {sessionSnap.matchStartReadyCount}/2
-          </p>
-          <button
-            type="button"
-            onClick={handleConfirmMatchStart}
-            disabled={loading || sessionSnap.matchStartConfirmedByMe}
-            style={{ marginTop: 8 }}
-          >
-            {sessionSnap.matchStartConfirmedByMe ? "Hazırsınız" : "Maçı başlat"}
-          </button>
-        </div>
-      )}
-
-      {(sessionSnap?.status === "AWAITING_RESULT" || sessionSnap?.status === "FINALIZING") && (
-        <p style={{ color: "#333" }}>
-          Maç simüle ediliyor… Birkaç saniye içinde sonuç sayfasına geçmeli; olmazsa sayfayı yenileyin.
-        </p>
-      )}
-
-      <button onClick={handleStartRound} disabled={loading || !auctionPhaseActive}>
-        {loading ? "Working..." : "Start Round"}
-      </button>
-
-      {round && auctionPhaseActive && (
-        <div style={{ marginTop: 12 }}>
-          <h4>Current Round</h4>
-          <p>Round: {round.roundId}</p>
-          <p>Card: {round.cardName} ({round.position})</p>
-          <p>Highest Bid (cents): {round.highestBidCents}</p>
-          <p>Time Left: {secondsLeft}s</p>
-          <p>Status: {round.status}</p>
-
-          <input
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            type="number"
-            min={1}
-            placeholder="Enter bid (cents)"
-            disabled={loading || !isMyTurn || mySquadFull}
-            style={{ marginRight: 8 }}
-          />
-          <button
-            onClick={() => {
-              const current = Number(amount);
-              const safe = Number.isFinite(current) ? current : Math.max(1, (round?.highestBidCents ?? 0) + 1);
-              setAmount(String(safe + 1));
-            }}
-            disabled={loading || !isMyTurn || mySquadFull}
-            style={{ marginRight: 8 }}
-          >
-            +1
-          </button>
-          <button
-            onClick={() => {
-              const current = Number(amount);
-              const safe = Number.isFinite(current) ? current : Math.max(1, (round?.highestBidCents ?? 0) + 1);
-              setAmount(String(safe + 5));
-            }}
-            disabled={loading || !isMyTurn || mySquadFull}
-            style={{ marginRight: 8 }}
-          >
-            +5
-          </button>
-          <button onClick={handleBid} disabled={loading || !isMyTurn || mySquadFull}>
-            Place Bid
-          </button>
-          <button
-            onClick={handlePassRound}
-            disabled={loading || !isMyTurn}
-            style={{ marginLeft: 8 }}
-          >
-            Pass (End Round)
-          </button>
-          <button
-            onClick={handleReadyNext}
-            disabled={loading || round.status !== "OPEN" || isReadyByMe || hasBidOnRound}
-            style={{ marginLeft: 8 }}
-          >
-            {isReadyByMe ? "Ready Sent" : "Ready Next"}
-          </button>
-          <p style={{ marginTop: 8, marginBottom: 0, fontSize: 13 }}>
-            Ready votes: {readyCount}/2
-          </p>
-          <p style={{ marginTop: 8, marginBottom: 0, fontSize: 13 }}>
-            {mySquadFull
-              ? "Your squad is full (11/11) — you cannot bid on new cards."
-              : isMyTurn
-                ? "Your turn to bid."
-                : "Waiting for opponent turn."}
-          </p>
-          <p style={{ marginTop: 8, marginBottom: 0, fontSize: 13 }}>
-            Rule: You can bid repeatedly, but after any winning bid you must still keep
-            at least 1 cent per remaining empty squad slot.
-          </p>
-        </div>
-      )}
-
-      {auctionPhaseActive && !round && (
-        <p style={{ marginTop: 12, color: "#555" }}>No open round — start one when both are ready.</p>
-      )}
-
-      {error && <p style={{ color: "red" }}>{error}</p>}
-      {!isConnected && <p style={{ color: "#a15c00" }}>Reconnecting live updates...</p>}
-
-      <div style={{ marginTop: 20, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-        <div style={{ background: "#f5f5f5", padding: 10 }}>
-          <h4 style={{ marginTop: 0 }}>My Team ({myTeam.length}/11)</h4>
-          {myTeam.length === 0 && <p style={{ margin: 0 }}>No players won yet.</p>}
-          {myTeam.map((card) => (
-            <p key={card.cardId} style={{ margin: "4px 0" }}>
-              {card.cardName} ({card.position}) - {card.amountCents}
-            </p>
-          ))}
-        </div>
-        <div style={{ background: "#f5f5f5", padding: 10 }}>
-          <h4 style={{ marginTop: 0 }}>Opponent Team ({opponentTeam.length}/11)</h4>
-          {opponentTeam.length === 0 && <p style={{ margin: 0 }}>No players won yet.</p>}
-          {opponentTeam.map((card) => (
-            <p key={card.cardId} style={{ margin: "4px 0" }}>
-              {card.cardName} ({card.position}) - {card.amountCents}
-            </p>
-          ))}
+    <div className="min-h-screen bg-surface">
+      {/* Top Bar */}
+      <div className="bg-surface-card border-b border-white/10 px-4 py-3">
+        <div className="max-w-7xl mx-auto flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <h1 className="text-xl font-bold text-white">Auction Draft</h1>
+            <span className="text-xs bg-surface-elevated text-slate-400 px-2 py-1 rounded">
+              {FORMATION_LABELS[myFormation]}
+            </span>
+          </div>
+          <div className="flex items-center gap-4">
+            {/* Budget */}
+            <div className="text-right">
+              <p className="text-xs text-slate-400">Budget</p>
+              <p className="text-lg font-bold text-white">{(budget / 100).toFixed(2)} <span className="text-xs text-slate-400">credits</span></p>
+            </div>
+            <div className="w-32 h-2 bg-surface-elevated rounded-full overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all duration-300 ${budgetPercent > 30 ? "bg-accent-green" : budgetPercent > 10 ? "bg-amber-500" : "bg-red-500"}`}
+                style={{ width: `${budgetPercent}%` }}
+              />
+            </div>
+          </div>
+          {!isConnected && (
+            <span className="text-amber-400 text-xs animate-pulse">Reconnecting...</span>
+          )}
         </div>
       </div>
-    </AuctionView>
+
+      {/* Match Start Pending Overlay */}
+      {sessionSnap?.status === "MATCH_START_PENDING" && (
+        <div className="bg-accent/10 border-b border-accent/30 px-4 py-4">
+          <div className="max-w-lg mx-auto text-center">
+            <h3 className="text-xl font-bold text-white mb-2">All Squads Complete!</h3>
+            <p className="text-slate-300 text-sm mb-3">
+              Both teams have 11 players. Confirm to start the match.
+            </p>
+            <div className="flex items-center justify-center gap-4 mb-3">
+              <div className="text-center">
+                <p className="text-3xl font-bold text-white">{matchStartSecondsLeft}s</p>
+                <p className="text-xs text-slate-400">remaining</p>
+              </div>
+              <div className="text-center">
+                <p className="text-3xl font-bold text-white">{sessionSnap.matchStartReadyCount}/2</p>
+                <p className="text-xs text-slate-400">confirmed</p>
+              </div>
+            </div>
+            <button
+              onClick={handleConfirmMatchStart}
+              disabled={loading || sessionSnap.matchStartConfirmedByMe}
+              className={`px-6 py-2 rounded-lg font-bold transition-colors ${
+                sessionSnap.matchStartConfirmedByMe
+                  ? "bg-accent-green/20 text-accent-green cursor-default"
+                  : "bg-accent-green hover:bg-green-600 text-white"
+              } disabled:opacity-60`}
+            >
+              {sessionSnap.matchStartConfirmedByMe ? "Ready!" : "Start Match"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Simulating */}
+      {(sessionSnap?.status === "AWAITING_RESULT" || sessionSnap?.status === "FINALIZING") && (
+        <div className="bg-surface-card border-b border-white/10 px-4 py-6 text-center">
+          <div className="animate-pulse">
+            <p className="text-xl font-bold text-white">Simulating Match...</p>
+            <p className="text-slate-400 text-sm mt-1">Results coming shortly</p>
+          </div>
+        </div>
+      )}
+
+      {/* Main 3-Column Layout */}
+      <div className="max-w-7xl mx-auto px-4 py-6">
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_340px_1fr] gap-6">
+
+          {/* LEFT: My Team Pitch */}
+          <div className="bg-surface-card rounded-xl border border-white/10 overflow-hidden">
+            <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between">
+              <h3 className="font-bold text-white">My Team</h3>
+              <span className="text-sm text-slate-400">{myTeam.length}/11</span>
+            </div>
+            <div className="p-2">
+              <TeamPitch
+                formation={myFormation}
+                cards={myTeam}
+                teamColor="#3b82f6"
+                teamBorderColor="#60a5fa"
+                highlightPosition={round?.position as Position | undefined}
+              />
+            </div>
+            {/* Card List */}
+            <div className="px-4 py-2 border-t border-white/10 max-h-40 overflow-y-auto">
+              {myTeam.length === 0 ? (
+                <p className="text-slate-500 text-sm text-center py-2">No players yet</p>
+              ) : (
+                <div className="space-y-1">
+                  {myTeam.map((c) => (
+                    <div key={c.cardId} className="flex items-center justify-between text-sm">
+                      <div className="flex items-center gap-2">
+                        <span className={`${positionColors[c.position] ?? "bg-gray-500"} text-white text-xs px-1.5 py-0.5 rounded font-bold`}>
+                          {c.position}
+                        </span>
+                        <span className="text-white">{c.cardName}</span>
+                        <span className="text-slate-500">{c.rating}</span>
+                      </div>
+                      <span className="text-slate-400">{(c.amountCents / 100).toFixed(2)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* CENTER: Auction Panel */}
+          <div className="space-y-4">
+            {/* Current Card */}
+            {round && auctionPhaseActive && (
+              <div className="bg-surface-card rounded-xl border border-white/10 p-4">
+                <div className="text-center mb-4">
+                  <span className={`${positionColors[round.position] ?? "bg-gray-500"} text-white text-xs px-2 py-1 rounded-full font-bold`}>
+                    {round.position}
+                  </span>
+                  <h2 className="text-2xl font-extrabold text-white mt-2">{round.cardName}</h2>
+                  <p className="text-4xl font-black text-card-gold mt-1">{round.cardRating ?? "?"}</p>
+                  <p className="text-xs text-slate-400 mt-1">Rating</p>
+                </div>
+
+                {/* Timer Bar */}
+                <div className="mb-4">
+                  <div className="flex justify-between text-xs text-slate-400 mb-1">
+                    <span>Time Left</span>
+                    <span className={`font-bold ${secondsLeft <= 5 ? "text-red-400" : "text-white"}`}>
+                      {secondsLeft}s
+                    </span>
+                  </div>
+                  <div className="w-full h-2 bg-surface-elevated rounded-full overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all duration-300 ${timerColor}`}
+                      style={{ width: `${timerPercent}%` }}
+                    />
+                  </div>
+                </div>
+
+                {/* Current Bid */}
+                <div className="bg-surface-elevated rounded-lg p-3 mb-4 text-center">
+                  <p className="text-xs text-slate-400">Highest Bid</p>
+                  <p className="text-2xl font-bold text-white">
+                    {round.highestBidCents > 0
+                      ? `${(round.highestBidCents / 100).toFixed(2)}`
+                      : "No bids"}
+                  </p>
+                  <p className="text-xs text-slate-400 mt-1">
+                    Status: {round.status}
+                  </p>
+                </div>
+
+                {/* Bid Controls */}
+                <div className="space-y-3">
+                  <div className="flex gap-2">
+                    <input
+                      value={amount}
+                      onChange={(e) => setAmount(e.target.value)}
+                      type="number"
+                      min={1}
+                      placeholder="Bid (cents)"
+                      disabled={loading || !isMyTurn || mySquadFull}
+                      className="flex-1 bg-surface-elevated border border-white/10 rounded-lg px-3 py-2 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-accent disabled:opacity-40"
+                    />
+                    <button
+                      onClick={() => {
+                        const current = Number(amount);
+                        const safe = Number.isFinite(current) ? current : Math.max(1, (round?.highestBidCents ?? 0) + 1);
+                        setAmount(String(safe + 1));
+                      }}
+                      disabled={loading || !isMyTurn || mySquadFull}
+                      className="bg-surface-elevated border border-white/10 text-white px-3 py-2 rounded-lg hover:bg-white/10 disabled:opacity-40 transition-colors"
+                    >
+                      +1
+                    </button>
+                    <button
+                      onClick={() => {
+                        const current = Number(amount);
+                        const safe = Number.isFinite(current) ? current : Math.max(1, (round?.highestBidCents ?? 0) + 1);
+                        setAmount(String(safe + 5));
+                      }}
+                      disabled={loading || !isMyTurn || mySquadFull}
+                      className="bg-surface-elevated border border-white/10 text-white px-3 py-2 rounded-lg hover:bg-white/10 disabled:opacity-40 transition-colors"
+                    >
+                      +5
+                    </button>
+                  </div>
+
+                  <button
+                    onClick={handleBid}
+                    disabled={loading || !isMyTurn || mySquadFull}
+                    className="w-full bg-accent hover:bg-blue-600 disabled:opacity-40 text-white font-bold py-3 rounded-lg transition-colors"
+                  >
+                    Place Bid
+                  </button>
+
+                  <div className="flex gap-2">
+                    <button
+                      onClick={handlePassRound}
+                      disabled={loading || !isMyTurn}
+                      className="flex-1 bg-red-900/30 border border-red-500/30 text-red-400 hover:bg-red-900/50 disabled:opacity-40 py-2 rounded-lg transition-colors text-sm font-medium"
+                    >
+                      Pass
+                    </button>
+                    <button
+                      onClick={handleReadyNext}
+                      disabled={loading || round.status !== "OPEN" || isReadyByMe || hasBidOnRound}
+                      className="flex-1 bg-accent-green/20 border border-accent-green/30 text-accent-green hover:bg-accent-green/30 disabled:opacity-40 py-2 rounded-lg transition-colors text-sm font-medium"
+                    >
+                      {isReadyByMe ? "Ready!" : `Ready (${readyCount}/2)`}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Turn Indicator */}
+                <div className={`mt-3 text-center text-sm font-medium py-2 rounded-lg ${
+                  mySquadFull
+                    ? "bg-accent-green/10 text-accent-green"
+                    : isMyTurn
+                      ? "bg-accent/10 text-accent"
+                      : "bg-surface-elevated text-slate-400"
+                }`}>
+                  {mySquadFull
+                    ? "Squad full (11/11)"
+                    : isMyTurn
+                      ? "Your turn to bid!"
+                      : "Waiting for opponent..."}
+                </div>
+              </div>
+            )}
+
+            {/* No Round / Start Round */}
+            {auctionPhaseActive && !round && (
+              <div className="bg-surface-card rounded-xl border border-white/10 p-6 text-center">
+                <p className="text-slate-400 mb-4">No active round</p>
+                <button
+                  onClick={handleStartRound}
+                  disabled={loading}
+                  className="bg-accent hover:bg-blue-600 disabled:opacity-50 text-white font-bold py-3 px-6 rounded-lg transition-colors"
+                >
+                  {loading ? "Starting..." : "Start Round"}
+                </button>
+              </div>
+            )}
+
+            {/* Start Round button when round exists but also available */}
+            {round && auctionPhaseActive && (
+              <button
+                onClick={handleStartRound}
+                disabled={loading}
+                className="w-full bg-surface-card border border-white/10 text-slate-300 hover:text-white hover:bg-surface-elevated disabled:opacity-50 py-2 rounded-lg transition-colors text-sm"
+              >
+                {loading ? "Starting..." : "Start Next Round"}
+              </button>
+            )}
+
+            {/* Error */}
+            {error && (
+              <div className="bg-red-900/30 border border-red-500/30 text-red-400 px-4 py-2 rounded-lg text-sm">
+                {error}
+              </div>
+            )}
+          </div>
+
+          {/* RIGHT: Opponent Team Pitch */}
+          <div className="bg-surface-card rounded-xl border border-white/10 overflow-hidden">
+            <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between">
+              <h3 className="font-bold text-white">Opponent</h3>
+              <span className="text-sm text-slate-400">{opponentTeam.length}/11</span>
+            </div>
+            <div className="p-2">
+              <TeamPitch
+                formation="FOUR_FOUR_TWO"
+                cards={opponentTeam}
+                away
+                teamColor="#ef4444"
+                teamBorderColor="#f87171"
+              />
+            </div>
+            <div className="px-4 py-2 border-t border-white/10 max-h-40 overflow-y-auto">
+              {opponentTeam.length === 0 ? (
+                <p className="text-slate-500 text-sm text-center py-2">No players yet</p>
+              ) : (
+                <div className="space-y-1">
+                  {opponentTeam.map((c) => (
+                    <div key={c.cardId} className="flex items-center justify-between text-sm">
+                      <div className="flex items-center gap-2">
+                        <span className={`${positionColors[c.position] ?? "bg-gray-500"} text-white text-xs px-1.5 py-0.5 rounded font-bold`}>
+                          {c.position}
+                        </span>
+                        <span className="text-white">{c.cardName}</span>
+                        <span className="text-slate-500">{c.rating}</span>
+                      </div>
+                      <span className="text-slate-400">{(c.amountCents / 100).toFixed(2)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
   );
 }

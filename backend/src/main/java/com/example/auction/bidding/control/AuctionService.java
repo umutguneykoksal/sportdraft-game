@@ -385,6 +385,7 @@ public class AuctionService {
                 card.getId(),
                 card.getName(),
                 card.getPosition().name(),
+                card.getRating(),
                 soldAmountByCardId.getOrDefault(card.getId(), 0L)
             ))
             .toList();
@@ -393,6 +394,7 @@ public class AuctionService {
                 card.getId(),
                 card.getName(),
                 card.getPosition().name(),
+                card.getRating(),
                 soldAmountByCardId.getOrDefault(card.getId(), 0L)
             ))
             .toList();
@@ -580,6 +582,7 @@ public class AuctionService {
             round.getCard().getId(),
             round.getCard().getName(),
             round.getCard().getPosition().name(),
+            round.getCard().getRating(),
             round.getHighestBidCents(),
             round.getHighestBidderId(),
             round.getCurrentTurnUserId(),

@@ -6,6 +6,7 @@ public record AuctionTeamCardResponse(
     UUID cardId,
     String cardName,
     String position,
+    int rating,
     long amountCents
 ) {
 }

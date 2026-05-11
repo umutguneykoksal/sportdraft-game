@@ -10,6 +10,8 @@ export type SessionStatus =
 
 export type Formation = "FOUR_FOUR_TWO" | "FOUR_THREE_THREE" | "THREE_FIVE_TWO";
 
+export type Position = "GK" | "DEF" | "MID" | "FWD";
+
 export interface SessionSnapshotResponse {
   sessionId: string;
   status: SessionStatus;
@@ -28,6 +30,7 @@ export interface AuctionRoundResponse {
   cardId: string;
   cardName: string;
   position: string;
+  cardRating: number;
   highestBidCents: number;
   highestBidderId: string | null;
   currentTurnUserId: string | null;
@@ -41,6 +44,7 @@ export interface AuctionTeamCardResponse {
   cardId: string;
   cardName: string;
   position: string;
+  rating: number;
   amountCents: number;
 }
 

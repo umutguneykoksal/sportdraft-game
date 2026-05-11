@@ -9,6 +9,7 @@ public record AuctionRoundResponse(
     UUID cardId,
     String cardName,
     String position,
+    int cardRating,
     long highestBidCents,
     UUID highestBidderId,
     UUID currentTurnUserId,

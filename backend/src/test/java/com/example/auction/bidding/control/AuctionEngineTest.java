@@ -31,6 +31,7 @@ class AuctionEngineTest {
             UUID.randomUUID(),
             "Card",
             Position.MID.name(),
+            80,
             0,
             null,
             null,
