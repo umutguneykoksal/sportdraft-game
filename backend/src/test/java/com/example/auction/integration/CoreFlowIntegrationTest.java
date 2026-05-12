@@ -81,7 +81,9 @@ class CoreFlowIntegrationTest {
         assertThat(afterFormationStart.status()).isEqualTo(SessionStatus.FORMATION_SELECT);
 
         lobbyService.selectFormation(sessionId, user1, Formation.FOUR_FOUR_TWO);
-        SessionSnapshotResponse auctioning = lobbyService.selectFormation(sessionId, user2, Formation.FOUR_THREE_THREE);
+        lobbyService.selectFormation(sessionId, user2, Formation.FOUR_THREE_THREE);
+        lobbyService.confirmFormationReady(sessionId, user1);
+        SessionSnapshotResponse auctioning = lobbyService.confirmFormationReady(sessionId, user2);
         assertThat(auctioning.status()).isEqualTo(SessionStatus.AUCTIONING);
 
         AuctionRoundResponse round = auctionService.startRound(sessionId);

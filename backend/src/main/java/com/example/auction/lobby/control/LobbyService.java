@@ -179,7 +179,7 @@ public class LobbyService {
                     sessionStore.saveIfVersionMatch(session, vBefore);
                     sseEmitterRegistry.broadcast(
                         session.getId(), "formation_phase_started",
-                        Map.of("sessionId", session.getId(), "endsAt", session.getCountdownEndsAt())
+                        Map.of("sessionId", session.getId())
                     );
                 } else {
                     session.moveToWaiting();
