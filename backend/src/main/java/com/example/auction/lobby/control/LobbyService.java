@@ -3,12 +3,10 @@ package com.example.auction.lobby.control;
 import com.example.auction.common.sse.SseEmitterRegistry;
 import com.example.auction.lobby.boundary.SessionSnapshotResponse;
 import com.example.auction.session.entity.Formation;
-import com.example.auction.session.entity.GameSession;
-import com.example.auction.session.entity.GameSessionRepository;
-import com.example.auction.session.entity.SessionPlayer;
-import com.example.auction.session.entity.SessionPlayerRepository;
 import com.example.auction.session.entity.SessionStatus;
-import jakarta.transaction.Transactional;
+import com.example.auction.session.redis.ActivePlayer;
+import com.example.auction.session.redis.ActiveSession;
+import com.example.auction.session.redis.ActiveSessionStore;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
@@ -19,180 +17,166 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
 @Service
-@Transactional
 public class LobbyService {
 
     private static final long STARTING_BUDGET_CENTS = 100L;
 
-    private final GameSessionRepository gameSessionRepository;
-    private final SessionPlayerRepository sessionPlayerRepository;
+    private final ActiveSessionStore sessionStore;
     private final SseEmitterRegistry sseEmitterRegistry;
 
-    public LobbyService(
-        GameSessionRepository gameSessionRepository,
-        SessionPlayerRepository sessionPlayerRepository,
-        SseEmitterRegistry sseEmitterRegistry
-    ) {
-        this.gameSessionRepository = gameSessionRepository;
-        this.sessionPlayerRepository = sessionPlayerRepository;
+    public LobbyService(ActiveSessionStore sessionStore, SseEmitterRegistry sseEmitterRegistry) {
+        this.sessionStore = sessionStore;
         this.sseEmitterRegistry = sseEmitterRegistry;
     }
 
     public SessionSnapshotResponse joinLobby(UUID userId) {
-        List<GameSession> waitingSessions = gameSessionRepository.lockByStatusOrderByCreatedAtAsc(SessionStatus.WAITING);
-        GameSession target = waitingSessions.stream()
-            .filter(session -> sessionPlayerRepository.countBySession_Id(session.getId()) < 2)
+        List<ActiveSession> waitingSessions = sessionStore.findWaitingSessions();
+        ActiveSession target = waitingSessions.stream()
+            .filter(s -> s.playerCount() < 2)
             .findFirst()
             .orElseGet(() -> {
-                GameSession created = new GameSession(UUID.randomUUID(), SessionStatus.WAITING, Instant.now());
-                return gameSessionRepository.save(created);
+                ActiveSession created = new ActiveSession(UUID.randomUUID(), SessionStatus.WAITING, Instant.now());
+                sessionStore.save(created);
+                return created;
             });
 
-        long existingPlayerCount = sessionPlayerRepository.countBySession_Id(target.getId());
-        if (existingPlayerCount >= 2 && !sessionPlayerRepository.existsBySession_IdAndUserId(target.getId(), userId)) {
-            GameSession created = new GameSession(UUID.randomUUID(), SessionStatus.WAITING, Instant.now());
-            target = gameSessionRepository.save(created);
+        if (target.playerCount() >= 2 && !target.hasPlayerWithUserId(userId)) {
+            target = new ActiveSession(UUID.randomUUID(), SessionStatus.WAITING, Instant.now());
+            sessionStore.save(target);
         }
 
-        if (!sessionPlayerRepository.existsBySession_IdAndUserId(target.getId(), userId)) {
-            SessionPlayer player = new SessionPlayer(
-                UUID.randomUUID(),
-                target,
-                userId,
-                Formation.FOUR_FOUR_TWO,
-                STARTING_BUDGET_CENTS
+        long versionBefore = target.getVersion();
+        if (!target.hasPlayerWithUserId(userId)) {
+            ActivePlayer player = new ActivePlayer(
+                UUID.randomUUID(), userId, Formation.FOUR_FOUR_TWO, STARTING_BUDGET_CENTS
             );
-            sessionPlayerRepository.save(player);
+            target.getPlayers().add(player);
         }
 
-        long playerCount = sessionPlayerRepository.countBySession_Id(target.getId());
-        if (playerCount == 2 && target.getStatus() == SessionStatus.WAITING) {
+        if (target.playerCount() == 2 && target.getStatus() == SessionStatus.WAITING) {
             target.moveToCountdown(Instant.now().plus(5, ChronoUnit.SECONDS));
+            sessionStore.saveIfVersionMatch(target, versionBefore);
             sseEmitterRegistry.broadcast(
                 target.getId(),
                 "countdown_started",
                 Map.of("sessionId", target.getId(), "endsAt", target.getCountdownEndsAt())
             );
+        } else {
+            sessionStore.saveIfVersionMatch(target, versionBefore);
         }
 
         sseEmitterRegistry.broadcast(
             target.getId(),
             "lobby_updated",
-            Map.of("sessionId", target.getId(), "playerCount", playerCount, "status", target.getStatus())
+            Map.of("sessionId", target.getId(), "playerCount", target.playerCount(), "status", target.getStatus())
         );
-        return snapshot(target.getId(), userId);
+        return snapshot(target, userId);
     }
 
     public SessionSnapshotResponse leaveLobby(UUID sessionId, UUID userId) {
-        GameSession session = gameSessionRepository.findById(sessionId)
-            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Session not found"));
+        ActiveSession session = sessionStore.getById(sessionId);
+        long versionBefore = session.getVersion();
 
-        SessionPlayer player = sessionPlayerRepository.findBySession_IdAndUserId(sessionId, userId)
+        ActivePlayer player = session.findPlayerByUserId(userId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Player not in session"));
 
-        sessionPlayerRepository.delete(player);
+        session.getPlayers().remove(player);
 
-        long remaining = sessionPlayerRepository.countBySession_Id(sessionId);
-        if (remaining < 2 && session.getStatus() == SessionStatus.COUNTDOWN) {
+        if (session.playerCount() < 2 && session.getStatus() == SessionStatus.COUNTDOWN) {
             session.moveToWaiting();
+            sessionStore.saveIfVersionMatch(session, versionBefore);
             sseEmitterRegistry.broadcast(
-                sessionId,
-                "countdown_cancelled",
-                Map.of("sessionId", sessionId, "remainingPlayers", remaining)
+                sessionId, "countdown_cancelled",
+                Map.of("sessionId", sessionId, "remainingPlayers", session.playerCount())
             );
+        } else {
+            sessionStore.saveIfVersionMatch(session, versionBefore);
         }
 
         sseEmitterRegistry.broadcast(
-            sessionId,
-            "lobby_updated",
-            Map.of("sessionId", sessionId, "playerCount", remaining, "status", session.getStatus())
+            sessionId, "lobby_updated",
+            Map.of("sessionId", sessionId, "playerCount", session.playerCount(), "status", session.getStatus())
         );
-        return snapshot(sessionId, userId);
+        return snapshot(session, userId);
     }
 
     public SessionSnapshotResponse selectFormation(UUID sessionId, UUID userId, Formation formation) {
-        GameSession session = gameSessionRepository.findById(sessionId)
-            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Session not found"));
+        ActiveSession session = sessionStore.getById(sessionId);
+        long versionBefore = session.getVersion();
 
         if (session.getStatus() != SessionStatus.FORMATION_SELECT) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Session is not in formation selection phase");
         }
 
-        SessionPlayer player = sessionPlayerRepository.findBySession_IdAndUserId(sessionId, userId)
+        ActivePlayer player = session.findPlayerByUserId(userId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Player not in session"));
 
         player.selectFormation(formation);
+
         sseEmitterRegistry.broadcast(
-            sessionId,
-            "formation_chosen",
+            sessionId, "formation_chosen",
             Map.of("sessionId", sessionId, "userId", userId, "formation", formation)
         );
 
-        List<SessionPlayer> players = sessionPlayerRepository.findBySession_Id(sessionId);
-        if (players.size() == 2 && players.stream().allMatch(SessionPlayer::isFormationConfirmed)) {
+        if (session.playerCount() == 2
+            && session.getPlayers().stream().allMatch(ActivePlayer::isFormationConfirmed)) {
             session.moveToAuctioning();
-            sseEmitterRegistry.broadcast(
-                sessionId,
-                "auctioning_started",
-                Map.of("sessionId", sessionId)
-            );
+            sessionStore.saveIfVersionMatch(session, versionBefore);
+            sseEmitterRegistry.broadcast(sessionId, "auctioning_started", Map.of("sessionId", sessionId));
+        } else {
+            sessionStore.saveIfVersionMatch(session, versionBefore);
         }
 
-        return snapshot(sessionId, userId);
+        return snapshot(session, userId);
     }
 
     public SessionSnapshotResponse getSnapshot(UUID sessionId, UUID userId) {
-        gameSessionRepository.findById(sessionId)
+        ActiveSession session = sessionStore.findById(sessionId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Session not found"));
-        return snapshot(sessionId, userId);
+        return snapshot(session, userId);
     }
 
     public void advanceTimedPhases() {
         Instant now = Instant.now();
 
-        List<GameSession> countdownDone = gameSessionRepository.findByStatusAndCountdownEndsAtLessThanEqual(
-            SessionStatus.COUNTDOWN,
-            now
-        );
-        for (GameSession session : countdownDone) {
-            if (sessionPlayerRepository.countBySession_Id(session.getId()) == 2) {
-                session.moveToFormationSelect(now.plus(30, ChronoUnit.SECONDS));
-                sseEmitterRegistry.broadcast(
-                    session.getId(),
-                    "formation_phase_started",
-                    Map.of("sessionId", session.getId(), "endsAt", session.getCountdownEndsAt())
-                );
-            } else {
-                session.moveToWaiting();
+        for (ActiveSession session : sessionStore.findByStatus(SessionStatus.COUNTDOWN)) {
+            if (session.getCountdownEndsAt() != null && !session.getCountdownEndsAt().isAfter(now)) {
+                long vBefore = session.getVersion();
+                if (session.playerCount() == 2) {
+                    session.moveToFormationSelect(now.plus(30, ChronoUnit.SECONDS));
+                    sessionStore.saveIfVersionMatch(session, vBefore);
+                    sseEmitterRegistry.broadcast(
+                        session.getId(), "formation_phase_started",
+                        Map.of("sessionId", session.getId(), "endsAt", session.getCountdownEndsAt())
+                    );
+                } else {
+                    session.moveToWaiting();
+                    sessionStore.saveIfVersionMatch(session, vBefore);
+                }
             }
         }
 
-        List<GameSession> formationDone = gameSessionRepository.findByStatusAndCountdownEndsAtLessThanEqual(
-            SessionStatus.FORMATION_SELECT,
-            now
-        );
-        for (GameSession session : formationDone) {
-            if (sessionPlayerRepository.countBySession_Id(session.getId()) == 2) {
-                List<SessionPlayer> players = sessionPlayerRepository.findBySession_Id(session.getId());
-                players.forEach(SessionPlayer::confirmDefaultFormationIfMissing);
-                session.moveToAuctioning();
-                sseEmitterRegistry.broadcast(
-                    session.getId(),
-                    "auctioning_started",
-                    Map.of("sessionId", session.getId())
-                );
-            } else {
-                session.moveToWaiting();
+        for (ActiveSession session : sessionStore.findByStatus(SessionStatus.FORMATION_SELECT)) {
+            if (session.getCountdownEndsAt() != null && !session.getCountdownEndsAt().isAfter(now)) {
+                long vBefore = session.getVersion();
+                if (session.playerCount() == 2) {
+                    session.getPlayers().forEach(ActivePlayer::confirmDefaultFormationIfMissing);
+                    session.moveToAuctioning();
+                    sessionStore.saveIfVersionMatch(session, vBefore);
+                    sseEmitterRegistry.broadcast(
+                        session.getId(), "auctioning_started",
+                        Map.of("sessionId", session.getId())
+                    );
+                } else {
+                    session.moveToWaiting();
+                    sessionStore.saveIfVersionMatch(session, vBefore);
+                }
             }
         }
     }
 
-    private SessionSnapshotResponse snapshot(UUID sessionId, UUID userId) {
-        GameSession session = gameSessionRepository.findById(sessionId)
-            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Session not found"));
-
-        long playerCount = sessionPlayerRepository.countBySession_Id(sessionId);
-        SessionPlayer me = sessionPlayerRepository.findBySession_IdAndUserId(sessionId, userId).orElse(null);
+    private SessionSnapshotResponse snapshot(ActiveSession session, UUID userId) {
+        ActivePlayer me = session.findPlayerByUserId(userId).orElse(null);
 
         Instant matchStartDeadlineAt = null;
         int matchStartReadyCount = 0;
@@ -208,7 +192,7 @@ public class LobbyService {
             session.getId(),
             session.getStatus(),
             session.getCountdownEndsAt(),
-            Math.toIntExact(playerCount),
+            session.playerCount(),
             me != null,
             me != null && me.isFormationConfirmed() ? me.getFormation() : null,
             matchStartDeadlineAt,

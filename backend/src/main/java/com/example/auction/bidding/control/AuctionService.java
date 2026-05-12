@@ -4,23 +4,20 @@ import com.example.auction.bidding.boundary.AuctionRoundResponse;
 import com.example.auction.bidding.boundary.AuctionStateResponse;
 import com.example.auction.bidding.boundary.AuctionTeamCardResponse;
 import com.example.auction.bidding.boundary.PlaceBidRequest;
-import com.example.auction.bidding.entity.AuctionRound;
-import com.example.auction.bidding.entity.AuctionRoundRepository;
-import com.example.auction.bidding.entity.Bid;
-import com.example.auction.bidding.entity.BidRepository;
 import com.example.auction.bidding.entity.Card;
 import com.example.auction.bidding.entity.CardRepository;
 import com.example.auction.bidding.entity.Position;
 import com.example.auction.bidding.entity.RoundStatus;
 import com.example.auction.common.sse.SseEmitterRegistry;
 import com.example.auction.session.entity.Formation;
-import com.example.auction.session.entity.GameSession;
-import com.example.auction.session.entity.GameSessionRepository;
-import com.example.auction.session.entity.SessionPlayer;
-import com.example.auction.session.entity.SessionPlayerRepository;
 import com.example.auction.session.entity.SessionStatus;
+import com.example.auction.session.redis.ActiveBid;
+import com.example.auction.session.redis.ActivePlayer;
+import com.example.auction.session.redis.ActiveRound;
+import com.example.auction.session.redis.ActiveSession;
+import com.example.auction.session.redis.ActiveSessionStore;
 import com.example.auction.simulation.control.SessionFinalizedEvent;
-import jakarta.transaction.Transactional;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Collections;
@@ -32,16 +29,15 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
-import java.util.ArrayList;
-import io.micrometer.core.instrument.MeterRegistry;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.web.server.ResponseStatusException;
 
 @Service
-@Transactional
 public class AuctionService {
 
     private static final long MIN_INCREMENT = 1L;
@@ -51,179 +47,159 @@ public class AuctionService {
     private static final long MAX_ANTI_SNIPE_SECONDS = 30L;
     private static final long ANTI_SNIPE_EXTENSION_SECONDS = 5L;
 
-    private final GameSessionRepository gameSessionRepository;
-    private final SessionPlayerRepository sessionPlayerRepository;
-    private final AuctionRoundRepository auctionRoundRepository;
+    private final ActiveSessionStore sessionStore;
     private final CardRepository cardRepository;
-    private final BidRepository bidRepository;
     private final SseEmitterRegistry sseEmitterRegistry;
     private final ApplicationEventPublisher publisher;
     private final MeterRegistry meterRegistry;
 
     public AuctionService(
-        GameSessionRepository gameSessionRepository,
-        SessionPlayerRepository sessionPlayerRepository,
-        AuctionRoundRepository auctionRoundRepository,
+        ActiveSessionStore sessionStore,
         CardRepository cardRepository,
-        BidRepository bidRepository,
         SseEmitterRegistry sseEmitterRegistry,
         ApplicationEventPublisher publisher,
         MeterRegistry meterRegistry
     ) {
-        this.gameSessionRepository = gameSessionRepository;
-        this.sessionPlayerRepository = sessionPlayerRepository;
-        this.auctionRoundRepository = auctionRoundRepository;
+        this.sessionStore = sessionStore;
         this.cardRepository = cardRepository;
-        this.bidRepository = bidRepository;
         this.sseEmitterRegistry = sseEmitterRegistry;
         this.publisher = publisher;
         this.meterRegistry = meterRegistry;
     }
 
+    // --- Card lookup (master data from PostgreSQL, cached per call) ---
+
+    private Map<UUID, Card> loadCardMap() {
+        return cardRepository.findAll().stream()
+            .collect(Collectors.toMap(Card::getId, Function.identity()));
+    }
+
+    private Card getCard(UUID cardId) {
+        return cardRepository.findById(cardId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Card not found: " + cardId));
+    }
+
+    // --- Public API ---
+
     public void confirmMatchStart(UUID sessionId, UUID userId) {
-        gameSessionRepository.findById(sessionId)
-            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Session not found"));
-        sessionPlayerRepository.findBySession_IdAndUserId(sessionId, userId)
+        ActiveSession session = sessionStore.getById(sessionId);
+        session.findPlayerByUserId(userId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Player not in session"));
 
-        GameSession session = gameSessionRepository.lockById(sessionId)
-            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Session not found"));
+        long vBefore = session.getVersion();
         if (session.getStatus() != SessionStatus.MATCH_START_PENDING) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Match start is not pending");
         }
         session.registerMatchStartReady(userId);
         if (session.areBothMatchStartReady()) {
-            finalizeSessionFromFullRostersWithSession(session);
+            finalizeSessionFromFullRosters(session, vBefore);
         } else {
+            sessionStore.saveIfVersionMatch(session, vBefore);
             sseEmitterRegistry.broadcast(
-                sessionId,
-                "match_start_ready",
-                Map.of(
-                    "sessionId", sessionId,
-                    "readyCount", session.matchStartReadyCount(),
-                    "userId", userId
-                )
+                sessionId, "match_start_ready",
+                Map.of("sessionId", sessionId, "readyCount", session.matchStartReadyCount(), "userId", userId)
             );
         }
     }
 
     public AuctionRoundResponse startRound(UUID sessionId) {
-        GameSession session = gameSessionRepository.lockById(sessionId)
-            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Session not found"));
+        ActiveSession session = sessionStore.getById(sessionId);
+        long vBefore = session.getVersion();
 
         if (session.getStatus() != SessionStatus.AUCTIONING) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Session is not auctioning");
         }
-
-        auctionRoundRepository.lockBySessionIdAndStatusOrderByStartsAtDesc(sessionId, RoundStatus.OPEN).stream()
-            .findFirst()
-            .ifPresent(round -> {
-                throw new ResponseStatusException(HttpStatus.CONFLICT, "An active round already exists");
-            });
-
-        List<SessionPlayer> players = sessionPlayerRepository.findBySession_Id(sessionId);
-        if (players.size() < 2) {
+        session.findOpenRound().ifPresent(r -> {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "An active round already exists");
+        });
+        if (session.playerCount() < 2) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Cannot start auction round without two players");
         }
-        if (isSessionRostersFull(players)) {
-            enterMatchStartPending(sessionId);
+        if (isSessionRostersFull(session)) {
+            enterMatchStartPending(session, vBefore);
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Rosters complete; confirm match start");
         }
 
-        List<Card> cards = cardRepository.findAll();
-        Set<UUID> usedCardIds = new HashSet<>(auctionRoundRepository.findUsedCardIdsBySessionId(sessionId));
-        cards.removeIf(card -> usedCardIds.contains(card.getId()));
-        if (cards.isEmpty()) {
+        Map<UUID, Card> cardMap = loadCardMap();
+        List<Card> available = new java.util.ArrayList<>(
+            cardMap.values().stream()
+                .filter(c -> !session.usedCardIds().contains(c.getId()))
+                .toList()
+        );
+        if (available.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "No cards available");
         }
-        Collections.shuffle(cards);
+        Collections.shuffle(available);
 
-        AuctionRound round = null;
-        for (Card card : cards) {
-            boolean anyEligible = players.stream().anyMatch(player -> canBidForPosition(player, card.getPosition()));
+        ActiveRound createdRound = null;
+        for (Card card : available) {
+            boolean anyEligible = session.getPlayers().stream()
+                .anyMatch(p -> canBidForPosition(p, card.getPosition(), cardMap));
             Instant now = Instant.now();
             if (!anyEligible) {
-                AuctionRound skipped = new AuctionRound(
-                    UUID.randomUUID(),
-                    session,
-                    card,
-                    now,
-                    now,
-                    null,
-                    RoundStatus.SKIPPED
+                ActiveRound skipped = new ActiveRound(
+                    UUID.randomUUID(), card.getId(), now, now, null, RoundStatus.SKIPPED
                 );
-                auctionRoundRepository.save(skipped);
+                session.getRounds().add(skipped);
                 sseEmitterRegistry.broadcast(
-                    sessionId,
-                    "round_skipped",
-                    Map.of("round", toResponse(skipped), "reason", "no_open_position_slots")
+                    sessionId, "round_skipped",
+                    Map.of("round", toResponse(skipped, card, sessionId), "reason", "no_open_position_slots")
                 );
                 continue;
             }
-            UUID openingBidderUserId = determineOpeningBidderUserId(sessionId, players);
-            round = new AuctionRound(
-                UUID.randomUUID(),
-                session,
-                card,
-                now,
-                now.plus(15, ChronoUnit.SECONDS),
-                openingBidderUserId,
-                RoundStatus.OPEN
+            UUID openingBidder = determineOpeningBidder(session, cardMap);
+            ActiveRound round = new ActiveRound(
+                UUID.randomUUID(), card.getId(), now, now.plus(15, ChronoUnit.SECONDS),
+                openingBidder, RoundStatus.OPEN
             );
-            auctionRoundRepository.save(round);
-            normalizeTurnForRound(round, sessionId);
+            session.getRounds().add(round);
+            normalizeTurnForRound(round, session, cardMap);
             if (round.getStatus() == RoundStatus.PASSED) {
                 continue;
             }
+            createdRound = round;
             break;
         }
 
-        if (round == null) {
-            boolean allFull = players.stream()
-                .allMatch(player -> sessionPlayerRepository.countCardsByPlayerId(player.getId()) >= ROSTER_SIZE);
-            if (allFull) {
-                enterMatchStartPending(sessionId);
+        if (createdRound == null) {
+            if (isSessionRostersFull(session)) {
+                enterMatchStartPending(session, vBefore);
                 throw new ResponseStatusException(HttpStatus.CONFLICT, "Rosters complete; confirm match start");
             }
             session.moveToFinalizing(session.getId().getMostSignificantBits());
-            publishSessionFinalized(session, players);
+            sessionStore.saveIfVersionMatch(session, vBefore);
+            publishSessionFinalized(session, cardMap);
             sseEmitterRegistry.broadcast(
-                sessionId,
-                "session_finalizing",
+                sessionId, "session_finalizing",
                 Map.of("sessionId", sessionId, "reason", "no_eligible_cards")
             );
             throw new ResponseStatusException(HttpStatus.CONFLICT, "No eligible cards remain, session finalizing");
         }
 
-        AuctionRoundResponse response = toResponse(round);
-        sseEmitterRegistry.broadcast(
-            sessionId,
-            "round_started",
-            Map.of("round", response)
-        );
+        sessionStore.saveIfVersionMatch(session, vBefore);
+        Card roundCard = cardMap.get(createdRound.getCardId());
+        AuctionRoundResponse response = toResponse(createdRound, roundCard, sessionId);
+        sseEmitterRegistry.broadcast(sessionId, "round_started", Map.of("round", response));
         meterRegistry.counter("auction.round.started").increment();
         return response;
     }
 
     public AuctionRoundResponse placeBid(UUID sessionId, UUID userId, String idempotencyKey, PlaceBidRequest request) {
-        AuctionRound round = auctionRoundRepository.lockById(request.roundId())
-            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Round not found"));
+        ActiveSession session = sessionStore.getById(sessionId);
+        long vBefore = session.getVersion();
 
-        if (!round.getSession().getId().equals(sessionId)) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Round does not belong to session");
-        }
-        GameSession session = gameSessionRepository.lockById(sessionId)
-            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Session not found"));
+        ActiveRound round = session.findRoundById(request.roundId())
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Round not found"));
         if (session.getStatus() != SessionStatus.AUCTIONING) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Session is not auctioning");
         }
-
-        List<SessionPlayer> players = sessionPlayerRepository.findBySession_Id(sessionId);
-        if (players.size() < 2) {
+        if (session.playerCount() < 2) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Session does not have two players");
         }
-        if (isSessionRostersFull(players)) {
-            enterMatchStartPending(sessionId);
+
+        Map<UUID, Card> cardMap = loadCardMap();
+        if (isSessionRostersFull(session)) {
+            enterMatchStartPending(session, vBefore);
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Rosters complete; confirm match start");
         }
         if (round.getStatus() != RoundStatus.OPEN) {
@@ -234,16 +210,17 @@ public class AuctionService {
         }
 
         UUID idem = parseUuid(idempotencyKey, "Invalid Idempotency-Key value");
-        if (bidRepository.existsByRoundIdAndIdempotencyKey(round.getId(), idem)) {
-            return toResponse(round);
+        Card roundCard = cardMap.get(round.getCardId());
+        if (round.hasBidWithIdempotencyKey(idem)) {
+            return toResponse(round, roundCard, sessionId);
         }
 
-        SessionPlayer bidder = sessionPlayerRepository.findBySession_IdAndUserId(sessionId, userId)
+        ActivePlayer bidder = session.findPlayerByUserId(userId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Player not found in session"));
-        if (sessionPlayerRepository.countCardsByPlayerId(bidder.getId()) >= ROSTER_SIZE) {
+        if (bidder.isRosterFull()) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "Roster is full");
         }
-        normalizeTurnForRound(round, sessionId);
+        normalizeTurnForRound(round, session, cardMap);
         if (round.getStatus() != RoundStatus.OPEN) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Round is not open");
         }
@@ -251,28 +228,23 @@ public class AuctionService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Not your turn to bid");
         }
 
-        long minimumAllowed = round.getHighestBidCents() == 0
-            ? STARTING_BID
-            : round.getHighestBidCents() + MIN_INCREMENT;
+        long minimumAllowed = round.getHighestBidCents() == 0 ? STARTING_BID : round.getHighestBidCents() + MIN_INCREMENT;
         if (request.amountCents() < minimumAllowed) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "Bid is below minimum increment");
         }
         if (request.amountCents() > bidder.getRemainingBudgetCents()) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "Insufficient budget");
         }
-        int openSlotsForCardPosition = openSlotsForPosition(bidder, round.getCard().getPosition());
-        if (openSlotsForCardPosition <= 0) {
+        if (openSlotsForPosition(bidder, roundCard.getPosition(), cardMap) <= 0) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "No open slot for this card position");
         }
-        int totalOpenSlots = totalOpenSlots(bidder);
+        int totalOpen = totalOpenSlots(bidder, cardMap);
         long remainingAfterBid = bidder.getRemainingBudgetCents() - request.amountCents();
-        long reserveRequired = Math.max(totalOpenSlots - 1, 0);
+        long reserveRequired = Math.max(totalOpen - 1, 0);
         if (remainingAfterBid < reserveRequired) {
-            throw new ResponseStatusException(
-                HttpStatus.UNPROCESSABLE_ENTITY,
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
                 "Bid violates reserve rule: keep at least %d cents for %d remaining slots"
-                    .formatted(reserveRequired, Math.max(totalOpenSlots - 1, 0))
-            );
+                    .formatted(reserveRequired, Math.max(totalOpen - 1, 0)));
         }
 
         Instant newEndsAt = round.getEndsAt();
@@ -282,16 +254,16 @@ public class AuctionService {
             newEndsAt = proposed.isAfter(capped) ? capped : proposed;
         }
 
-        UUID nextTurnUserId = otherPlayerUserId(sessionId, userId);
-        Bid bid = new Bid(UUID.randomUUID(), round, bidder, request.amountCents(), idem, Instant.now());
-        bidRepository.save(bid);
-        round.registerBid(bidder.getId(), request.amountCents(), newEndsAt, nextTurnUserId);
-        normalizeTurnForRound(round, sessionId);
+        UUID nextTurn = otherPlayerUserId(session, userId);
+        ActiveBid bid = new ActiveBid(UUID.randomUUID(), bidder.getId(), request.amountCents(), idem, Instant.now());
+        round.getBids().add(bid);
+        round.registerBid(bidder.getId(), request.amountCents(), newEndsAt, nextTurn);
+        normalizeTurnForRound(round, session, cardMap);
+        sessionStore.saveIfVersionMatch(session, vBefore);
 
-        AuctionRoundResponse response = toResponse(round);
+        AuctionRoundResponse response = toResponse(round, roundCard, sessionId);
         sseEmitterRegistry.broadcast(
-            sessionId,
-            "bid_placed",
+            sessionId, "bid_placed",
             Map.of("round", response, "userId", userId, "amountCents", request.amountCents())
         );
         meterRegistry.counter("auction.bid.placed").increment();
@@ -299,512 +271,423 @@ public class AuctionService {
     }
 
     public AuctionRoundResponse readyNext(UUID sessionId, UUID userId, UUID roundId) {
-        AuctionRound round = auctionRoundRepository.lockById(roundId)
-            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Round not found"));
-        if (!round.getSession().getId().equals(sessionId)) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Round does not belong to session");
-        }
-        sessionPlayerRepository.findBySession_IdAndUserId(sessionId, userId)
+        ActiveSession session = sessionStore.getById(sessionId);
+        long vBefore = session.getVersion();
+        Map<UUID, Card> cardMap = loadCardMap();
+
+        session.findPlayerByUserId(userId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Player not found in session"));
+
+        ActiveRound round = session.findRoundById(roundId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Round not found"));
+
         if (round.getStatus() != RoundStatus.OPEN) {
-            return auctionRoundRepository
-                .findFirstBySession_IdAndStatusOrderByStartsAtDesc(sessionId, RoundStatus.OPEN)
-                .map(this::toResponse)
+            return session.findOpenRound()
+                .map(r -> toResponse(r, cardMap.get(r.getCardId()), sessionId))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "Round is not open"));
         }
         if (round.getHighestBidderId() != null) {
-            throw new ResponseStatusException(
-                HttpStatus.CONFLICT,
-                "ready-next is only allowed when there is no bid on the round"
-            );
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "ready-next is only allowed when there is no bid on the round");
         }
 
         round.registerReady(userId);
         if (round.areBothReady()) {
-            closeRound(round);
-            return auctionRoundRepository
-                .findFirstBySession_IdAndStatusOrderByStartsAtDesc(sessionId, RoundStatus.OPEN)
-                .map(this::toResponse)
-                .orElse(toResponse(round));
+            closeRound(round, session, vBefore, cardMap);
+            return session.findOpenRound()
+                .map(r -> toResponse(r, cardMap.get(r.getCardId()), sessionId))
+                .orElse(toResponse(round, cardMap.get(round.getCardId()), sessionId));
         } else {
+            sessionStore.saveIfVersionMatch(session, vBefore);
             sseEmitterRegistry.broadcast(
-                sessionId,
-                "round_ready",
-                Map.of("round", toResponse(round), "userId", userId)
+                sessionId, "round_ready",
+                Map.of("round", toResponse(round, cardMap.get(round.getCardId()), sessionId), "userId", userId)
             );
-            return toResponse(round);
+            return toResponse(round, cardMap.get(round.getCardId()), sessionId);
         }
     }
 
     public AuctionRoundResponse passRound(UUID sessionId, UUID userId, UUID roundId) {
-        AuctionRound round = auctionRoundRepository.lockById(roundId)
-            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Round not found"));
-        if (!round.getSession().getId().equals(sessionId)) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Round does not belong to session");
-        }
-        sessionPlayerRepository.findBySession_IdAndUserId(sessionId, userId)
+        ActiveSession session = sessionStore.getById(sessionId);
+        long vBefore = session.getVersion();
+        Map<UUID, Card> cardMap = loadCardMap();
+
+        session.findPlayerByUserId(userId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Player not found in session"));
+
+        ActiveRound round = session.findRoundById(roundId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Round not found"));
+
         if (round.getStatus() != RoundStatus.OPEN) {
-            return auctionRoundRepository
-                .findFirstBySession_IdAndStatusOrderByStartsAtDesc(sessionId, RoundStatus.OPEN)
-                .map(this::toResponse)
+            return session.findOpenRound()
+                .map(r -> toResponse(r, cardMap.get(r.getCardId()), sessionId))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "Round is not open"));
         }
         if (round.getCurrentTurnUserId() != null && !round.getCurrentTurnUserId().equals(userId)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Not your turn");
         }
 
-        closeRound(round);
-        return auctionRoundRepository
-            .findFirstBySession_IdAndStatusOrderByStartsAtDesc(sessionId, RoundStatus.OPEN)
-            .map(this::toResponse)
-            .orElse(toResponse(round));
+        closeRound(round, session, vBefore, cardMap);
+        return session.findOpenRound()
+            .map(r -> toResponse(r, cardMap.get(r.getCardId()), sessionId))
+            .orElse(toResponse(round, cardMap.get(round.getCardId()), sessionId));
     }
 
     public AuctionStateResponse getAuctionState(UUID sessionId, UUID userId) {
-        List<SessionPlayer> players = sessionPlayerRepository.findBySession_Id(sessionId);
-        if (players.size() < 2) {
+        ActiveSession session = sessionStore.getById(sessionId);
+        Map<UUID, Card> cardMap = loadCardMap();
+
+        if (session.playerCount() < 2) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Session does not have two players");
         }
-        SessionPlayer me = players.stream()
-            .filter(player -> player.getUserId().equals(userId))
-            .findFirst()
+        ActivePlayer me = session.findPlayerByUserId(userId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Player not found in session"));
-        SessionPlayer opponent = players.stream()
-            .filter(player -> !player.getUserId().equals(userId))
+        ActivePlayer opponent = session.getPlayers().stream()
+            .filter(p -> !p.getUserId().equals(userId))
             .findFirst()
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Opponent not found in session"));
 
-        List<AuctionRound> soldRounds = auctionRoundRepository.findBySession_IdAndStatusOrderByStartsAtAsc(sessionId, RoundStatus.SOLD);
+        List<ActiveRound> soldRounds = session.roundsByStatus(RoundStatus.SOLD);
         Map<UUID, Long> soldAmountByCardId = new HashMap<>();
         Map<UUID, Integer> draftOrderByCardId = new HashMap<>();
         int draftIndex = 0;
-        for (AuctionRound soldRound : soldRounds) {
-            soldAmountByCardId.put(soldRound.getCard().getId(), soldRound.getHighestBidCents());
-            draftOrderByCardId.put(soldRound.getCard().getId(), draftIndex++);
+        for (ActiveRound sr : soldRounds) {
+            soldAmountByCardId.put(sr.getCardId(), sr.getHighestBidCents());
+            draftOrderByCardId.put(sr.getCardId(), draftIndex++);
         }
-        List<AuctionTeamCardResponse> myTeam = me.getCards().stream()
-            .map(card -> new AuctionTeamCardResponse(
-                card.getId(),
-                card.getName(),
-                card.getPosition().name(),
-                card.getRating(),
-                soldAmountByCardId.getOrDefault(card.getId(), 0L)
-            ))
-            .sorted(Comparator.comparingInt(c -> draftOrderByCardId.getOrDefault(c.cardId(), Integer.MAX_VALUE)))
-            .toList();
-        List<AuctionTeamCardResponse> opponentTeam = opponent.getCards().stream()
-            .map(card -> new AuctionTeamCardResponse(
-                card.getId(),
-                card.getName(),
-                card.getPosition().name(),
-                card.getRating(),
-                soldAmountByCardId.getOrDefault(card.getId(), 0L)
-            ))
-            .sorted(Comparator.comparingInt(c -> draftOrderByCardId.getOrDefault(c.cardId(), Integer.MAX_VALUE)))
-            .toList();
 
-        AuctionRoundResponse currentRound = auctionRoundRepository
-            .findFirstBySession_IdAndStatusOrderByStartsAtDesc(sessionId, RoundStatus.OPEN)
-            .map(this::toResponse)
+        List<AuctionTeamCardResponse> myTeam = buildTeamCards(me, cardMap, soldAmountByCardId, draftOrderByCardId);
+        List<AuctionTeamCardResponse> opponentTeam = buildTeamCards(opponent, cardMap, soldAmountByCardId, draftOrderByCardId);
+
+        AuctionRoundResponse currentRound = session.findOpenRound()
+            .map(r -> toResponse(r, cardMap.get(r.getCardId()), sessionId))
             .orElse(null);
 
         return new AuctionStateResponse(currentRound, myTeam, opponentTeam, opponent.getFormation().name());
     }
 
+    // --- Scheduled jobs ---
+
     @Scheduled(fixedDelay = 1000)
     public void closeExpiredRounds() {
-        List<AuctionRound> expired = auctionRoundRepository.findByStatusAndEndsAtLessThanEqual(RoundStatus.OPEN, Instant.now());
-        for (AuctionRound round : expired) {
-            closeRound(round);
+        Instant now = Instant.now();
+        Map<UUID, Card> cardMap = null;
+        for (ActiveSession session : sessionStore.findByStatus(SessionStatus.AUCTIONING)) {
+            Optional<ActiveRound> openOpt = session.findOpenRound();
+            if (openOpt.isEmpty()) continue;
+            ActiveRound round = openOpt.get();
+            if (round.getEndsAt().isAfter(now)) continue;
+            if (cardMap == null) cardMap = loadCardMap();
+            long vBefore = session.getVersion();
+            closeRound(round, session, vBefore, cardMap);
         }
     }
 
     @Scheduled(fixedDelay = 1000)
     public void normalizeOpenRounds() {
-        List<AuctionRound> openRounds = auctionRoundRepository.findByStatus(RoundStatus.OPEN);
-        for (AuctionRound round : openRounds) {
-            normalizeTurnForRound(round, round.getSession().getId());
+        Map<UUID, Card> cardMap = null;
+        for (ActiveSession session : sessionStore.findByStatus(SessionStatus.AUCTIONING)) {
+            Optional<ActiveRound> openOpt = session.findOpenRound();
+            if (openOpt.isEmpty()) continue;
+            if (cardMap == null) cardMap = loadCardMap();
+            long vBefore = session.getVersion();
+            normalizeTurnForRound(openOpt.get(), session, cardMap);
+            if (session.getVersion() == vBefore) {
+                // normalizeTurn may have changed state, save if needed
+                // Only save if round was mutated (status changed to PASSED)
+                if (openOpt.get().getStatus() != RoundStatus.OPEN) {
+                    sessionStore.saveIfVersionMatch(session, vBefore);
+                }
+            }
         }
     }
 
     @Scheduled(fixedDelay = 1000)
     public void reconcileRostersCompleteAuctions() {
-        List<GameSession> auctioning = gameSessionRepository.findByStatusOrderByCreatedAtAsc(SessionStatus.AUCTIONING);
-        for (GameSession gameSession : auctioning) {
-            UUID sessionId = gameSession.getId();
-            List<SessionPlayer> players = sessionPlayerRepository.findBySession_Id(sessionId);
-            if (players.size() < 2) {
-                continue;
-            }
-            boolean allFull = players.stream()
-                .allMatch(player -> sessionPlayerRepository.countCardsByPlayerId(player.getId()) >= ROSTER_SIZE);
-            if (allFull) {
-                enterMatchStartPending(sessionId);
+        for (ActiveSession session : sessionStore.findByStatus(SessionStatus.AUCTIONING)) {
+            if (session.playerCount() < 2) continue;
+            if (isSessionRostersFull(session)) {
+                long vBefore = session.getVersion();
+                enterMatchStartPending(session, vBefore);
             }
         }
     }
 
     @Scheduled(fixedDelay = 1000)
     public void expireMatchStartCountdowns() {
-        List<GameSession> due = gameSessionRepository.findByStatusAndMatchStartDeadlineAtLessThanEqual(
-            SessionStatus.MATCH_START_PENDING,
-            Instant.now()
-        );
-        for (GameSession pending : due) {
-            GameSession locked = gameSessionRepository.lockById(pending.getId()).orElse(null);
-            if (locked != null && locked.getStatus() == SessionStatus.MATCH_START_PENDING) {
-                finalizeSessionFromFullRostersWithSession(locked);
+        Instant now = Instant.now();
+        for (ActiveSession session : sessionStore.findByStatus(SessionStatus.MATCH_START_PENDING)) {
+            if (session.getMatchStartDeadlineAt() != null && !session.getMatchStartDeadlineAt().isAfter(now)) {
+                long vBefore = session.getVersion();
+                finalizeSessionFromFullRosters(session, vBefore);
             }
         }
     }
 
-    private void closeRound(AuctionRound round) {
-        UUID sessionId = round.getSession().getId();
-        GameSession lockedSession = gameSessionRepository.lockById(sessionId)
-            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Session not found"));
+    // --- Internal ---
 
-        AuctionRound locked = auctionRoundRepository.lockById(round.getId())
-            .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "Round not found"));
-        if (locked.getStatus() != RoundStatus.OPEN) {
+    private void closeRound(ActiveRound round, ActiveSession session, long vBefore, Map<UUID, Card> cardMap) {
+        UUID sessionId = session.getId();
+        if (round.getStatus() != RoundStatus.OPEN || session.getStatus() != SessionStatus.AUCTIONING) {
             return;
         }
-        if (lockedSession.getStatus() != SessionStatus.AUCTIONING) {
-            return;
-        }
+        Card roundCard = cardMap.get(round.getCardId());
 
-        if (locked.getHighestBidderId() == null) {
-            locked.markPassed();
+        if (round.getHighestBidderId() == null) {
+            round.markPassed();
+            sessionStore.saveIfVersionMatch(session, vBefore);
             sseEmitterRegistry.broadcast(
-                sessionId,
-                "round_ended",
-                Map.of("round", toResponse(locked), "result", "PASSED")
+                sessionId, "round_ended",
+                Map.of("round", toResponse(round, roundCard, sessionId), "result", "PASSED")
             );
-            maybeFinalizeSession(sessionId);
-            maybeStartNextRound(sessionId);
+            maybeFinalizeSession(session, cardMap);
+            maybeStartNextRound(session);
             meterRegistry.counter("auction.round.closed", "result", "PASSED").increment();
             return;
         }
 
-        SessionPlayer winner = sessionPlayerRepository.lockById(locked.getHighestBidderId())
+        ActivePlayer winner = session.getPlayers().stream()
+            .filter(p -> p.getId().equals(round.getHighestBidderId()))
+            .findFirst()
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "Winner not found"));
-        if (sessionPlayerRepository.countCardsByPlayerId(winner.getId()) >= ROSTER_SIZE) {
-            locked.markPassed();
+
+        if (winner.isRosterFull()) {
+            round.markPassed();
+            sessionStore.saveIfVersionMatch(session, vBefore);
             sseEmitterRegistry.broadcast(
-                sessionId,
-                "round_ended",
-                Map.of("round", toResponse(locked), "result", "PASSED", "reason", "winner_roster_full")
+                sessionId, "round_ended",
+                Map.of("round", toResponse(round, roundCard, sessionId), "result", "PASSED", "reason", "winner_roster_full")
             );
-            maybeFinalizeSession(sessionId);
-            maybeStartNextRound(sessionId);
+            maybeFinalizeSession(session, cardMap);
+            maybeStartNextRound(session);
             meterRegistry.counter("auction.round.closed", "result", "PASSED").increment();
             return;
         }
-        if (openSlotsForPosition(winner, locked.getCard().getPosition()) <= 0) {
-            locked.markPassed();
+        if (openSlotsForPosition(winner, roundCard.getPosition(), cardMap) <= 0) {
+            round.markPassed();
+            sessionStore.saveIfVersionMatch(session, vBefore);
             sseEmitterRegistry.broadcast(
-                sessionId,
-                "round_ended",
-                Map.of("round", toResponse(locked), "result", "PASSED", "reason", "winner_position_full")
+                sessionId, "round_ended",
+                Map.of("round", toResponse(round, roundCard, sessionId), "result", "PASSED", "reason", "winner_position_full")
             );
-            maybeFinalizeSession(sessionId);
-            maybeStartNextRound(sessionId);
+            maybeFinalizeSession(session, cardMap);
+            maybeStartNextRound(session);
             meterRegistry.counter("auction.round.closed", "result", "PASSED").increment();
             return;
         }
-        winner.spendBudget(locked.getHighestBidCents());
-        winner.addCard(locked.getCard());
-        locked.markSold();
-        sessionPlayerRepository.flush();
-        auctionRoundRepository.flush();
+
+        winner.spendBudget(round.getHighestBidCents());
+        winner.addCard(roundCard.getId());
+        round.markSold();
+        sessionStore.saveIfVersionMatch(session, vBefore);
 
         sseEmitterRegistry.broadcast(
-            sessionId,
-            "round_ended",
-            Map.of("round", toResponse(locked), "result", "SOLD", "winnerUserId", winner.getUserId())
+            sessionId, "round_ended",
+            Map.of("round", toResponse(round, roundCard, sessionId), "result", "SOLD", "winnerUserId", winner.getUserId())
         );
-        maybeFinalizeSession(sessionId);
-        maybeStartNextRound(sessionId);
+        maybeFinalizeSession(session, cardMap);
+        maybeStartNextRound(session);
         meterRegistry.counter("auction.round.closed", "result", "SOLD").increment();
     }
 
-    private void maybeStartNextRound(UUID sessionId) {
-        auctionRoundRepository.flush();
-        GameSession session = gameSessionRepository.lockById(sessionId)
-            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Session not found"));
-        if (session.getStatus() != SessionStatus.AUCTIONING) {
+    private void maybeStartNextRound(ActiveSession session) {
+        if (session.getStatus() != SessionStatus.AUCTIONING) return;
+        if (isSessionRostersFull(session)) {
+            long vBefore = session.getVersion();
+            enterMatchStartPending(session, vBefore);
             return;
         }
-        List<SessionPlayer> players = sessionPlayerRepository.findBySession_Id(sessionId);
-        if (isSessionRostersFull(players)) {
-            enterMatchStartPending(sessionId);
-            return;
-        }
-        boolean hasOpenRound = auctionRoundRepository
-            .findFirstBySession_IdAndStatusOrderByStartsAtDesc(sessionId, RoundStatus.OPEN)
-            .isPresent();
-        if (hasOpenRound) {
-            return;
-        }
-        startRound(sessionId);
+        if (session.findOpenRound().isPresent()) return;
+        startRound(session.getId());
     }
 
-    private void normalizeTurnForRound(AuctionRound round, UUID sessionId) {
-        if (round.getStatus() != RoundStatus.OPEN || round.getCurrentTurnUserId() == null) {
-            return;
-        }
+    private void normalizeTurnForRound(ActiveRound round, ActiveSession session, Map<UUID, Card> cardMap) {
+        if (round.getStatus() != RoundStatus.OPEN || round.getCurrentTurnUserId() == null) return;
+        Card roundCard = cardMap.get(round.getCardId());
         UUID currentTurnUserId = round.getCurrentTurnUserId();
-        SessionPlayer currentPlayer = sessionPlayerRepository.findBySession_IdAndUserId(sessionId, currentTurnUserId).orElse(null);
-        long minimumAllowed = round.getHighestBidCents() == 0
-            ? STARTING_BID
-            : round.getHighestBidCents() + MIN_INCREMENT;
+        ActivePlayer currentPlayer = session.findPlayerByUserId(currentTurnUserId).orElse(null);
+        long minimumAllowed = round.getHighestBidCents() == 0 ? STARTING_BID : round.getHighestBidCents() + MIN_INCREMENT;
 
-        if (currentPlayer != null && canPlayerBidRound(currentPlayer, round, minimumAllowed)) {
-            return;
-        }
+        if (currentPlayer != null && canPlayerBidRound(currentPlayer, roundCard, minimumAllowed, cardMap)) return;
 
-        UUID otherUserId = otherPlayerUserId(sessionId, currentTurnUserId);
-        SessionPlayer otherPlayer = sessionPlayerRepository.findBySession_IdAndUserId(sessionId, otherUserId).orElse(null);
-        if (otherPlayer != null && canPlayerBidRound(otherPlayer, round, minimumAllowed)) {
+        UUID otherUserId = otherPlayerUserId(session, currentTurnUserId);
+        ActivePlayer otherPlayer = session.findPlayerByUserId(otherUserId).orElse(null);
+        if (otherPlayer != null && canPlayerBidRound(otherPlayer, roundCard, minimumAllowed, cardMap)) {
             round.setCurrentTurnUserId(otherUserId);
             return;
         }
 
         round.markPassed();
         sseEmitterRegistry.broadcast(
-            sessionId,
-            "round_ended",
-            Map.of("round", toResponse(round), "result", "PASSED", "reason", "no_eligible_turn_bidder")
+            session.getId(), "round_ended",
+            Map.of("round", toResponse(round, roundCard, session.getId()), "result", "PASSED", "reason", "no_eligible_turn_bidder")
         );
-        maybeFinalizeSession(sessionId);
-        maybeStartNextRound(sessionId);
+        maybeFinalizeSession(session, cardMap);
+        maybeStartNextRound(session);
     }
 
-    private AuctionRoundResponse toResponse(AuctionRound round) {
+    private void maybeFinalizeSession(ActiveSession session, Map<UUID, Card> cardMap) {
+        if (session.getStatus() != SessionStatus.AUCTIONING) return;
+        if (session.playerCount() < 2) return;
+        if (!isSessionRostersFull(session)) return;
+        long vBefore = session.getVersion();
+        enterMatchStartPending(session, vBefore);
+    }
+
+    private void enterMatchStartPending(ActiveSession session, long vBefore) {
+        if (session.getStatus() != SessionStatus.AUCTIONING) return;
+        if (session.playerCount() < 2) return;
+        if (!isSessionRostersFull(session)) return;
+        UUID sessionId = session.getId();
+
+        session.findOpenRound().ifPresent(openRound -> {
+            openRound.markPassed();
+            Map<UUID, Card> cardMap = loadCardMap();
+            Card roundCard = cardMap.get(openRound.getCardId());
+            sseEmitterRegistry.broadcast(
+                sessionId, "round_ended",
+                Map.of("round", toResponse(openRound, roundCard, sessionId), "result", "PASSED", "reason", "both_rosters_complete")
+            );
+        });
+
+        session.moveToMatchStartPending(Instant.now().plus(MATCH_START_COUNTDOWN_SECONDS, ChronoUnit.SECONDS));
+        sessionStore.saveIfVersionMatch(session, vBefore);
+        sseEmitterRegistry.broadcast(
+            sessionId, "match_start_pending",
+            Map.of("sessionId", sessionId, "deadlineAt", session.getMatchStartDeadlineAt())
+        );
+    }
+
+    private void finalizeSessionFromFullRosters(ActiveSession session, long vBefore) {
+        if (session.getStatus() != SessionStatus.MATCH_START_PENDING) return;
+        if (session.playerCount() < 2) return;
+        if (!isSessionRostersFull(session)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Cannot finalize before both rosters are full");
+        }
+        session.moveToFinalizing(session.getId().getMostSignificantBits());
+        sessionStore.saveIfVersionMatch(session, vBefore);
+
+        Map<UUID, Card> cardMap = loadCardMap();
+        publishSessionFinalized(session, cardMap);
+        sseEmitterRegistry.broadcast(
+            session.getId(), "session_finalizing",
+            Map.of("sessionId", session.getId(), "reason", "rosters_complete", "seed", session.getMatchSeed())
+        );
+    }
+
+    private void publishSessionFinalized(ActiveSession session, Map<UUID, Card> cardMap) {
+        if (session.playerCount() < 2) return;
+        List<ActivePlayer> sorted = session.playersSortedById();
+        ActivePlayer home = sorted.get(0);
+        ActivePlayer away = sorted.get(1);
+
+        List<SessionFinalizedEvent.RatedCard> homeRoster = home.getCardIds().stream()
+            .map(cardMap::get)
+            .map(c -> new SessionFinalizedEvent.RatedCard(c.getId(), c.getPosition(), c.getRating()))
+            .toList();
+        List<SessionFinalizedEvent.RatedCard> awayRoster = away.getCardIds().stream()
+            .map(cardMap::get)
+            .map(c -> new SessionFinalizedEvent.RatedCard(c.getId(), c.getPosition(), c.getRating()))
+            .toList();
+
+        session.moveToAwaitingResult();
+        sessionStore.save(session);
+        publisher.publishEvent(new SessionFinalizedEvent(
+            UUID.randomUUID(), Instant.now(), session.getId(),
+            session.getMatchSeed() == null ? session.getId().getMostSignificantBits() : session.getMatchSeed(),
+            home.getFormation(), away.getFormation(), homeRoster, awayRoster
+        ));
+    }
+
+    // --- Helpers ---
+
+    private AuctionRoundResponse toResponse(ActiveRound round, Card card, UUID sessionId) {
         return new AuctionRoundResponse(
-            round.getId(),
-            round.getSession().getId(),
-            round.getCard().getId(),
-            round.getCard().getName(),
-            round.getCard().getPosition().name(),
-            round.getCard().getRating(),
-            round.getHighestBidCents(),
-            round.getHighestBidderId(),
-            round.getCurrentTurnUserId(),
-            round.getReadyUserOneId(),
-            round.getReadyUserTwoId(),
-            round.getEndsAt(),
-            round.getStatus().name()
+            round.getId(), sessionId,
+            card.getId(), card.getName(), card.getPosition().name(), card.getRating(),
+            round.getHighestBidCents(), round.getHighestBidderId(),
+            round.getCurrentTurnUserId(), round.getReadyUserOneId(), round.getReadyUserTwoId(),
+            round.getEndsAt(), round.getStatus().name()
         );
     }
 
-    private UUID determineOpeningBidderUserId(UUID sessionId, List<SessionPlayer> players) {
-        return auctionRoundRepository.findFirstBySession_IdOrderByStartsAtDesc(sessionId)
-            .map(previousRound -> {
-                if (previousRound.getStatus() == RoundStatus.SOLD) {
-                    SessionPlayer winner = sessionPlayerRepository.findById(previousRound.getHighestBidderId()).orElse(null);
-                    if (winner != null) {
-                        return otherPlayerUserId(sessionId, winner.getUserId());
-                    }
+    private List<AuctionTeamCardResponse> buildTeamCards(
+        ActivePlayer player, Map<UUID, Card> cardMap,
+        Map<UUID, Long> soldAmountByCardId, Map<UUID, Integer> draftOrderByCardId
+    ) {
+        return player.getCardIds().stream()
+            .map(cardMap::get)
+            .map(card -> new AuctionTeamCardResponse(
+                card.getId(), card.getName(), card.getPosition().name(), card.getRating(),
+                soldAmountByCardId.getOrDefault(card.getId(), 0L)
+            ))
+            .sorted(Comparator.comparingInt(c -> draftOrderByCardId.getOrDefault(c.cardId(), Integer.MAX_VALUE)))
+            .toList();
+    }
+
+    private UUID determineOpeningBidder(ActiveSession session, Map<UUID, Card> cardMap) {
+        return session.latestRound()
+            .map(prev -> {
+                if (prev.getStatus() == RoundStatus.SOLD) {
+                    ActivePlayer winner = session.getPlayers().stream()
+                        .filter(p -> p.getId().equals(prev.getHighestBidderId()))
+                        .findFirst().orElse(null);
+                    if (winner != null) return otherPlayerUserId(session, winner.getUserId());
                 }
-                UUID previousOpening = previousRound.getOpeningBidderUserId();
-                if (previousOpening != null) {
-                    return previousOpening;
-                }
-                return players.stream()
-                    .map(SessionPlayer::getUserId)
-                    .sorted()
-                    .findFirst()
+                UUID prevOpening = prev.getOpeningBidderUserId();
+                if (prevOpening != null) return prevOpening;
+                return session.getPlayers().stream().map(ActivePlayer::getUserId).sorted().findFirst()
                     .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "Cannot determine opening bidder"));
             })
-            .orElseGet(() -> players.stream()
-                .map(SessionPlayer::getUserId)
-                .sorted()
-                .findFirst()
+            .orElseGet(() -> session.getPlayers().stream().map(ActivePlayer::getUserId).sorted().findFirst()
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "Cannot determine opening bidder")));
     }
 
-    private UUID otherPlayerUserId(UUID sessionId, UUID currentUserId) {
-        return sessionPlayerRepository.findBySession_Id(sessionId).stream()
-            .map(SessionPlayer::getUserId)
-            .filter(userId -> !userId.equals(currentUserId))
+    private UUID otherPlayerUserId(ActiveSession session, UUID currentUserId) {
+        return session.getPlayers().stream()
+            .map(ActivePlayer::getUserId)
+            .filter(uid -> !uid.equals(currentUserId))
             .findFirst()
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "Opponent not found"));
     }
 
-    private UUID parseUuid(String raw, String message) {
-        try {
-            return UUID.fromString(raw);
-        } catch (Exception ex) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, message);
-        }
+    private boolean canBidForPosition(ActivePlayer player, Position position, Map<UUID, Card> cardMap) {
+        if (player.isRosterFull()) return false;
+        return openSlotsForPosition(player, position, cardMap) > 0 && player.getRemainingBudgetCents() >= STARTING_BID;
     }
 
-    private boolean canBidForPosition(SessionPlayer player, Position position) {
-        if (sessionPlayerRepository.countCardsByPlayerId(player.getId()) >= ROSTER_SIZE) {
-            return false;
-        }
-        return openSlotsForPosition(player, position) > 0 && player.getRemainingBudgetCents() >= STARTING_BID;
-    }
-
-    private boolean canPlayerBidRound(SessionPlayer player, AuctionRound round, long amountCents) {
-        if (sessionPlayerRepository.countCardsByPlayerId(player.getId()) >= ROSTER_SIZE) {
-            return false;
-        }
-        if (openSlotsForPosition(player, round.getCard().getPosition()) <= 0) {
-            return false;
-        }
-        if (amountCents > player.getRemainingBudgetCents()) {
-            return false;
-        }
-        int totalOpenSlots = totalOpenSlots(player);
+    private boolean canPlayerBidRound(ActivePlayer player, Card roundCard, long amountCents, Map<UUID, Card> cardMap) {
+        if (player.isRosterFull()) return false;
+        if (openSlotsForPosition(player, roundCard.getPosition(), cardMap) <= 0) return false;
+        if (amountCents > player.getRemainingBudgetCents()) return false;
+        int totalOpen = totalOpenSlots(player, cardMap);
         long remainingAfterBid = player.getRemainingBudgetCents() - amountCents;
-        long reserveRequired = Math.max(totalOpenSlots - 1, 0);
+        long reserveRequired = Math.max(totalOpen - 1, 0);
         return remainingAfterBid >= reserveRequired;
     }
 
-    private int openSlotsForPosition(SessionPlayer player, Position position) {
-        int required = formationSlotCount(player.getFormation(), position);
-        int filled = (int) sessionPlayerRepository.countCardsByPlayerIdAndPosition(player.getId(), position.name());
-        return Math.max(required - filled, 0);
+    private int openSlotsForPosition(ActivePlayer player, Position position, Map<UUID, Card> cardMap) {
+        int required = player.getFormation().slotCount(position);
+        long filled = player.getCardIds().stream()
+            .map(cardMap::get)
+            .filter(c -> c.getPosition() == position)
+            .count();
+        return Math.max(required - (int) filled, 0);
     }
 
-    private int totalOpenSlots(SessionPlayer player) {
+    private int totalOpenSlots(ActivePlayer player, Map<UUID, Card> cardMap) {
         int total = 0;
         for (Position pos : Position.values()) {
-            total += openSlotsForPosition(player, pos);
+            total += openSlotsForPosition(player, pos, cardMap);
         }
         return total;
     }
 
-    private int formationSlotCount(Formation formation, Position position) {
-        return formation.slotCount(position);
+    private boolean isSessionRostersFull(ActiveSession session) {
+        return session.getPlayers().stream().allMatch(ActivePlayer::isRosterFull);
     }
 
-    private boolean isSessionRostersFull(List<SessionPlayer> players) {
-        return players.stream()
-            .allMatch(player -> sessionPlayerRepository.countCardsByPlayerId(player.getId()) >= ROSTER_SIZE);
-    }
-
-    private void maybeFinalizeSession(UUID sessionId) {
-        GameSession session = gameSessionRepository.lockById(sessionId)
-            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Session not found"));
-        if (session.getStatus() != SessionStatus.AUCTIONING) {
-            return;
-        }
-        List<SessionPlayer> players = sessionPlayerRepository.findBySession_Id(sessionId);
-        if (players.size() < 2) {
-            return;
-        }
-
-        boolean allRostersFull = players.stream()
-            .allMatch(player -> sessionPlayerRepository.countCardsByPlayerId(player.getId()) >= ROSTER_SIZE);
-        if (!allRostersFull) {
-            return;
-        }
-
-        enterMatchStartPending(sessionId);
-    }
-
-    private void enterMatchStartPending(UUID sessionId) {
-        GameSession session = gameSessionRepository.lockById(sessionId)
-            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Session not found"));
-        if (session.getStatus() != SessionStatus.AUCTIONING) {
-            return;
-        }
-        List<SessionPlayer> players = sessionPlayerRepository.findBySession_Id(sessionId);
-        if (players.size() < 2) {
-            return;
-        }
-        boolean allFull = players.stream()
-            .allMatch(player -> sessionPlayerRepository.countCardsByPlayerId(player.getId()) >= ROSTER_SIZE);
-        if (!allFull) {
-            return;
-        }
-        Optional<AuctionRound> openRound = auctionRoundRepository.findFirstBySession_IdAndStatusOrderByStartsAtDesc(
-            sessionId,
-            RoundStatus.OPEN
-        );
-        if (openRound.isPresent()) {
-            AuctionRound lockedOpen = auctionRoundRepository.lockById(openRound.get().getId()).orElse(null);
-            if (lockedOpen != null && lockedOpen.getStatus() == RoundStatus.OPEN) {
-                lockedOpen.markPassed();
-                auctionRoundRepository.flush();
-                sseEmitterRegistry.broadcast(
-                    sessionId,
-                    "round_ended",
-                    Map.of(
-                        "round", toResponse(lockedOpen),
-                        "result", "PASSED",
-                        "reason", "both_rosters_complete"
-                    )
-                );
-            }
-        }
-        session.moveToMatchStartPending(Instant.now().plus(MATCH_START_COUNTDOWN_SECONDS, ChronoUnit.SECONDS));
-        gameSessionRepository.save(session);
-        sseEmitterRegistry.broadcast(
-            sessionId,
-            "match_start_pending",
-            Map.of(
-                "sessionId", sessionId,
-                "deadlineAt", session.getMatchStartDeadlineAt()
-            )
-        );
-    }
-
-    private void finalizeSessionFromFullRostersWithSession(GameSession session) {
-        if (session.getStatus() != SessionStatus.MATCH_START_PENDING) {
-            return;
-        }
-        UUID sessionId = session.getId();
-        List<SessionPlayer> players = sessionPlayerRepository.findBySession_Id(sessionId);
-        boolean allFull = players.stream()
-            .allMatch(player -> sessionPlayerRepository.countCardsByPlayerId(player.getId()) >= ROSTER_SIZE);
-        if (!allFull) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Cannot finalize before both rosters are full");
-        }
-        session.moveToFinalizing(session.getId().getMostSignificantBits());
-        publishSessionFinalized(session, players);
-        sseEmitterRegistry.broadcast(
-            sessionId,
-            "session_finalizing",
-            Map.of(
-                "sessionId", sessionId,
-                "reason", "rosters_complete",
-                "seed", session.getMatchSeed()
-            )
-        );
-    }
-
-    private void publishSessionFinalized(GameSession session, List<SessionPlayer> players) {
-        if (players.size() < 2) {
-            return;
-        }
-        List<SessionPlayer> sorted = players.stream()
-            .sorted(Comparator.comparing(SessionPlayer::getId))
-            .toList();
-        SessionPlayer home = sorted.get(0);
-        SessionPlayer away = sorted.get(1);
-        List<SessionFinalizedEvent.RatedCard> homeRoster = home.getCards().stream()
-            .map(card -> new SessionFinalizedEvent.RatedCard(card.getId(), card.getPosition(), card.getRating()))
-            .toList();
-        List<SessionFinalizedEvent.RatedCard> awayRoster = away.getCards().stream()
-            .map(card -> new SessionFinalizedEvent.RatedCard(card.getId(), card.getPosition(), card.getRating()))
-            .toList();
-
-        session.moveToAwaitingResult();
-        publisher.publishEvent(
-            new SessionFinalizedEvent(
-                UUID.randomUUID(),
-                Instant.now(),
-                session.getId(),
-                session.getMatchSeed() == null ? session.getId().getMostSignificantBits() : session.getMatchSeed(),
-                home.getFormation(),
-                away.getFormation(),
-                homeRoster,
-                awayRoster
-            )
-        );
+    private UUID parseUuid(String raw, String message) {
+        try { return UUID.fromString(raw); }
+        catch (Exception ex) { throw new ResponseStatusException(HttpStatus.BAD_REQUEST, message); }
     }
 }

@@ -1,6 +1,6 @@
 package com.example.auction.common.realtime;
 
-import com.example.auction.session.entity.SessionPlayerRepository;
+import com.example.auction.session.redis.ActiveSessionStore;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
@@ -9,14 +9,17 @@ import org.springframework.web.server.ResponseStatusException;
 @Component
 public class RealtimeConnectionAuthorizer {
 
-    private final SessionPlayerRepository sessionPlayerRepository;
+    private final ActiveSessionStore sessionStore;
 
-    public RealtimeConnectionAuthorizer(SessionPlayerRepository sessionPlayerRepository) {
-        this.sessionPlayerRepository = sessionPlayerRepository;
+    public RealtimeConnectionAuthorizer(ActiveSessionStore sessionStore) {
+        this.sessionStore = sessionStore;
     }
 
     public void assertSessionMembership(UUID sessionId, UUID userId) {
-        if (!sessionPlayerRepository.existsBySession_IdAndUserId(sessionId, userId)) {
+        boolean member = sessionStore.findById(sessionId)
+            .map(session -> session.hasPlayerWithUserId(userId))
+            .orElse(false);
+        if (!member) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Token is not part of this session");
         }
     }

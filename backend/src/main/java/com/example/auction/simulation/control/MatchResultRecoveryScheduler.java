@@ -1,34 +1,30 @@
 package com.example.auction.simulation.control;
 
-import com.example.auction.session.entity.GameSessionRepository;
 import com.example.auction.session.entity.SessionStatus;
+import com.example.auction.session.redis.ActiveSession;
+import com.example.auction.session.redis.ActiveSessionStore;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Transactional;
 
 @Component
 public class MatchResultRecoveryScheduler {
 
-    private final GameSessionRepository gameSessionRepository;
+    private final ActiveSessionStore sessionStore;
     private final MatchResultRecoveryService matchResultRecoveryService;
 
     public MatchResultRecoveryScheduler(
-        GameSessionRepository gameSessionRepository,
+        ActiveSessionStore sessionStore,
         MatchResultRecoveryService matchResultRecoveryService
     ) {
-        this.gameSessionRepository = gameSessionRepository;
+        this.sessionStore = sessionStore;
         this.matchResultRecoveryService = matchResultRecoveryService;
     }
 
     @Scheduled(fixedDelay = 3000)
-    @Transactional
     public void recoverMissingMatchResults() {
-        recoverByStatus(SessionStatus.FINALIZING);
-        recoverByStatus(SessionStatus.AWAITING_RESULT);
-    }
-
-    private void recoverByStatus(SessionStatus status) {
-        gameSessionRepository.findByStatusOrderByCreatedAtAsc(status)
+        sessionStore.findByStatus(SessionStatus.FINALIZING)
+            .forEach(session -> matchResultRecoveryService.recoverIfMissing(session.getId()));
+        sessionStore.findByStatus(SessionStatus.AWAITING_RESULT)
             .forEach(session -> matchResultRecoveryService.recoverIfMissing(session.getId()));
     }
 }

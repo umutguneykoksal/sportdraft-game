@@ -2,21 +2,21 @@ package com.example.auction.bidding.control;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
 import com.example.auction.bidding.boundary.PlaceBidRequest;
-import com.example.auction.bidding.entity.AuctionRound;
-import com.example.auction.bidding.entity.AuctionRoundRepository;
-import com.example.auction.bidding.entity.BidRepository;
 import com.example.auction.bidding.entity.Card;
 import com.example.auction.bidding.entity.CardRepository;
 import com.example.auction.bidding.entity.Position;
 import com.example.auction.bidding.entity.RoundStatus;
 import com.example.auction.common.sse.SseEmitterRegistry;
-import com.example.auction.session.entity.GameSession;
-import com.example.auction.session.entity.GameSessionRepository;
-import com.example.auction.session.entity.SessionPlayerRepository;
+import com.example.auction.session.entity.Formation;
 import com.example.auction.session.entity.SessionStatus;
+import com.example.auction.session.redis.ActivePlayer;
+import com.example.auction.session.redis.ActiveRound;
+import com.example.auction.session.redis.ActiveSession;
+import com.example.auction.session.redis.ActiveSessionStore;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Instant;
 import java.util.List;
@@ -35,15 +35,9 @@ import org.springframework.web.server.ResponseStatusException;
 class AuctionServiceTest {
 
     @Mock
-    private GameSessionRepository gameSessionRepository;
-    @Mock
-    private SessionPlayerRepository sessionPlayerRepository;
-    @Mock
-    private AuctionRoundRepository auctionRoundRepository;
+    private ActiveSessionStore sessionStore;
     @Mock
     private CardRepository cardRepository;
-    @Mock
-    private BidRepository bidRepository;
     @Mock
     private SseEmitterRegistry sseEmitterRegistry;
     @Mock
@@ -56,11 +50,8 @@ class AuctionServiceTest {
     @BeforeEach
     void setUp() {
         auctionService = new AuctionService(
-            gameSessionRepository,
-            sessionPlayerRepository,
-            auctionRoundRepository,
+            sessionStore,
             cardRepository,
-            bidRepository,
             sseEmitterRegistry,
             publisher,
             meterRegistry
@@ -70,21 +61,18 @@ class AuctionServiceTest {
     @Test
     void startRoundRejectsWhenOpenRoundAlreadyExists() {
         UUID sessionId = UUID.randomUUID();
-        GameSession session = new GameSession(sessionId, SessionStatus.AUCTIONING, Instant.now());
-        Card card = new Card(UUID.randomUUID(), "A", Position.CM, 70);
-        AuctionRound openRound = new AuctionRound(
-            UUID.randomUUID(),
-            session,
-            card,
-            Instant.now(),
-            Instant.now().plusSeconds(10),
-            UUID.randomUUID(),
-            RoundStatus.OPEN
-        );
+        ActiveSession session = new ActiveSession(sessionId, SessionStatus.AUCTIONING, Instant.now());
+        session.getPlayers().add(new ActivePlayer(UUID.randomUUID(), UUID.randomUUID(), Formation.FOUR_FOUR_TWO, 100));
+        session.getPlayers().add(new ActivePlayer(UUID.randomUUID(), UUID.randomUUID(), Formation.FOUR_FOUR_TWO, 100));
 
-        when(gameSessionRepository.lockById(sessionId)).thenReturn(Optional.of(session));
-        when(auctionRoundRepository.lockBySessionIdAndStatusOrderByStartsAtDesc(sessionId, RoundStatus.OPEN))
-            .thenReturn(List.of(openRound));
+        ActiveRound openRound = new ActiveRound(
+            UUID.randomUUID(), UUID.randomUUID(),
+            Instant.now(), Instant.now().plusSeconds(10),
+            UUID.randomUUID(), RoundStatus.OPEN
+        );
+        session.getRounds().add(openRound);
+
+        when(sessionStore.getById(sessionId)).thenReturn(session);
 
         assertThatThrownBy(() -> auctionService.startRound(sessionId))
             .isInstanceOf(ResponseStatusException.class)
@@ -95,25 +83,16 @@ class AuctionServiceTest {
     }
 
     @Test
-    void placeBidRejectsWhenRoundNotInSession() {
+    void startRoundRejectsWhenNotAuctioning() {
         UUID sessionId = UUID.randomUUID();
-        UUID otherSessionId = UUID.randomUUID();
-        UUID userId = UUID.randomUUID();
-        GameSession otherSession = new GameSession(otherSessionId, SessionStatus.AUCTIONING, Instant.now());
-        Card card = new Card(UUID.randomUUID(), "B", Position.DEF, 72);
-        AuctionRound round = new AuctionRound(
-            UUID.randomUUID(),
-            otherSession,
-            card,
-            Instant.now(),
-            Instant.now().plusSeconds(10),
-            userId,
-            RoundStatus.OPEN
-        );
+        ActiveSession session = new ActiveSession(sessionId, SessionStatus.WAITING, Instant.now());
+        when(sessionStore.getById(sessionId)).thenReturn(session);
 
-        when(auctionRoundRepository.lockById(round.getId())).thenReturn(Optional.of(round));
-
-        assertThatThrownBy(() -> auctionService.placeBid(sessionId, userId, UUID.randomUUID().toString(), new PlaceBidRequest(round.getId(), 10)))
-            .isInstanceOf(ResponseStatusException.class);
+        assertThatThrownBy(() -> auctionService.startRound(sessionId))
+            .isInstanceOf(ResponseStatusException.class)
+            .satisfies(ex -> {
+                ResponseStatusException rse = (ResponseStatusException) ex;
+                assertThat(rse.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+            });
     }
 }

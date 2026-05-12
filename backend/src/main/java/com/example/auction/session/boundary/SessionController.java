@@ -4,10 +4,12 @@ import com.example.auction.bidding.control.AuctionService;
 import com.example.auction.lobby.boundary.SessionSnapshotResponse;
 import com.example.auction.lobby.control.LobbyService;
 import com.example.auction.session.control.SessionAdminService;
-import com.example.auction.session.entity.SessionPlayer;
-import com.example.auction.session.entity.SessionPlayerRepository;
+import com.example.auction.session.entity.MatchHistory;
+import com.example.auction.session.entity.MatchHistoryRepository;
+import com.example.auction.session.redis.ActivePlayer;
+import com.example.auction.session.redis.ActiveSession;
+import com.example.auction.session.redis.ActiveSessionStore;
 import com.example.auction.simulation.boundary.MatchResultResponse;
-import com.example.auction.simulation.entity.MatchResultRepository;
 import com.example.auction.simulation.control.MatchResultRecoveryService;
 import jakarta.validation.Valid;
 import java.util.List;
@@ -32,23 +34,23 @@ public class SessionController {
     private final LobbyService lobbyService;
     private final SessionAdminService sessionAdminService;
     private final AuctionService auctionService;
-    private final MatchResultRepository matchResultRepository;
-    private final SessionPlayerRepository sessionPlayerRepository;
+    private final ActiveSessionStore sessionStore;
+    private final MatchHistoryRepository matchHistoryRepository;
     private final MatchResultRecoveryService matchResultRecoveryService;
 
     public SessionController(
         LobbyService lobbyService,
         SessionAdminService sessionAdminService,
         AuctionService auctionService,
-        MatchResultRepository matchResultRepository,
-        SessionPlayerRepository sessionPlayerRepository,
+        ActiveSessionStore sessionStore,
+        MatchHistoryRepository matchHistoryRepository,
         MatchResultRecoveryService matchResultRecoveryService
     ) {
         this.lobbyService = lobbyService;
         this.sessionAdminService = sessionAdminService;
         this.auctionService = auctionService;
-        this.matchResultRepository = matchResultRepository;
-        this.sessionPlayerRepository = sessionPlayerRepository;
+        this.sessionStore = sessionStore;
+        this.matchHistoryRepository = matchHistoryRepository;
         this.matchResultRecoveryService = matchResultRecoveryService;
     }
 
@@ -85,17 +87,30 @@ public class SessionController {
         @RequestHeader("Authorization") String authorization
     ) {
         UUID userId = extractUserId(authorization);
-        List<SessionPlayer> players = sessionPlayerRepository.findBySession_IdOrderByIdAsc(sessionId);
-        boolean inSession = players.stream().anyMatch(p -> p.getUserId().equals(userId));
-        if (!inSession) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Player not found in session");
+
+        // Try active Redis session first
+        ActiveSession session = sessionStore.findById(sessionId).orElse(null);
+        if (session != null) {
+            if (!session.hasPlayerWithUserId(userId)) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Player not found in session");
+            }
+            matchResultRecoveryService.recoverIfMissing(sessionId);
+            session = sessionStore.findById(sessionId).orElse(null);
+            if (session != null && session.getHomeScore() != null) {
+                List<ActivePlayer> sorted = session.playersSortedById();
+                boolean isHome = !sorted.isEmpty() && sorted.get(0).getUserId().equals(userId);
+                int myScore = isHome ? session.getHomeScore() : session.getAwayScore();
+                int oppScore = isHome ? session.getAwayScore() : session.getHomeScore();
+                return ResponseEntity.ok(new MatchResultResponse(myScore, oppScore));
+            }
         }
-        matchResultRecoveryService.recoverIfMissing(sessionId);
-        boolean isHome = players.size() >= 1 && players.get(0).getUserId().equals(userId);
-        return matchResultRepository.findBySession_Id(sessionId)
-            .map(m -> {
-                int myScore = isHome ? m.getHomeScore() : m.getAwayScore();
-                int oppScore = isHome ? m.getAwayScore() : m.getHomeScore();
+
+        // Fallback to archived match_history (session already removed from Redis)
+        return matchHistoryRepository.findBySessionId(sessionId)
+            .map(h -> {
+                boolean isHome = h.getHomeUserId().equals(userId);
+                int myScore = isHome ? h.getHomeScore() : h.getAwayScore();
+                int oppScore = isHome ? h.getAwayScore() : h.getHomeScore();
                 return ResponseEntity.ok(new MatchResultResponse(myScore, oppScore));
             })
             .orElse(ResponseEntity.notFound().build());
