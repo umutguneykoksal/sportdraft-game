@@ -6,6 +6,7 @@ import com.example.auction.session.redis.ActivePlayer;
 import com.example.auction.session.redis.ActiveSession;
 import com.example.auction.session.redis.ActiveSessionStore;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -79,11 +80,32 @@ public class SessionDisconnectCleanupScheduler {
         for (ActivePlayer p : players) {
             boolean disconnected = sseEmitterRegistry.isPlayerDisconnectedLongerThan(
                 sessionId, p.getUserId(), disconnectTimeout);
-            log.debug("Session {} player {} ({}) disconnected={}", sessionId, p.getNickname(), p.getUserId(), disconnected);
+            boolean hasEmitter = sseEmitterRegistry.hasActivePlayerEmitter(sessionId, p.getUserId());
+            log.debug("Session {} player {} ({}) disconnected={} hasEmitter={}",
+                sessionId, p.getNickname(), p.getUserId(), disconnected, hasEmitter);
             if (disconnected) {
                 disconnectedPlayer = p;
             } else {
                 connectedPlayer = p;
+            }
+        }
+
+        // Both players disconnected past threshold — pick the one who disconnected first as "forfeiter"
+        if (disconnectedPlayer != null && connectedPlayer == null && players.size() == 2) {
+            ActivePlayer first = players.get(0);
+            ActivePlayer second = players.get(1);
+            Instant firstDc = sseEmitterRegistry.getPlayerDisconnectedAt(sessionId, first.getUserId());
+            Instant secondDc = sseEmitterRegistry.getPlayerDisconnectedAt(sessionId, second.getUserId());
+            if (firstDc != null && secondDc != null) {
+                if (firstDc.isBefore(secondDc)) {
+                    disconnectedPlayer = first;
+                    connectedPlayer = second;
+                } else {
+                    disconnectedPlayer = second;
+                    connectedPlayer = first;
+                }
+                log.info("Both players disconnected in session {}, earliest disconnect: {} ({})",
+                    sessionId, disconnectedPlayer.getNickname(), disconnectedPlayer.getUserId());
             }
         }
 

@@ -17,6 +17,7 @@ public class ActiveRound {
     private UUID highestBidderId;
     private UUID openingBidderUserId;
     private UUID currentTurnUserId;
+    private Instant turnStartedAt;
     private UUID readyUserOneId;
     private UUID readyUserTwoId;
     private RoundStatus status;
@@ -34,6 +35,7 @@ public class ActiveRound {
         this.endsAt = endsAt;
         this.openingBidderUserId = openingBidderUserId;
         this.currentTurnUserId = openingBidderUserId;
+        this.turnStartedAt = startsAt;
         this.status = status;
     }
 
@@ -44,6 +46,7 @@ public class ActiveRound {
         this.highestBidCents = amountCents;
         this.endsAt = newEndsAt;
         this.currentTurnUserId = nextTurnUserId;
+        this.turnStartedAt = Instant.now();
         this.readyUserOneId = null;
         this.readyUserTwoId = null;
     }
@@ -106,7 +109,12 @@ public class ActiveRound {
     public UUID getOpeningBidderUserId() { return openingBidderUserId; }
     public void setOpeningBidderUserId(UUID openingBidderUserId) { this.openingBidderUserId = openingBidderUserId; }
     public UUID getCurrentTurnUserId() { return currentTurnUserId; }
-    public void setCurrentTurnUserId(UUID currentTurnUserId) { this.currentTurnUserId = currentTurnUserId; }
+    public void setCurrentTurnUserId(UUID currentTurnUserId) {
+        this.currentTurnUserId = currentTurnUserId;
+        this.turnStartedAt = Instant.now();
+    }
+    public Instant getTurnStartedAt() { return turnStartedAt; }
+    public void setTurnStartedAt(Instant turnStartedAt) { this.turnStartedAt = turnStartedAt; }
     public UUID getReadyUserOneId() { return readyUserOneId; }
     public void setReadyUserOneId(UUID readyUserOneId) { this.readyUserOneId = readyUserOneId; }
     public UUID getReadyUserTwoId() { return readyUserTwoId; }

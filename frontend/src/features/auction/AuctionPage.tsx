@@ -48,10 +48,12 @@ export function AuctionPage() {
   const [matchStartSecondsLeft, setMatchStartSecondsLeft] = useState<number>(0);
   const previousRoundIdRef = useRef<string | null>(null);
   const serverClockOffsetMsRef = useRef<number>(0);
-  const roundTotalSecondsRef = useRef<number>(15);
+  const roundTotalSecondsRef = useRef<number>(20);
   const syncSeqRef = useRef(0);
   const prevConnectedRef = useRef(false);
+  const [turnIsOpen, setTurnIsOpen] = useState(false);
   const isMyTurn = !!myUserId && !!round && round.currentTurnUserId === myUserId;
+  const canBid = isMyTurn || turnIsOpen;
   const mySquadFull = myTeam.length >= 11;
   const auctionPhaseActive = sessionSnap?.status === "AUCTIONING";
   const streamSessionId = sessionId && sessionSnap?.joined ? sessionId : null;
@@ -245,6 +247,23 @@ export function AuctionPage() {
     return () => clearInterval(timer);
   }, [round]);
 
+  // 6b. Track when bidding opens to both players
+  useEffect(() => {
+    if (!round || !round.turnOpenAt || isMyTurn) {
+      setTurnIsOpen(false);
+      return;
+    }
+    const check = () => {
+      const adjustedNow = Date.now() + serverClockOffsetMsRef.current;
+      return adjustedNow >= new Date(round.turnOpenAt!).getTime();
+    };
+    if (check()) { setTurnIsOpen(true); return; }
+    const timer = setInterval(() => {
+      if (check()) { setTurnIsOpen(true); clearInterval(timer); }
+    }, 250);
+    return () => clearInterval(timer);
+  }, [round, isMyTurn]);
+
   // 7. Match-start deadline countdown timer
   useEffect(() => {
     if (!sessionSnap?.matchStartDeadlineAt) { setMatchStartSecondsLeft(0); return; }
@@ -294,13 +313,23 @@ export function AuctionPage() {
   const handleBid = async () => {
     if (!round) { setError("Start a round first"); return; }
     if (myTeam.length >= 11) { setError("Your squad is full"); return; }
-    if (!isMyTurn) { setError("It is not your turn"); return; }
+    if (!canBid) { setError("It is not your turn"); return; }
     const amountCents = Number(amount);
     if (!Number.isFinite(amountCents) || amountCents <= 0) { setError("Amount must be a positive number"); return; }
     if (amountCents > budget) { setError(`Insufficient budget. Maximum bid: ${budget} cr`); return; }
     setLoading(true); setError(null);
     try { setRound(await placeBid(sessionId, round.roundId, amountCents)); }
-    catch (e) { setError(e instanceof Error ? e.message : "Failed to place bid"); }
+    catch (e) {
+      const msg = e instanceof Error ? e.message : "Failed to place bid";
+      if (msg.includes("Concurrent update") || msg.includes("409")) {
+        try {
+          const state = await getAuctionState(sessionId);
+          if (state.currentRound) setRound(state.currentRound);
+        } catch { /* SSE will sync state */ }
+      } else {
+        setError(msg);
+      }
+    }
     finally { setLoading(false); }
   };
 
@@ -478,7 +507,7 @@ export function AuctionPage() {
                 </div>
 
                 {/* Bid Controls */}
-                {isMyTurn && round.opponentCanBid === false ? (
+                {canBid && round.opponentCanBid === false ? (
                   <div className="space-y-3">
                     <div className="bg-amber-900/20 border border-amber-500/30 rounded-lg px-3 py-2 text-center">
                       <p className="text-amber-400 text-sm font-medium">Opponent can't bid on this card</p>
@@ -508,7 +537,7 @@ export function AuctionPage() {
                         min={1}
                         max={budget}
                         placeholder="Bid (cr)"
-                        disabled={loading || !isMyTurn || mySquadFull}
+                        disabled={loading || !canBid || mySquadFull}
                         className="flex-1 bg-surface-elevated border border-white/10 rounded-lg px-3 py-2 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-accent disabled:opacity-40"
                       />
                       <button
@@ -517,7 +546,7 @@ export function AuctionPage() {
                           const safe = Number.isFinite(current) ? current : Math.max(1, (round?.highestBidCents ?? 0) + 1);
                           setAmount(String(Math.min(safe + 1, budget)));
                         }}
-                        disabled={loading || !isMyTurn || mySquadFull}
+                        disabled={loading || !canBid || mySquadFull}
                         className="bg-surface-elevated border border-white/10 text-white px-3 py-2 rounded-lg hover:bg-white/10 disabled:opacity-40 transition-colors"
                       >
                         +1
@@ -528,7 +557,7 @@ export function AuctionPage() {
                           const safe = Number.isFinite(current) ? current : Math.max(1, (round?.highestBidCents ?? 0) + 1);
                           setAmount(String(Math.min(safe + 5, budget)));
                         }}
-                        disabled={loading || !isMyTurn || mySquadFull}
+                        disabled={loading || !canBid || mySquadFull}
                         className="bg-surface-elevated border border-white/10 text-white px-3 py-2 rounded-lg hover:bg-white/10 disabled:opacity-40 transition-colors"
                       >
                         +5
@@ -537,7 +566,7 @@ export function AuctionPage() {
 
                     <button
                       onClick={handleBid}
-                      disabled={loading || !isMyTurn || mySquadFull}
+                      disabled={loading || !canBid || mySquadFull}
                       className="w-full bg-accent hover:bg-blue-600 disabled:opacity-40 text-white font-bold py-3 rounded-lg transition-colors"
                     >
                       Place Bid
@@ -546,7 +575,7 @@ export function AuctionPage() {
                     {myUserId && round.highestBidderUserId === myUserId ? (
                       <button
                         onClick={handlePassRound}
-                        disabled={loading || !isMyTurn}
+                        disabled={loading || !canBid}
                         className="w-full bg-slate-700/50 border border-slate-500/30 text-slate-300 hover:bg-slate-700/70 disabled:opacity-40 py-2 rounded-lg transition-colors text-sm font-medium"
                       >
                         End Turn
@@ -554,7 +583,7 @@ export function AuctionPage() {
                     ) : (
                       <button
                         onClick={handlePassRound}
-                        disabled={loading || !isMyTurn}
+                        disabled={loading || !canBid}
                         className="w-full bg-red-900/30 border border-red-500/30 text-red-400 hover:bg-red-900/50 disabled:opacity-40 py-2 rounded-lg transition-colors text-sm font-medium"
                       >
                         Pass
@@ -567,15 +596,19 @@ export function AuctionPage() {
                 <div className={`mt-3 text-center text-sm font-medium py-2 rounded-lg transition-colors duration-300 ${
                   mySquadFull
                     ? "bg-accent-green/10 text-accent-green"
-                    : isMyTurn
-                      ? "bg-accent/10 text-accent"
-                      : "bg-surface-elevated text-slate-400"
+                    : turnIsOpen
+                      ? "bg-amber-500/10 text-amber-400"
+                      : isMyTurn
+                        ? "bg-accent/10 text-accent"
+                        : "bg-surface-elevated text-slate-400"
                 }`}>
                   {mySquadFull
                     ? "Squad full (11/11)"
-                    : isMyTurn
-                      ? "Your turn to bid!"
-                      : "Waiting for opponent..."}
+                    : turnIsOpen
+                      ? "Bidding open to both players!"
+                      : isMyTurn
+                        ? "Your turn to bid!"
+                        : "Waiting for opponent..."}
                 </div>
               </div>
             )}

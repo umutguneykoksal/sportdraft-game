@@ -44,6 +44,8 @@ public class AuctionService {
     private static final long MATCH_START_COUNTDOWN_SECONDS = 20L;
     private static final long MAX_ANTI_SNIPE_SECONDS = 30L;
     private static final long ANTI_SNIPE_EXTENSION_SECONDS = 5L;
+    private static final long ROUND_DURATION_SECONDS = 20L;
+    private static final long TURN_OPEN_AFTER_SECONDS = 10L;
 
     private final ActiveSessionStore sessionStore;
     private final CardCatalogService cardCatalog;
@@ -148,7 +150,7 @@ public class AuctionService {
             Instant now = Instant.now();
             UUID openingBidder = determineOpeningBidder(session, cardMap);
             ActiveRound round = new ActiveRound(
-                UUID.randomUUID(), card.getId(), now, now.plus(15, ChronoUnit.SECONDS),
+                UUID.randomUUID(), card.getId(), now, now.plus(ROUND_DURATION_SECONDS, ChronoUnit.SECONDS),
                 openingBidder, RoundStatus.OPEN
             );
             session.getRounds().add(round);
@@ -223,7 +225,8 @@ public class AuctionService {
         if (round.getStatus() != RoundStatus.OPEN) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Round is not open");
         }
-        if (round.getCurrentTurnUserId() != null && !round.getCurrentTurnUserId().equals(userId)) {
+        boolean turnOpen = isTurnOpen(round);
+        if (!turnOpen && round.getCurrentTurnUserId() != null && !round.getCurrentTurnUserId().equals(userId)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Not your turn to bid");
         }
 
@@ -250,7 +253,7 @@ public class AuctionService {
 
         Instant newEndsAt = round.getEndsAt();
         if (Instant.now().isAfter(round.getEndsAt().minus(ANTI_SNIPE_EXTENSION_SECONDS, ChronoUnit.SECONDS))) {
-            Instant capped = round.getStartsAt().plus(15 + MAX_ANTI_SNIPE_SECONDS, ChronoUnit.SECONDS);
+            Instant capped = round.getStartsAt().plus(ROUND_DURATION_SECONDS + MAX_ANTI_SNIPE_SECONDS, ChronoUnit.SECONDS);
             Instant proposed = round.getEndsAt().plus(ANTI_SNIPE_EXTENSION_SECONDS, ChronoUnit.SECONDS);
             newEndsAt = proposed.isAfter(capped) ? capped : proposed;
         }
@@ -333,7 +336,8 @@ public class AuctionService {
                 .map(r -> toResponse(r, cardMap.get(r.getCardId()), sessionId))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "Round is not open"));
         }
-        if (round.getCurrentTurnUserId() != null && !round.getCurrentTurnUserId().equals(userId)) {
+        boolean turnOpen = isTurnOpen(round);
+        if (!turnOpen && round.getCurrentTurnUserId() != null && !round.getCurrentTurnUserId().equals(userId)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Not your turn");
         }
 
@@ -767,12 +771,13 @@ public class AuctionService {
     }
 
     private AuctionRoundResponse toResponse(ActiveRound round, Card card, UUID sessionId) {
+        Instant turnOpenAt = computeTurnOpenAt(round);
         return new AuctionRoundResponse(
             round.getId(), sessionId,
             card.getId(), card.getName(), card.getPosition().name(), card.getRating(),
             round.getHighestBidCents(), round.getHighestBidderId(), null,
             round.getCurrentTurnUserId(), round.getReadyUserOneId(), round.getReadyUserTwoId(),
-            round.getEndsAt(), round.getStatus().name(),
+            round.getEndsAt(), turnOpenAt, round.getStatus().name(),
             true
         );
     }
@@ -788,13 +793,14 @@ public class AuctionService {
                 && !round.hasUserPassed(opponentUserId)
                 && canPlayerBidRound(opponent, card, minimumBid, cardMap);
         }
+        Instant turnOpenAt = computeTurnOpenAt(round);
         return new AuctionRoundResponse(
             round.getId(), session.getId(),
             card.getId(), card.getName(), card.getPosition().name(), card.getRating(),
             round.getHighestBidCents(), round.getHighestBidderId(),
             resolveHighestBidderUserId(round, session),
             round.getCurrentTurnUserId(), round.getReadyUserOneId(), round.getReadyUserTwoId(),
-            round.getEndsAt(), round.getStatus().name(),
+            round.getEndsAt(), turnOpenAt, round.getStatus().name(),
             opponentCanBid
         );
     }
@@ -829,6 +835,20 @@ public class AuctionService {
             })
             .orElseGet(() -> session.getPlayers().stream().map(ActivePlayer::getUserId).sorted().findFirst()
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "Cannot determine opening bidder")));
+    }
+
+    /**
+     * Returns true if the turn holder has been idle for TURN_OPEN_AFTER_SECONDS,
+     * meaning bidding is now open to both players.
+     */
+    private boolean isTurnOpen(ActiveRound round) {
+        if (round.getCurrentTurnUserId() == null || round.getTurnStartedAt() == null) return false;
+        return Instant.now().isAfter(round.getTurnStartedAt().plusSeconds(TURN_OPEN_AFTER_SECONDS));
+    }
+
+    private Instant computeTurnOpenAt(ActiveRound round) {
+        if (round.getTurnStartedAt() == null) return null;
+        return round.getTurnStartedAt().plusSeconds(TURN_OPEN_AFTER_SECONDS);
     }
 
     private UUID otherPlayerUserId(ActiveSession session, UUID currentUserId) {

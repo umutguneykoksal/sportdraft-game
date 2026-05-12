@@ -17,6 +17,7 @@ public record AuctionRoundResponse(
     UUID readyUserOneId,
     UUID readyUserTwoId,
     Instant endsAt,
+    Instant turnOpenAt,
     String status,
     boolean opponentCanBid
 ) {

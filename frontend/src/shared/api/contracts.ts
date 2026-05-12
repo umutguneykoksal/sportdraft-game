@@ -65,6 +65,7 @@ export interface AuctionRoundResponse {
   readyUserOneId: string | null;
   readyUserTwoId: string | null;
   endsAt: string;
+  turnOpenAt: string | null;
   status: string;
   opponentCanBid: boolean;
 }

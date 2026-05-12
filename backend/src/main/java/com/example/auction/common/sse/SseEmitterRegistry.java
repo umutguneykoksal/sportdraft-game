@@ -101,6 +101,16 @@ public class SseEmitterRegistry {
         playerDisconnectedAt.remove(sessionId + ":" + userId);
     }
 
+    public boolean hasActivePlayerEmitter(UUID sessionId, UUID userId) {
+        return bySession.getOrDefault(sessionId, List.of()).stream()
+            .filter(e -> !spectatorEmitters.contains(e))
+            .anyMatch(e -> userId.equals(emitterToUserId.get(e)));
+    }
+
+    public Instant getPlayerDisconnectedAt(UUID sessionId, UUID userId) {
+        return playerDisconnectedAt.get(sessionId + ":" + userId);
+    }
+
     public void broadcast(UUID sessionId, String eventType, Object payload) {
         webSocketSessionRegistry.broadcast(sessionId, eventType, payload);
         Map<String, Object> envelope = Map.of(
