@@ -20,6 +20,7 @@ export function createTransport(
   }
   return createSseTransport(sseUrl, {
     onOpen: callbacks.onOpen,
+    onClose: callbacks.onClose,
     onError: callbacks.onError,
     onMessage: callbacks.onMessage,
   });
