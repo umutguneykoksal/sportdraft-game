@@ -30,6 +30,8 @@ public class ActiveSession {
     private Integer awayScore;
     private List<ActivePlayer> players = new ArrayList<>();
     private List<ActiveRound> rounds = new ArrayList<>();
+    private List<UUID> cardPool = new ArrayList<>();
+    private int cardPoolIndex;
 
     public ActiveSession() {
     }
@@ -59,6 +61,12 @@ public class ActiveSession {
         this.matchStartDeadlineAt = null;
         this.matchStartReadyUserOneId = null;
         this.matchStartReadyUserTwoId = null;
+    }
+
+    public void moveToAuctioning(List<UUID> shuffledCardPool) {
+        moveToAuctioning();
+        this.cardPool = new ArrayList<>(shuffledCardPool);
+        this.cardPoolIndex = 0;
     }
 
     public void moveToWaiting() {
@@ -155,6 +163,14 @@ public class ActiveSession {
         return rounds.stream().map(ActiveRound::getCardId).toList();
     }
 
+    @JsonIgnore
+    public java.util.Set<UUID> soldCardIds() {
+        return rounds.stream()
+            .filter(r -> r.getStatus() == RoundStatus.SOLD)
+            .map(ActiveRound::getCardId)
+            .collect(java.util.stream.Collectors.toSet());
+    }
+
     public Optional<ActiveRound> findRoundById(UUID roundId) {
         return rounds.stream().filter(r -> r.getId().equals(roundId)).findFirst();
     }
@@ -187,4 +203,8 @@ public class ActiveSession {
     public void setPlayers(List<ActivePlayer> players) { this.players = players; }
     public List<ActiveRound> getRounds() { return rounds; }
     public void setRounds(List<ActiveRound> rounds) { this.rounds = rounds; }
+    public List<UUID> getCardPool() { return cardPool; }
+    public void setCardPool(List<UUID> cardPool) { this.cardPool = cardPool; }
+    public int getCardPoolIndex() { return cardPoolIndex; }
+    public void setCardPoolIndex(int cardPoolIndex) { this.cardPoolIndex = cardPoolIndex; }
 }

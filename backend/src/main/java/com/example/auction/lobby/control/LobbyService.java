@@ -1,5 +1,7 @@
 package com.example.auction.lobby.control;
 
+import com.example.auction.bidding.entity.Card;
+import com.example.auction.bidding.entity.CardRepository;
 import com.example.auction.common.sse.SseEmitterRegistry;
 import com.example.auction.lobby.boundary.SessionSnapshotResponse;
 import com.example.auction.session.entity.Formation;
@@ -9,6 +11,8 @@ import com.example.auction.session.redis.ActiveSession;
 import com.example.auction.session.redis.ActiveSessionStore;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -23,10 +27,13 @@ public class LobbyService {
 
     private final ActiveSessionStore sessionStore;
     private final SseEmitterRegistry sseEmitterRegistry;
+    private final CardRepository cardRepository;
 
-    public LobbyService(ActiveSessionStore sessionStore, SseEmitterRegistry sseEmitterRegistry) {
+    public LobbyService(ActiveSessionStore sessionStore, SseEmitterRegistry sseEmitterRegistry,
+                         CardRepository cardRepository) {
         this.sessionStore = sessionStore;
         this.sseEmitterRegistry = sseEmitterRegistry;
+        this.cardRepository = cardRepository;
     }
 
     public SessionSnapshotResponse joinLobby(UUID userId, String nickname) {
@@ -146,7 +153,7 @@ public class LobbyService {
         }
 
         if (session.areBothMatchStartReady()) {
-            session.moveToAuctioning();
+            session.moveToAuctioning(buildShuffledCardPool());
             sessionStore.saveIfVersionMatch(session, versionBefore);
             sseEmitterRegistry.broadcast(sessionId, "auctioning_started", Map.of("sessionId", sessionId));
         } else {
@@ -194,7 +201,7 @@ public class LobbyService {
                 long vBefore = session.getVersion();
                 if (session.playerCount() == 2) {
                     session.getPlayers().forEach(ActivePlayer::confirmDefaultFormationIfMissing);
-                    session.moveToAuctioning();
+                    session.moveToAuctioning(buildShuffledCardPool());
                     sessionStore.saveIfVersionMatch(session, vBefore);
                     sseEmitterRegistry.broadcast(
                         session.getId(), "auctioning_started",
@@ -206,6 +213,14 @@ public class LobbyService {
                 }
             }
         }
+    }
+
+    private List<UUID> buildShuffledCardPool() {
+        List<UUID> pool = new ArrayList<>(
+            cardRepository.findAll().stream().map(Card::getId).toList()
+        );
+        Collections.shuffle(pool);
+        return pool;
     }
 
     private SessionSnapshotResponse snapshot(ActiveSession session, UUID userId) {

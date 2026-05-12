@@ -121,32 +121,37 @@ public class AuctionService {
         }
 
         Map<UUID, Card> cardMap = loadCardMap();
-        List<Card> available = new java.util.ArrayList<>(
-            cardMap.values().stream()
-                .filter(c -> !session.usedCardIds().contains(c.getId()))
-                .toList()
-        );
-        if (available.isEmpty()) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "No cards available");
+        List<UUID> pool = session.getCardPool();
+        java.util.Set<UUID> sold = session.soldCardIds();
+
+        if (pool.isEmpty()) {
+            pool = new java.util.ArrayList<>(cardMap.keySet());
+            Collections.shuffle(pool);
+            session.setCardPool(pool);
+            session.setCardPoolIndex(0);
         }
-        Collections.shuffle(available);
 
         ActiveRound createdRound = null;
-        for (Card card : available) {
+        int poolSize = pool.size();
+        int checked = 0;
+        int idx = session.getCardPoolIndex();
+
+        while (checked < poolSize) {
+            if (idx >= poolSize) idx = 0;
+            UUID cardId = pool.get(idx);
+            idx++;
+            checked++;
+
+            if (sold.contains(cardId)) continue;
+
+            Card card = cardMap.get(cardId);
+            if (card == null) continue;
+
             boolean anyEligible = session.getPlayers().stream()
                 .anyMatch(p -> canBidForPosition(p, card.getPosition(), cardMap));
+            if (!anyEligible) continue;
+
             Instant now = Instant.now();
-            if (!anyEligible) {
-                ActiveRound skipped = new ActiveRound(
-                    UUID.randomUUID(), card.getId(), now, now, null, RoundStatus.SKIPPED
-                );
-                session.getRounds().add(skipped);
-                sseEmitterRegistry.broadcast(
-                    sessionId, "round_skipped",
-                    Map.of("round", toResponse(skipped, card, sessionId), "reason", "no_open_position_slots")
-                );
-                continue;
-            }
             UUID openingBidder = determineOpeningBidder(session, cardMap);
             ActiveRound round = new ActiveRound(
                 UUID.randomUUID(), card.getId(), now, now.plus(15, ChronoUnit.SECONDS),
@@ -154,10 +159,10 @@ public class AuctionService {
             );
             session.getRounds().add(round);
             normalizeTurnForRound(round, session, cardMap);
-            if (round.getStatus() == RoundStatus.PASSED) {
-                continue;
-            }
+            if (round.getStatus() != RoundStatus.OPEN) continue;
+
             createdRound = round;
+            session.setCardPoolIndex(idx);
             break;
         }
 
@@ -548,6 +553,14 @@ public class AuctionService {
 
         if (currentPlayer != null && canPlayerBidRound(currentPlayer, roundCard, minimumAllowed, cardMap)) return;
 
+        // Current turn holder can't bid. If someone already holds the highest bid,
+        // close immediately as SOLD — no need to bounce the turn back.
+        if (round.getHighestBidderId() != null) {
+            settleRoundInline(round, session, cardMap);
+            return;
+        }
+
+        // No bids yet — give the turn to the other player if they can bid
         UUID otherUserId = otherPlayerUserId(session, currentTurnUserId);
         ActivePlayer otherPlayer = session.findPlayerByUserId(otherUserId).orElse(null);
         if (otherPlayer != null && canPlayerBidRound(otherPlayer, roundCard, minimumAllowed, cardMap)) {
@@ -560,6 +573,30 @@ public class AuctionService {
             session.getId(), "round_ended",
             Map.of("round", toResponse(round, roundCard, session.getId()), "result", "PASSED", "reason", "no_eligible_turn_bidder")
         );
+        maybeFinalizeSession(session, cardMap);
+        maybeStartNextRound(session);
+    }
+
+    /** Settles a round as SOLD inline (called from normalizeTurnForRound when no counter-bid is possible). */
+    private void settleRoundInline(ActiveRound round, ActiveSession session, Map<UUID, Card> cardMap) {
+        Card roundCard = cardMap.get(round.getCardId());
+        ActivePlayer winner = session.getPlayers().stream()
+            .filter(p -> p.getId().equals(round.getHighestBidderId()))
+            .findFirst().orElse(null);
+
+        if (winner == null || winner.isRosterFull()
+                || openSlotsForPosition(winner, roundCard.getPosition(), cardMap) <= 0) {
+            round.markPassed();
+            sseEmitterRegistry.broadcast(session.getId(), "round_ended",
+                Map.of("round", toResponse(round, roundCard, session.getId()), "result", "PASSED", "reason", "winner_cannot_take"));
+        } else {
+            winner.spendBudget(round.getHighestBidCents());
+            winner.addCard(roundCard.getId());
+            round.markSold();
+            sseEmitterRegistry.broadcast(session.getId(), "round_ended",
+                Map.of("round", toResponse(round, roundCard, session.getId()), "result", "SOLD", "winnerUserId", winner.getUserId()));
+            meterRegistry.counter("auction.round.closed", "result", "SOLD").increment();
+        }
         maybeFinalizeSession(session, cardMap);
         maybeStartNextRound(session);
     }
