@@ -3,7 +3,7 @@ import { getApiBase } from "../api";
 import { createTransport } from "./transportFactory";
 import { RealtimeEnvelope } from "./types";
 
-export function useRealtimeSession(sessionId: string | null) {
+export function useRealtimeSession(sessionId: string | null, spectator = false) {
   const [events, setEvents] = useState<RealtimeEnvelope[]>([]);
   const [isConnected, setIsConnected] = useState(false);
   const reconnectTimerRef = useRef<number | null>(null);
@@ -22,8 +22,9 @@ export function useRealtimeSession(sessionId: string | null) {
     const wsBase = base.startsWith("https://")
       ? base.replace(/^https:\/\//, "wss://")
       : base.replace(/^http:\/\//, "ws://");
-    const wsUrl = `${wsBase}/ws/sessions?sessionId=${encodeURIComponent(sessionId)}&token=${encodeURIComponent(token)}`;
-    const sseUrl = `${base}/api/sessions/${encodeURIComponent(sessionId)}/events?token=${encodeURIComponent(token)}`;
+    const spectatorParam = spectator ? "&spectator=true" : "";
+    const wsUrl = `${wsBase}/ws/sessions?sessionId=${encodeURIComponent(sessionId)}&token=${encodeURIComponent(token)}${spectatorParam}`;
+    const sseUrl = `${base}/api/sessions/${encodeURIComponent(sessionId)}/events?token=${encodeURIComponent(token)}${spectatorParam}`;
 
     let closed = false;
     const preferred =

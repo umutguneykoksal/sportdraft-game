@@ -9,5 +9,9 @@ export type SseEventEnvelope = RealtimeEnvelope;
  * Token is passed as a query param because EventSource cannot set headers.
  */
 export function useSessionStream(sessionId: string | null) {
-  return useRealtimeSession(sessionId);
+  return useRealtimeSession(sessionId, false);
+}
+
+export function useSpectateStream(sessionId: string | null) {
+  return useRealtimeSession(sessionId, true);
 }

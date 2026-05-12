@@ -2,6 +2,7 @@ package com.example.auction.lobby.control;
 
 import com.example.auction.bidding.control.CardCatalogService;
 import com.example.auction.common.sse.SseEmitterRegistry;
+import com.example.auction.lobby.boundary.LobbyRoomResponse;
 import com.example.auction.lobby.boundary.SessionSnapshotResponse;
 import com.example.auction.session.entity.Formation;
 import com.example.auction.session.entity.SessionStatus;
@@ -23,6 +24,7 @@ import org.springframework.web.server.ResponseStatusException;
 public class LobbyService {
 
     private static final long STARTING_BUDGET_CENTS = 100L;
+    private static final int MAX_CONCURRENT_ROOMS = 4;
 
     private final ActiveSessionStore sessionStore;
     private final SseEmitterRegistry sseEmitterRegistry;
@@ -35,51 +37,95 @@ public class LobbyService {
         this.cardCatalog = cardCatalog;
     }
 
+    public List<LobbyRoomResponse> listRooms() {
+        List<UUID> activeIds = sessionStore.findAllActiveIds();
+        if (activeIds.isEmpty()) return List.of();
+        List<ActiveSession> sessions = sessionStore.findByStatusNot(SessionStatus.FINISHED);
+        return sessions.stream()
+            .map(s -> new LobbyRoomResponse(
+                s.getId(),
+                s.getStatus().name(),
+                s.playerCount(),
+                s.getPlayers().stream().map(ActivePlayer::getNickname).toList(),
+                s.getCreatedAt(),
+                sseEmitterRegistry.spectatorCount(s.getId())
+            ))
+            .toList();
+    }
+
+    public SessionSnapshotResponse createRoom(UUID userId, String nickname) {
+        if (sessionStore.findAllActiveIds().size() >= MAX_CONCURRENT_ROOMS) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                "Maximum %d concurrent rooms reached. Try again later.".formatted(MAX_CONCURRENT_ROOMS));
+        }
+        ActiveSession session = new ActiveSession(UUID.randomUUID(), SessionStatus.WAITING, Instant.now());
+        String safeName = sanitizeNickname(nickname, userId);
+        ActivePlayer player = new ActivePlayer(
+            UUID.randomUUID(), userId, safeName, Formation.FOUR_FOUR_TWO, STARTING_BUDGET_CENTS
+        );
+        session.getPlayers().add(player);
+        sessionStore.save(session);
+        return snapshot(session, userId);
+    }
+
+    public SessionSnapshotResponse joinRoom(UUID sessionId, UUID userId, String nickname) {
+        ActiveSession session = sessionStore.getById(sessionId);
+        if (session.getStatus() != SessionStatus.WAITING) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Room is no longer accepting players");
+        }
+        if (session.hasPlayerWithUserId(userId)) {
+            return snapshot(session, userId);
+        }
+        if (session.playerCount() >= 2) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Room is full");
+        }
+
+        long versionBefore = session.getVersion();
+        String safeName = sanitizeNickname(nickname, userId);
+        ActivePlayer player = new ActivePlayer(
+            UUID.randomUUID(), userId, safeName, Formation.FOUR_FOUR_TWO, STARTING_BUDGET_CENTS
+        );
+        session.getPlayers().add(player);
+
+        if (session.playerCount() == 2) {
+            session.moveToCountdown(Instant.now().plus(5, ChronoUnit.SECONDS));
+            sessionStore.saveIfVersionMatch(session, versionBefore);
+            sseEmitterRegistry.broadcast(
+                sessionId, "countdown_started",
+                Map.of("sessionId", sessionId, "endsAt", session.getCountdownEndsAt())
+            );
+        } else {
+            sessionStore.saveIfVersionMatch(session, versionBefore);
+        }
+
+        sseEmitterRegistry.broadcast(
+            sessionId, "lobby_updated",
+            Map.of("sessionId", sessionId, "playerCount", session.playerCount(), "status", session.getStatus())
+        );
+        return snapshot(session, userId);
+    }
+
+    /**
+     * @deprecated Use {@link #createRoom} + {@link #joinRoom} instead.
+     */
+    @Deprecated
     public SessionSnapshotResponse joinLobby(UUID userId, String nickname) {
         List<ActiveSession> waitingSessions = sessionStore.findWaitingSessions();
         ActiveSession target = waitingSessions.stream()
             .filter(s -> s.playerCount() < 2)
             .findFirst()
-            .orElseGet(() -> {
-                ActiveSession created = new ActiveSession(UUID.randomUUID(), SessionStatus.WAITING, Instant.now());
-                sessionStore.save(created);
-                return created;
-            });
-
-        if (target.playerCount() >= 2 && !target.hasPlayerWithUserId(userId)) {
-            target = new ActiveSession(UUID.randomUUID(), SessionStatus.WAITING, Instant.now());
-            sessionStore.save(target);
+            .orElse(null);
+        if (target != null) {
+            return joinRoom(target.getId(), userId, nickname);
         }
+        return createRoom(userId, nickname);
+    }
 
-        long versionBefore = target.getVersion();
-        if (!target.hasPlayerWithUserId(userId)) {
-            String safeName = (nickname != null && !nickname.isBlank())
-                ? nickname.strip().substring(0, Math.min(nickname.strip().length(), 20))
-                : "Player-" + userId.toString().substring(0, 6);
-            ActivePlayer player = new ActivePlayer(
-                UUID.randomUUID(), userId, safeName, Formation.FOUR_FOUR_TWO, STARTING_BUDGET_CENTS
-            );
-            target.getPlayers().add(player);
+    private String sanitizeNickname(String nickname, UUID userId) {
+        if (nickname != null && !nickname.isBlank()) {
+            return nickname.strip().substring(0, Math.min(nickname.strip().length(), 20));
         }
-
-        if (target.playerCount() == 2 && target.getStatus() == SessionStatus.WAITING) {
-            target.moveToCountdown(Instant.now().plus(5, ChronoUnit.SECONDS));
-            sessionStore.saveIfVersionMatch(target, versionBefore);
-            sseEmitterRegistry.broadcast(
-                target.getId(),
-                "countdown_started",
-                Map.of("sessionId", target.getId(), "endsAt", target.getCountdownEndsAt())
-            );
-        } else {
-            sessionStore.saveIfVersionMatch(target, versionBefore);
-        }
-
-        sseEmitterRegistry.broadcast(
-            target.getId(),
-            "lobby_updated",
-            Map.of("sessionId", target.getId(), "playerCount", target.playerCount(), "status", target.getStatus())
-        );
-        return snapshot(target, userId);
+        return "Player-" + userId.toString().substring(0, 6);
     }
 
     public SessionSnapshotResponse leaveLobby(UUID sessionId, UUID userId) {

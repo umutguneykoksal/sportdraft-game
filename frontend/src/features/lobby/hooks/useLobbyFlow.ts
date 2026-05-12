@@ -1,11 +1,14 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Formation,
+  LobbyRoomResponse,
   SessionSnapshotResponse,
   getSessionSnapshot,
-  joinLobby,
+  createRoom,
+  joinRoom,
   leaveLobby,
+  listLobbies,
   selectFormation,
   confirmFormationReady,
 } from "../../../shared/api";
@@ -18,9 +21,12 @@ import {
 import { useSessionStream } from "../../../shared/sse";
 import { ALL_FORMATIONS } from "../../../shared/formations";
 
+const LOBBY_POLL_INTERVAL_MS = 3000;
+
 export function useLobbyFlow() {
   const navigate = useNavigate();
   const [snapshot, setSnapshot] = useState<SessionSnapshotResponse | null>(null);
+  const [rooms, setRooms] = useState<LobbyRoomResponse[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [countdownSecondsLeft, setCountdownSecondsLeft] = useState<number | null>(null);
@@ -33,9 +39,7 @@ export function useLobbyFlow() {
   const sessionIdRef = useRef(sessionId);
   sessionIdRef.current = sessionId;
 
-  // ---- Effects ----
-
-  // 1. Restore session on mount (dissolve if no formation was selected)
+  // 1. Restore session on mount
   useEffect(() => {
     if (restoredRef.current || snapshot) return;
     restoredRef.current = true;
@@ -82,7 +86,7 @@ export function useLobbyFlow() {
     }
   }, [snapshot, navigate]);
 
-  // 4. SSE reconnection catch-up (skips initial connect, only fires on re-connect)
+  // 4. SSE reconnection catch-up
   useEffect(() => {
     const wasConnected = prevConnectedRef.current;
     prevConnectedRef.current = isConnected;
@@ -91,7 +95,7 @@ export function useLobbyFlow() {
     getSessionSnapshot(sid).then(setSnapshot).catch(() => {});
   }, [isConnected]);
 
-  // 5. SSE event handler (real-time lobby updates)
+  // 5. SSE event handler
   useEffect(() => {
     if (events.length === 0) return;
     const idx = events.length - 1;
@@ -124,25 +128,51 @@ export function useLobbyFlow() {
     return () => clearInterval(timer);
   }, [snapshot?.countdownEndsAt]);
 
-  // ---- Handlers ----
+  // 7. Lobby list polling (only when not in a session)
+  useEffect(() => {
+    if (snapshot) return;
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const list = await listLobbies();
+        if (!cancelled) setRooms(list);
+      } catch { /* swallow */ }
+    };
+    poll();
+    const interval = setInterval(poll, LOBBY_POLL_INTERVAL_MS);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, [snapshot]);
 
-  const handleJoin = async () => {
+  // --- Handlers ---
+
+  const handleCreateRoom = useCallback(async () => {
     const fresh = getOrCreateClientSession();
     setLoading(true);
     setError(null);
     try {
-      setSnapshot(await joinLobby(fresh.nickname));
+      setSnapshot(await createRoom(fresh.nickname));
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to join lobby");
+      setError(e instanceof Error ? e.message : "Failed to create room");
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const handleLeave = async () => {
-    if (!snapshot) {
-      return;
+  const handleJoinRoom = useCallback(async (roomSessionId: string) => {
+    const fresh = getOrCreateClientSession();
+    setLoading(true);
+    setError(null);
+    try {
+      setSnapshot(await joinRoom(roomSessionId, fresh.nickname));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to join room");
+    } finally {
+      setLoading(false);
     }
+  }, []);
+
+  const handleLeave = useCallback(async () => {
+    if (!snapshot) return;
     setLoading(true);
     setError(null);
     try {
@@ -150,15 +180,16 @@ export function useLobbyFlow() {
       setSnapshot(response);
       if (!response.joined) {
         clearActiveSessionId();
+        setSnapshot(null);
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to leave lobby");
     } finally {
       setLoading(false);
     }
-  };
+  }, [snapshot]);
 
-  const handleStartAuction = async () => {
+  const handleStartAuction = useCallback(async () => {
     if (!snapshot) return;
     setLoading(true);
     setError(null);
@@ -169,12 +200,10 @@ export function useLobbyFlow() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [snapshot]);
 
-  const chooseFormation = async (formation: Formation) => {
-    if (!snapshot || loading || snapshot.myFormation === formation) {
-      return;
-    }
+  const chooseFormation = useCallback(async (formation: Formation) => {
+    if (!snapshot || loading || snapshot.myFormation === formation) return;
     setLoading(true);
     setError(null);
     try {
@@ -184,17 +213,19 @@ export function useLobbyFlow() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [snapshot, loading]);
 
   return {
     session,
     snapshot,
+    rooms,
     loading,
     error,
     isConnected,
     countdownSecondsLeft,
     formations: ALL_FORMATIONS,
-    handleJoin,
+    handleCreateRoom,
+    handleJoinRoom,
     handleLeave,
     handleStartAuction,
     chooseFormation,

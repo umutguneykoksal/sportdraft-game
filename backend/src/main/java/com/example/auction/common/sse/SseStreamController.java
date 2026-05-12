@@ -22,9 +22,13 @@ public class SseStreamController {
     }
 
     @GetMapping(value = "/{sessionId}/events", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public SseEmitter stream(@PathVariable UUID sessionId, @RequestParam("token") String token) {
+    public SseEmitter stream(
+        @PathVariable UUID sessionId,
+        @RequestParam("token") String token,
+        @RequestParam(value = "spectator", required = false, defaultValue = "false") boolean spectator
+    ) {
         validateToken(token);
-        return sseEmitterRegistry.register(sessionId);
+        return sseEmitterRegistry.register(sessionId, spectator);
     }
 
     private void validateToken(String token) {

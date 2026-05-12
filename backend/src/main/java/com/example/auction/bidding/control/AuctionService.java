@@ -445,6 +445,59 @@ public class AuctionService {
         String opponentFormation
     ) {}
 
+    public SpectateSnapshot buildSpectateSnapshot(ActiveSession session) {
+        Map<UUID, Card> cardMap = loadCardMap();
+        List<ActivePlayer> sorted = session.playersSortedById();
+        if (sorted.size() < 2) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Session does not have two players");
+        }
+        ActivePlayer home = sorted.get(0);
+        ActivePlayer away = sorted.get(1);
+
+        List<ActiveRound> soldRounds = session.roundsByStatus(RoundStatus.SOLD);
+        Map<UUID, Long> soldAmountByCardId = new HashMap<>();
+        Map<UUID, Integer> draftOrderByCardId = new HashMap<>();
+        int draftIndex = 0;
+        for (ActiveRound sr : soldRounds) {
+            soldAmountByCardId.put(sr.getCardId(), sr.getHighestBidCents());
+            draftOrderByCardId.put(sr.getCardId(), draftIndex++);
+        }
+
+        AuctionRoundResponse currentRound = session.findOpenRound()
+            .map(r -> toResponseWithContext(r, cardMap.get(r.getCardId()), session, cardMap))
+            .orElse(null);
+
+        return new SpectateSnapshot(
+            session.getStatus().name(),
+            currentRound,
+            buildTeamCards(home, cardMap, soldAmountByCardId, draftOrderByCardId),
+            buildTeamCards(away, cardMap, soldAmountByCardId, draftOrderByCardId),
+            home.getFormation().name(),
+            away.getFormation().name(),
+            home.getNickname(),
+            away.getNickname(),
+            home.getRemainingBudgetCents(),
+            away.getRemainingBudgetCents(),
+            session.getHomeScore() != null ? session.getHomeScore() : 0,
+            session.getAwayScore() != null ? session.getAwayScore() : 0
+        );
+    }
+
+    public record SpectateSnapshot(
+        String status,
+        AuctionRoundResponse currentRound,
+        List<AuctionTeamCardResponse> homeTeam,
+        List<AuctionTeamCardResponse> awayTeam,
+        String homeFormation,
+        String awayFormation,
+        String homeNickname,
+        String awayNickname,
+        long homeBudget,
+        long awayBudget,
+        int homeScore,
+        int awayScore
+    ) {}
+
     // --- Scheduled jobs ---
 
     /**

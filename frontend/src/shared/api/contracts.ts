@@ -93,3 +93,27 @@ export interface MatchResultResponse {
   myFormation: Formation | null;
   opponentFormation: Formation | null;
 }
+
+export interface LobbyRoomResponse {
+  sessionId: string;
+  status: string;
+  playerCount: number;
+  playerNicknames: string[];
+  createdAt: string;
+  spectatorCount: number;
+}
+
+export interface SpectateStateResponse {
+  status: string;
+  currentRound: AuctionRoundResponse | null;
+  homeTeam: AuctionTeamCardResponse[];
+  awayTeam: AuctionTeamCardResponse[];
+  homeFormation: string;
+  awayFormation: string;
+  homeNickname: string;
+  awayNickname: string;
+  homeBudget: number;
+  awayBudget: number;
+  homeScore: number;
+  awayScore: number;
+}

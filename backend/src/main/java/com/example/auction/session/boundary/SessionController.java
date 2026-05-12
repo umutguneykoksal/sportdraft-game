@@ -98,6 +98,21 @@ public class SessionController {
         return lobbyService.getSnapshot(sessionId, userId);
     }
 
+    @GetMapping("/{sessionId}/spectate")
+    public SpectateStateResponse spectate(@PathVariable UUID sessionId) {
+        ActiveSession session = sessionStore.findById(sessionId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Session not found"));
+        var snap = auctionService.buildSpectateSnapshot(session);
+        return new SpectateStateResponse(
+            snap.status(), snap.currentRound(),
+            snap.homeTeam(), snap.awayTeam(),
+            snap.homeFormation(), snap.awayFormation(),
+            snap.homeNickname(), snap.awayNickname(),
+            snap.homeBudget(), snap.awayBudget(),
+            snap.homeScore(), snap.awayScore()
+        );
+    }
+
     @GetMapping("/{sessionId}/match-result")
     public ResponseEntity<MatchResultResponse> getMatchResult(
         @PathVariable UUID sessionId,

@@ -23,6 +23,7 @@ public class SseEmitterRegistry {
     public static final String SSE_EVENT_NAME = "game";
 
     private final Map<UUID, List<SseEmitter>> bySession = new ConcurrentHashMap<>();
+    private final Set<SseEmitter> spectatorEmitters = ConcurrentHashMap.newKeySet();
     private final Map<UUID, Instant> disconnectedAtBySession = new ConcurrentHashMap<>();
     private final ObjectMapper objectMapper;
     private final WebSocketSessionRegistry webSocketSessionRegistry;
@@ -33,13 +34,27 @@ public class SseEmitterRegistry {
     }
 
     public SseEmitter register(UUID sessionId) {
+        return register(sessionId, false);
+    }
+
+    public SseEmitter register(UUID sessionId, boolean spectator) {
         SseEmitter emitter = new SseEmitter(TIMEOUT_MS);
         emitter.onCompletion(() -> remove(sessionId, emitter));
         emitter.onTimeout(() -> remove(sessionId, emitter));
         emitter.onError(ex -> remove(sessionId, emitter));
         bySession.computeIfAbsent(sessionId, key -> new CopyOnWriteArrayList<>()).add(emitter);
-        disconnectedAtBySession.remove(sessionId);
+        if (spectator) {
+            spectatorEmitters.add(emitter);
+        }
+        if (!spectator) {
+            disconnectedAtBySession.remove(sessionId);
+        }
         return emitter;
+    }
+
+    public int spectatorCount(UUID sessionId) {
+        List<SseEmitter> emitters = bySession.getOrDefault(sessionId, List.of());
+        return (int) emitters.stream().filter(spectatorEmitters::contains).count();
     }
 
     public void broadcast(UUID sessionId, String eventType, Object payload) {
@@ -74,6 +89,7 @@ public class SseEmitterRegistry {
     }
 
     private void remove(UUID sessionId, SseEmitter emitter) {
+        spectatorEmitters.remove(emitter);
         List<SseEmitter> emitters = bySession.get(sessionId);
         if (emitters == null) {
             return;
