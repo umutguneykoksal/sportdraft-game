@@ -432,7 +432,10 @@ export function AuctionPage() {
           <div className="space-y-4">
             {/* Current Card */}
             {round && auctionPhaseActive && (
-              <div className="bg-surface-card rounded-xl border border-white/10 p-4">
+              <div
+                key={round.roundId}
+                className="bg-surface-card rounded-xl border border-white/10 p-4 animate-fade-in"
+              >
                 <div className="text-center mb-4">
                   <span className={`${positionColors[round.position] ?? "bg-gray-500"} text-white text-xs px-2 py-1 rounded-full font-bold`}>
                     {round.position}
@@ -446,7 +449,7 @@ export function AuctionPage() {
                 <div className="mb-4">
                   <div className="flex justify-between text-xs text-slate-400 mb-1">
                     <span>Time Left</span>
-                    <span className={`font-bold ${secondsLeft <= 5 ? "text-red-400" : "text-white"}`}>
+                    <span className={`font-bold transition-colors duration-300 ${secondsLeft <= 5 ? "text-red-400" : "text-white"}`}>
                       {secondsLeft}s
                     </span>
                   </div>
@@ -459,14 +462,17 @@ export function AuctionPage() {
                 </div>
 
                 {/* Current Bid */}
-                <div className="bg-surface-elevated rounded-lg p-3 mb-4 text-center">
+                <div className="bg-surface-elevated rounded-lg p-3 mb-4 text-center transition-all duration-300">
                   <p className="text-xs text-slate-400">Highest Bid</p>
-                  <p className="text-2xl font-bold text-white">
+                  <p
+                    key={round.highestBidCents}
+                    className="text-2xl font-bold text-white animate-bid-pop"
+                  >
                     {round.highestBidCents > 0
                       ? `${round.highestBidCents} cr`
                       : "No bids"}
                   </p>
-                  <p className="text-xs text-slate-400 mt-1">
+                  <p className="text-xs text-slate-400 mt-1 transition-opacity duration-300">
                     {ROUND_STATUS_LABELS[round.status] ?? round.status}
                   </p>
                 </div>
@@ -558,7 +564,7 @@ export function AuctionPage() {
                 )}
 
                 {/* Turn Indicator */}
-                <div className={`mt-3 text-center text-sm font-medium py-2 rounded-lg ${
+                <div className={`mt-3 text-center text-sm font-medium py-2 rounded-lg transition-colors duration-300 ${
                   mySquadFull
                     ? "bg-accent-green/10 text-accent-green"
                     : isMyTurn
