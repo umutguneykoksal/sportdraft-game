@@ -29,6 +29,8 @@ export function useLobbyFlow() {
   const restoredRef = useRef(false);
   const prevConnectedRef = useRef(false);
   const lastProcessedEventIdx = useRef(-1);
+  const sessionIdRef = useRef(sessionId);
+  sessionIdRef.current = sessionId;
 
   // ---- Effects ----
 
@@ -83,16 +85,20 @@ export function useLobbyFlow() {
   useEffect(() => {
     const wasConnected = prevConnectedRef.current;
     prevConnectedRef.current = isConnected;
-    if (!snapshot || !isConnected || !wasConnected) return;
-    getSessionSnapshot(snapshot.sessionId).then(setSnapshot).catch(() => {});
-  }, [snapshot, isConnected]);
+    const sid = sessionIdRef.current;
+    if (!sid || !isConnected || !wasConnected) return;
+    getSessionSnapshot(sid).then(setSnapshot).catch(() => {});
+  }, [isConnected]);
 
   // 5. SSE event handler (real-time lobby updates)
   useEffect(() => {
-    if (!snapshot || events.length === 0) return;
+    if (events.length === 0) return;
     const idx = events.length - 1;
     if (idx <= lastProcessedEventIdx.current) return;
     lastProcessedEventIdx.current = idx;
+
+    const sid = sessionIdRef.current;
+    if (!sid) return;
 
     const latest = events[idx];
     const refetchEvents = [
@@ -100,9 +106,9 @@ export function useLobbyFlow() {
       "formation_phase_started", "auctioning_started",
     ];
     if (refetchEvents.includes(latest.eventType)) {
-      getSessionSnapshot(snapshot.sessionId).then(setSnapshot).catch(() => {});
+      getSessionSnapshot(sid).then(setSnapshot).catch(() => {});
     }
-  }, [events, snapshot]);
+  }, [events]);
 
   // 6. Countdown timer
   useEffect(() => {
