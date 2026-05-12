@@ -7,6 +7,9 @@ spring:
     url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:auction_db}
     username: ${DB_USER:auction}
     password: ${DB_PASSWORD:auction}
+  mvc:
+    async:
+      request-timeout: -1
   jpa:
     open-in-view: false
     hibernate:
@@ -43,6 +46,11 @@ logging:
   level:
     com.example.auction.common.sse: DEBUG
     com.example.auction.session.control.SessionDisconnectCleanupScheduler: DEBUG
+
+spring.task:
+  scheduling:
+    pool:
+      size: 4
 
 app:
   cors:
