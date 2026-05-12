@@ -27,13 +27,13 @@ public class SseStreamController {
         @RequestParam("token") String token,
         @RequestParam(value = "spectator", required = false, defaultValue = "false") boolean spectator
     ) {
-        validateToken(token);
-        return sseEmitterRegistry.register(sessionId, spectator);
+        UUID userId = validateToken(token);
+        return sseEmitterRegistry.register(sessionId, spectator, userId);
     }
 
-    private void validateToken(String token) {
+    private UUID validateToken(String token) {
         try {
-            UUID.fromString(token);
+            return UUID.fromString(token);
         } catch (IllegalArgumentException ex) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid token");
         }

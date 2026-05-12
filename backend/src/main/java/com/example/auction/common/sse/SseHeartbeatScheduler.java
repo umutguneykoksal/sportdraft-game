@@ -15,7 +15,7 @@ public class SseHeartbeatScheduler {
         this.sseEmitterRegistry = sseEmitterRegistry;
     }
 
-    @Scheduled(fixedDelay = 10000)
+    @Scheduled(fixedDelay = 5000)
     public void heartbeat() {
         for (UUID sessionId : sseEmitterRegistry.sessionIds()) {
             sseEmitterRegistry.broadcast(

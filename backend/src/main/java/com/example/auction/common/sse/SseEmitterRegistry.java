@@ -24,7 +24,10 @@ public class SseEmitterRegistry {
 
     private final Map<UUID, List<SseEmitter>> bySession = new ConcurrentHashMap<>();
     private final Set<SseEmitter> spectatorEmitters = ConcurrentHashMap.newKeySet();
+    private final Map<SseEmitter, UUID> emitterToUserId = new ConcurrentHashMap<>();
     private final Map<UUID, Instant> disconnectedAtBySession = new ConcurrentHashMap<>();
+    /** Per-player disconnect tracking: key = "sessionId:userId" */
+    private final Map<String, Instant> playerDisconnectedAt = new ConcurrentHashMap<>();
     private final ObjectMapper objectMapper;
     private final WebSocketSessionRegistry webSocketSessionRegistry;
 
@@ -34,10 +37,14 @@ public class SseEmitterRegistry {
     }
 
     public SseEmitter register(UUID sessionId) {
-        return register(sessionId, false);
+        return register(sessionId, false, null);
     }
 
     public SseEmitter register(UUID sessionId, boolean spectator) {
+        return register(sessionId, spectator, null);
+    }
+
+    public SseEmitter register(UUID sessionId, boolean spectator, UUID userId) {
         SseEmitter emitter = new SseEmitter(TIMEOUT_MS);
         emitter.onCompletion(() -> remove(sessionId, emitter));
         emitter.onTimeout(() -> remove(sessionId, emitter));
@@ -46,8 +53,14 @@ public class SseEmitterRegistry {
         if (spectator) {
             spectatorEmitters.add(emitter);
         }
+        if (userId != null) {
+            emitterToUserId.put(emitter, userId);
+        }
         if (!spectator) {
             disconnectedAtBySession.remove(sessionId);
+            if (userId != null) {
+                playerDisconnectedAt.remove(sessionId + ":" + userId);
+            }
         }
         return emitter;
     }
@@ -55,6 +68,28 @@ public class SseEmitterRegistry {
     public int spectatorCount(UUID sessionId) {
         List<SseEmitter> emitters = bySession.getOrDefault(sessionId, List.of());
         return (int) emitters.stream().filter(spectatorEmitters::contains).count();
+    }
+
+    /**
+     * Checks if a specific player in a session has been disconnected longer than the threshold.
+     * Returns true only if NO active (non-spectator) emitters belong to that userId.
+     */
+    public boolean isPlayerDisconnectedLongerThan(UUID sessionId, UUID userId, Duration threshold) {
+        List<SseEmitter> emitters = bySession.getOrDefault(sessionId, List.of());
+        boolean hasActivePlayerEmitter = emitters.stream()
+            .filter(e -> !spectatorEmitters.contains(e))
+            .anyMatch(e -> userId.equals(emitterToUserId.get(e)));
+        if (hasActivePlayerEmitter) {
+            playerDisconnectedAt.remove(sessionId + ":" + userId);
+            return false;
+        }
+        String key = sessionId + ":" + userId;
+        Instant disconnectedAt = playerDisconnectedAt.computeIfAbsent(key, k -> Instant.now());
+        return disconnectedAt.plus(threshold).isBefore(Instant.now());
+    }
+
+    public void forgetPlayerDisconnect(UUID sessionId, UUID userId) {
+        playerDisconnectedAt.remove(sessionId + ":" + userId);
     }
 
     public void broadcast(UUID sessionId, String eventType, Object payload) {
@@ -89,12 +124,21 @@ public class SseEmitterRegistry {
     }
 
     private void remove(UUID sessionId, SseEmitter emitter) {
-        spectatorEmitters.remove(emitter);
+        boolean wasSpectator = spectatorEmitters.remove(emitter);
+        UUID userId = emitterToUserId.remove(emitter);
         List<SseEmitter> emitters = bySession.get(sessionId);
         if (emitters == null) {
             return;
         }
         emitters.remove(emitter);
+        if (!wasSpectator && userId != null) {
+            boolean hasOtherPlayerEmitter = emitters.stream()
+                .filter(e -> !spectatorEmitters.contains(e))
+                .anyMatch(e -> userId.equals(emitterToUserId.get(e)));
+            if (!hasOtherPlayerEmitter) {
+                playerDisconnectedAt.putIfAbsent(sessionId + ":" + userId, Instant.now());
+            }
+        }
         if (emitters.isEmpty()) {
             bySession.remove(sessionId);
             markDisconnectedIfNoActiveConnections(sessionId);
@@ -115,6 +159,8 @@ public class SseEmitterRegistry {
 
     public void forgetSession(UUID sessionId) {
         disconnectedAtBySession.remove(sessionId);
+        String prefix = sessionId + ":";
+        playerDisconnectedAt.keySet().removeIf(k -> k.startsWith(prefix));
         webSocketSessionRegistry.forgetSession(sessionId);
     }
 
