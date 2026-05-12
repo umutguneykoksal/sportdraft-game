@@ -12,6 +12,7 @@ public record AuctionRoundResponse(
     int cardRating,
     long highestBidCents,
     UUID highestBidderId,
+    UUID highestBidderUserId,
     UUID currentTurnUserId,
     UUID readyUserOneId,
     UUID readyUserTwoId,

@@ -1,7 +1,6 @@
 package com.example.auction.bidding.control;
 
 import com.example.auction.bidding.entity.Card;
-import com.example.auction.bidding.entity.CardRepository;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.stereotype.Component;
@@ -9,14 +8,13 @@ import org.springframework.stereotype.Component;
 @Component
 public class AuctionRoundSelector {
 
-    private final CardRepository cardRepository;
+    private final CardCatalogService cardCatalog;
 
-    public AuctionRoundSelector(CardRepository cardRepository) {
-        this.cardRepository = cardRepository;
+    public AuctionRoundSelector(CardCatalogService cardCatalog) {
+        this.cardCatalog = cardCatalog;
     }
 
     public List<Card> candidateCards(UUID sessionId) {
-        // Selector hook kept explicit for deterministic-selection refactor.
-        return cardRepository.findAll();
+        return cardCatalog.getAllCards();
     }
 }

@@ -1,7 +1,6 @@
 package com.example.auction.lobby.control;
 
-import com.example.auction.bidding.entity.Card;
-import com.example.auction.bidding.entity.CardRepository;
+import com.example.auction.bidding.control.CardCatalogService;
 import com.example.auction.common.sse.SseEmitterRegistry;
 import com.example.auction.lobby.boundary.SessionSnapshotResponse;
 import com.example.auction.session.entity.Formation;
@@ -27,13 +26,13 @@ public class LobbyService {
 
     private final ActiveSessionStore sessionStore;
     private final SseEmitterRegistry sseEmitterRegistry;
-    private final CardRepository cardRepository;
+    private final CardCatalogService cardCatalog;
 
     public LobbyService(ActiveSessionStore sessionStore, SseEmitterRegistry sseEmitterRegistry,
-                         CardRepository cardRepository) {
+                         CardCatalogService cardCatalog) {
         this.sessionStore = sessionStore;
         this.sseEmitterRegistry = sseEmitterRegistry;
-        this.cardRepository = cardRepository;
+        this.cardCatalog = cardCatalog;
     }
 
     public SessionSnapshotResponse joinLobby(UUID userId, String nickname) {
@@ -216,9 +215,7 @@ public class LobbyService {
     }
 
     private List<UUID> buildShuffledCardPool() {
-        List<UUID> pool = new ArrayList<>(
-            cardRepository.findAll().stream().map(Card::getId).toList()
-        );
+        List<UUID> pool = new ArrayList<>(cardCatalog.getAllCardIds());
         Collections.shuffle(pool);
         return pool;
     }

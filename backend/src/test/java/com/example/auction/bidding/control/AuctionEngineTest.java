@@ -37,6 +37,7 @@ class AuctionEngineTest {
             null,
             null,
             null,
+            null,
             Instant.now(),
             "OPEN",
             true

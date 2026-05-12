@@ -43,7 +43,4 @@ public class SessionOrchestrator {
         return lobbyService.getSnapshot(sessionId, userId);
     }
 
-    public void runTimedTransitions() {
-        lobbyService.advanceTimedPhases();
-    }
 }

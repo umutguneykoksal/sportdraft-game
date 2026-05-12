@@ -46,7 +46,6 @@ public class ActiveRound {
         this.currentTurnUserId = nextTurnUserId;
         this.readyUserOneId = null;
         this.readyUserTwoId = null;
-        this.passedUserIds.clear();
     }
 
     public void markSold() {

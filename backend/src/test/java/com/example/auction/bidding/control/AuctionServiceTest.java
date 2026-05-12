@@ -7,7 +7,6 @@ import static org.mockito.Mockito.when;
 
 import com.example.auction.bidding.boundary.PlaceBidRequest;
 import com.example.auction.bidding.entity.Card;
-import com.example.auction.bidding.entity.CardRepository;
 import com.example.auction.bidding.entity.Position;
 import com.example.auction.bidding.entity.RoundStatus;
 import com.example.auction.common.sse.SseEmitterRegistry;
@@ -37,7 +36,7 @@ class AuctionServiceTest {
     @Mock
     private ActiveSessionStore sessionStore;
     @Mock
-    private CardRepository cardRepository;
+    private CardCatalogService cardCatalog;
     @Mock
     private SseEmitterRegistry sseEmitterRegistry;
     @Mock
@@ -51,7 +50,7 @@ class AuctionServiceTest {
     void setUp() {
         auctionService = new AuctionService(
             sessionStore,
-            cardRepository,
+            cardCatalog,
             sseEmitterRegistry,
             publisher,
             meterRegistry

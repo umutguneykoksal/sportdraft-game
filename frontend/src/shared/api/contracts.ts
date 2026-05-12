@@ -60,6 +60,7 @@ export interface AuctionRoundResponse {
   cardRating: number;
   highestBidCents: number;
   highestBidderId: string | null;
+  highestBidderUserId: string | null;
   currentTurnUserId: string | null;
   readyUserOneId: string | null;
   readyUserTwoId: string | null;

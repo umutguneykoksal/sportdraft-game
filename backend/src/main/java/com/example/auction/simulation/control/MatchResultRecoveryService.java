@@ -1,7 +1,7 @@
 package com.example.auction.simulation.control;
 
+import com.example.auction.bidding.control.CardCatalogService;
 import com.example.auction.bidding.entity.Card;
-import com.example.auction.bidding.entity.CardRepository;
 import com.example.auction.session.entity.SessionStatus;
 import com.example.auction.session.redis.ActivePlayer;
 import com.example.auction.session.redis.ActiveSession;
@@ -10,8 +10,6 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.function.Function;
-import java.util.stream.Collectors;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 
@@ -19,18 +17,18 @@ import org.springframework.stereotype.Service;
 public class MatchResultRecoveryService {
 
     private final ActiveSessionStore sessionStore;
-    private final CardRepository cardRepository;
+    private final CardCatalogService cardCatalog;
     private final MatchSimulator matchSimulator;
     private final ApplicationEventPublisher publisher;
 
     public MatchResultRecoveryService(
         ActiveSessionStore sessionStore,
-        CardRepository cardRepository,
+        CardCatalogService cardCatalog,
         MatchSimulator matchSimulator,
         ApplicationEventPublisher publisher
     ) {
         this.sessionStore = sessionStore;
-        this.cardRepository = cardRepository;
+        this.cardCatalog = cardCatalog;
         this.matchSimulator = matchSimulator;
         this.publisher = publisher;
     }
@@ -53,8 +51,7 @@ public class MatchResultRecoveryService {
             return false;
         }
 
-        Map<UUID, Card> cardMap = cardRepository.findAll().stream()
-            .collect(Collectors.toMap(Card::getId, Function.identity()));
+        Map<UUID, Card> cardMap = cardCatalog.getCardMap();
         ActivePlayer home = sorted.get(0);
         ActivePlayer away = sorted.get(1);
         long seed = session.getMatchSeed() == null ? sessionId.getMostSignificantBits() : session.getMatchSeed();

@@ -259,20 +259,25 @@ export function AuctionPage() {
   }, [sessionSnap?.matchStartDeadlineAt]);
 
   // 8. Auto-start next round when auction is active but no round exists
-  const autoStartRef = useRef(false);
   useEffect(() => {
-    if (!sessionId || !auctionPhaseActive || round || loading || autoStartRef.current) return;
-    autoStartRef.current = true;
-    (async () => {
+    if (!sessionId || !auctionPhaseActive || round) return;
+    let cancelled = false;
+    const attempt = async () => {
       try {
-        setRound(await startRound(sessionId));
+        const r = await startRound(sessionId);
+        if (!cancelled) setRound(r);
       } catch {
-        // round may have already been started by the other player; poll will catch up
-      } finally {
-        autoStartRef.current = false;
+        if (cancelled) return;
+        try {
+          const state = await getAuctionState(sessionId);
+          if (!cancelled && state.currentRound) setRound(state.currentRound);
+        } catch { /* poll will catch up */ }
       }
-    })();
-  }, [sessionId, auctionPhaseActive, round, loading]);
+    };
+    attempt();
+    const retryId = window.setInterval(attempt, 3000);
+    return () => { cancelled = true; window.clearInterval(retryId); };
+  }, [sessionId, auctionPhaseActive, round]);
 
   // ---- Handlers ----
 
@@ -532,13 +537,23 @@ export function AuctionPage() {
                       Place Bid
                     </button>
 
-                    <button
-                      onClick={handlePassRound}
-                      disabled={loading || !isMyTurn}
-                      className="w-full bg-red-900/30 border border-red-500/30 text-red-400 hover:bg-red-900/50 disabled:opacity-40 py-2 rounded-lg transition-colors text-sm font-medium"
-                    >
-                      Pass
-                    </button>
+                    {myUserId && round.highestBidderUserId === myUserId ? (
+                      <button
+                        onClick={handlePassRound}
+                        disabled={loading || !isMyTurn}
+                        className="w-full bg-slate-700/50 border border-slate-500/30 text-slate-300 hover:bg-slate-700/70 disabled:opacity-40 py-2 rounded-lg transition-colors text-sm font-medium"
+                      >
+                        End Turn
+                      </button>
+                    ) : (
+                      <button
+                        onClick={handlePassRound}
+                        disabled={loading || !isMyTurn}
+                        className="w-full bg-red-900/30 border border-red-500/30 text-red-400 hover:bg-red-900/50 disabled:opacity-40 py-2 rounded-lg transition-colors text-sm font-medium"
+                      >
+                        Pass
+                      </button>
+                    )}
                   </div>
                 )}
 
