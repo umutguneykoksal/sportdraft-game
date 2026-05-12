@@ -45,3 +45,14 @@ export async function confirmMatchStart(sessionId: string): Promise<SessionSnaps
   });
   return parseOrThrow<SessionSnapshotResponse>(response, `confirmMatchStart failed: ${response.status}`);
 }
+
+export async function pingSession(sessionId: string): Promise<void> {
+  try {
+    await fetch(`${getApiBase()}/api/sessions/${sessionId}/ping`, {
+      method: "POST",
+      headers: authHeaders(),
+    });
+  } catch {
+    // Fire-and-forget: swallow errors silently
+  }
+}

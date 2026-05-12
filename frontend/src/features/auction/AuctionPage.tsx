@@ -9,6 +9,7 @@ import {
   getAuctionState,
   getSessionSnapshot,
   passRound,
+  pingSession,
   placeBid,
   SessionSnapshotResponse,
   startRound,
@@ -278,11 +279,22 @@ export function AuctionPage() {
     return () => window.clearInterval(timer);
   }, [sessionSnap?.matchStartDeadlineAt]);
 
-  // 8. Auto-start next round when auction is active but no round exists
+  // 8. REST-based keepalive ping (independent of SSE connection health)
+  useEffect(() => {
+    if (!sessionId) return;
+    pingSession(sessionId);
+    const id = window.setInterval(() => pingSession(sessionId), 20_000);
+    return () => window.clearInterval(id);
+  }, [sessionId]);
+
+  // 9. Auto-start next round when auction is active but no round exists
+  const startingRef = useRef(false);
   useEffect(() => {
     if (!sessionId || !auctionPhaseActive || round) return;
     let cancelled = false;
     const attempt = async () => {
+      if (startingRef.current) return;
+      startingRef.current = true;
       try {
         const r = await startRound(sessionId);
         if (!cancelled) setRound(r);
@@ -292,6 +304,8 @@ export function AuctionPage() {
           const state = await getAuctionState(sessionId);
           if (!cancelled && state.currentRound) setRound(state.currentRound);
         } catch { /* poll will catch up */ }
+      } finally {
+        startingRef.current = false;
       }
     };
     attempt();

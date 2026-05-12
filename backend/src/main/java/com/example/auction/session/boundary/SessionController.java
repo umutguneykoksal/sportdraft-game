@@ -1,6 +1,7 @@
 package com.example.auction.session.boundary;
 
 import com.example.auction.bidding.control.AuctionService;
+import com.example.auction.common.sse.SseEmitterRegistry;
 import com.example.auction.lobby.boundary.SessionSnapshotResponse;
 import com.example.auction.lobby.control.LobbyService;
 import com.example.auction.session.control.SessionAdminService;
@@ -43,6 +44,7 @@ public class SessionController {
     private final ActiveSessionStore sessionStore;
     private final MatchHistoryRepository matchHistoryRepository;
     private final MatchResultRecoveryService matchResultRecoveryService;
+    private final SseEmitterRegistry sseEmitterRegistry;
     private final ObjectMapper redisObjectMapper;
 
     public SessionController(
@@ -52,6 +54,7 @@ public class SessionController {
         ActiveSessionStore sessionStore,
         MatchHistoryRepository matchHistoryRepository,
         MatchResultRecoveryService matchResultRecoveryService,
+        SseEmitterRegistry sseEmitterRegistry,
         @Qualifier("redisObjectMapper") ObjectMapper redisObjectMapper
     ) {
         this.lobbyService = lobbyService;
@@ -60,6 +63,7 @@ public class SessionController {
         this.sessionStore = sessionStore;
         this.matchHistoryRepository = matchHistoryRepository;
         this.matchResultRecoveryService = matchResultRecoveryService;
+        this.sseEmitterRegistry = sseEmitterRegistry;
         this.redisObjectMapper = redisObjectMapper;
     }
 
@@ -170,6 +174,16 @@ public class SessionController {
                 isHome ? h.getAwayFormation() : h.getHomeFormation()
             ));
         }
+    }
+
+    @PostMapping("/{sessionId}/ping")
+    public ResponseEntity<Void> ping(
+        @PathVariable UUID sessionId,
+        @RequestHeader("Authorization") String authorization
+    ) {
+        UUID userId = extractUserId(authorization);
+        sseEmitterRegistry.recordPlayerPing(sessionId, userId);
+        return ResponseEntity.noContent().build();
     }
 
     @DeleteMapping("/{sessionId}")

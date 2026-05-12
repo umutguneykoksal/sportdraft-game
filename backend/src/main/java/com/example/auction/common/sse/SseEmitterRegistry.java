@@ -33,6 +33,8 @@ public class SseEmitterRegistry {
     private final Map<UUID, Instant> disconnectedAtBySession = new ConcurrentHashMap<>();
     /** Per-player disconnect tracking: key = "sessionId:userId" */
     private final Map<String, Instant> playerDisconnectedAt = new ConcurrentHashMap<>();
+    /** Per-player REST ping tracking: key = "sessionId:userId" */
+    private final Map<String, Instant> playerLastPingAt = new ConcurrentHashMap<>();
     private final ObjectMapper objectMapper;
     private final WebSocketSessionRegistry webSocketSessionRegistry;
 
@@ -82,6 +84,10 @@ public class SseEmitterRegistry {
      * Returns true only if NO active (non-spectator) emitters belong to that userId.
      */
     public boolean isPlayerDisconnectedLongerThan(UUID sessionId, UUID userId, Duration threshold) {
+        if (hasRecentPing(sessionId, userId)) {
+            playerDisconnectedAt.remove(sessionId + ":" + userId);
+            return false;
+        }
         List<SseEmitter> emitters = bySession.getOrDefault(sessionId, List.of());
         boolean hasActivePlayerEmitter = emitters.stream()
             .filter(e -> !spectatorEmitters.contains(e))
@@ -103,9 +109,28 @@ public class SseEmitterRegistry {
         playerDisconnectedAt.remove(sessionId + ":" + userId);
     }
 
+    /** Record a REST-based ping from a player (independent of SSE). */
+    public void recordPlayerPing(UUID sessionId, UUID userId) {
+        String key = sessionId + ":" + userId;
+        playerLastPingAt.put(key, Instant.now());
+        playerDisconnectedAt.remove(key);
+        log.debug("Player ping recorded: session={} userId={}", sessionId, userId);
+    }
+
+    private static final Duration PING_ACTIVE_THRESHOLD = Duration.ofSeconds(30);
+
+    /** True if a REST ping was received within the last 30 seconds. */
+    public boolean hasRecentPing(UUID sessionId, UUID userId) {
+        Instant lastPing = playerLastPingAt.get(sessionId + ":" + userId);
+        return lastPing != null && lastPing.isAfter(Instant.now().minus(PING_ACTIVE_THRESHOLD));
+    }
+
     private static final Duration STALE_EMITTER_THRESHOLD = Duration.ofSeconds(30);
 
     public boolean hasActivePlayerEmitter(UUID sessionId, UUID userId) {
+        if (hasRecentPing(sessionId, userId)) {
+            return true;
+        }
         Instant cutoff = Instant.now().minus(STALE_EMITTER_THRESHOLD);
         return bySession.getOrDefault(sessionId, List.of()).stream()
             .filter(e -> !spectatorEmitters.contains(e))
@@ -138,9 +163,15 @@ public class SseEmitterRegistry {
                 );
                 emitterLastSendAt.put(emitter, Instant.now());
             } catch (IOException | IllegalStateException ex) {
+                UUID userId = emitterToUserId.get(emitter);
+                log.debug("SSE send failed: session={} userId={} event={} error={}",
+                    sessionId, userId, eventType, ex.getMessage());
                 emitter.completeWithError(ex);
                 remove(sessionId, emitter);
             } catch (Exception ex) {
+                UUID userId = emitterToUserId.get(emitter);
+                log.debug("SSE send error: session={} userId={} event={} error={}",
+                    sessionId, userId, eventType, ex.getMessage());
                 remove(sessionId, emitter);
             }
         }
@@ -184,14 +215,27 @@ public class SseEmitterRegistry {
         if (hasActiveConnections(sessionId)) {
             return false;
         }
+        if (hasAnyRecentPing(sessionId)) {
+            disconnectedAtBySession.remove(sessionId);
+            return false;
+        }
         Instant disconnectedAt = disconnectedAtBySession.computeIfAbsent(sessionId, key -> Instant.now());
         return disconnectedAt.plus(threshold).isBefore(Instant.now());
+    }
+
+    private boolean hasAnyRecentPing(UUID sessionId) {
+        String prefix = sessionId + ":";
+        Instant cutoff = Instant.now().minus(PING_ACTIVE_THRESHOLD);
+        return playerLastPingAt.entrySet().stream()
+            .filter(e -> e.getKey().startsWith(prefix))
+            .anyMatch(e -> e.getValue().isAfter(cutoff));
     }
 
     public void forgetSession(UUID sessionId) {
         disconnectedAtBySession.remove(sessionId);
         String prefix = sessionId + ":";
         playerDisconnectedAt.keySet().removeIf(k -> k.startsWith(prefix));
+        playerLastPingAt.keySet().removeIf(k -> k.startsWith(prefix));
         webSocketSessionRegistry.forgetSession(sessionId);
     }
 
