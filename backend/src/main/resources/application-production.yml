@@ -5,10 +5,18 @@ spring:
   data:
     redis:
       url: ${REDIS_URL}
+  mvc:
+    async:
+      request-timeout: -1
+
+spring.task:
+  scheduling:
+    pool:
+      size: 4
 
 app:
   session:
-    disconnect-timeout-seconds: ${APP_SESSION_DISCONNECT_TIMEOUT_SECONDS:20}
+    disconnect-timeout-seconds: ${APP_SESSION_DISCONNECT_TIMEOUT_SECONDS:60}
 
 management:
   tracing:
@@ -17,3 +25,5 @@ management:
 logging:
   level:
     root: INFO
+    com.example.auction.common.sse: DEBUG
+    com.example.auction.session.control.SessionDisconnectCleanupScheduler: DEBUG
