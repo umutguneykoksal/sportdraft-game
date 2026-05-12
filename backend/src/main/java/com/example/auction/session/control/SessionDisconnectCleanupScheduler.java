@@ -88,21 +88,21 @@ public class SessionDisconnectCleanupScheduler {
 
         for (ActivePlayer p : players) {
             boolean hasEmitter = sseEmitterRegistry.hasActivePlayerEmitter(sessionId, p.getUserId());
+            boolean disconnected = false;
             if (hasEmitter) {
-                // Player has a live SSE connection — definitely not disconnected
                 sseEmitterRegistry.forgetPlayerDisconnect(sessionId, p.getUserId());
                 connectedPlayer = p;
-                continue;
-            }
-            boolean disconnected = sseEmitterRegistry.isPlayerDisconnectedLongerThan(
-                sessionId, p.getUserId(), disconnectTimeout);
-            log.debug("Session {} player {} ({}) hasEmitter={} disconnected={}",
-                sessionId, p.getNickname(), p.getUserId(), false, disconnected);
-            if (disconnected) {
-                disconnectedPlayer = p;
             } else {
-                connectedPlayer = p;
+                disconnected = sseEmitterRegistry.isPlayerDisconnectedLongerThan(
+                    sessionId, p.getUserId(), disconnectTimeout);
+                if (disconnected) {
+                    disconnectedPlayer = p;
+                } else {
+                    connectedPlayer = p;
+                }
             }
+            log.info("Session {} player {} ({}) hasEmitter={} disconnected={}",
+                sessionId, p.getNickname(), p.getUserId(), hasEmitter, disconnected);
         }
 
         // Both players disconnected past threshold → end as 0-0 draw
