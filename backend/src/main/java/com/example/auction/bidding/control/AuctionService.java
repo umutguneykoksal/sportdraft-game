@@ -334,6 +334,20 @@ public class AuctionService {
 
     public AuctionStateResponse getAuctionState(UUID sessionId, UUID userId) {
         ActiveSession session = sessionStore.getById(sessionId);
+        TeamSnapshot teams = buildTeamSnapshot(session, userId);
+
+        AuctionRoundResponse currentRound = session.findOpenRound()
+            .map(r -> toResponse(r, loadCardMap().get(r.getCardId()), sessionId))
+            .orElse(null);
+
+        return new AuctionStateResponse(currentRound, teams.myTeam(), teams.opponentTeam(), teams.myFormation(), teams.opponentFormation());
+    }
+
+    /**
+     * Builds perspective-corrected team cards and formations from any ActiveSession
+     * (whether live in Redis or deserialized from archive replay_data).
+     */
+    public TeamSnapshot buildTeamSnapshot(ActiveSession session, UUID userId) {
         Map<UUID, Card> cardMap = loadCardMap();
 
         if (session.playerCount() < 2) {
@@ -355,15 +369,20 @@ public class AuctionService {
             draftOrderByCardId.put(sr.getCardId(), draftIndex++);
         }
 
-        List<AuctionTeamCardResponse> myTeam = buildTeamCards(me, cardMap, soldAmountByCardId, draftOrderByCardId);
-        List<AuctionTeamCardResponse> opponentTeam = buildTeamCards(opponent, cardMap, soldAmountByCardId, draftOrderByCardId);
-
-        AuctionRoundResponse currentRound = session.findOpenRound()
-            .map(r -> toResponse(r, cardMap.get(r.getCardId()), sessionId))
-            .orElse(null);
-
-        return new AuctionStateResponse(currentRound, myTeam, opponentTeam, me.getFormation().name(), opponent.getFormation().name());
+        return new TeamSnapshot(
+            buildTeamCards(me, cardMap, soldAmountByCardId, draftOrderByCardId),
+            buildTeamCards(opponent, cardMap, soldAmountByCardId, draftOrderByCardId),
+            me.getFormation().name(),
+            opponent.getFormation().name()
+        );
     }
+
+    public record TeamSnapshot(
+        List<AuctionTeamCardResponse> myTeam,
+        List<AuctionTeamCardResponse> opponentTeam,
+        String myFormation,
+        String opponentFormation
+    ) {}
 
     // --- Scheduled jobs ---
 

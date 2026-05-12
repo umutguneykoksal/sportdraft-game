@@ -69,4 +69,8 @@ export interface AuctionStateResponse {
 export interface MatchResultResponse {
   homeScore: number;
   awayScore: number;
+  myTeam: AuctionTeamCardResponse[];
+  opponentTeam: AuctionTeamCardResponse[];
+  myFormation: Formation | null;
+  opponentFormation: Formation | null;
 }

@@ -1,38 +1,15 @@
-import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useMatchFlow } from "./hooks/useMatchFlow";
 import { TeamPitch } from "../../shared/components/TeamPitch";
-import { getAuctionState } from "../../shared/api";
-import type { AuctionTeamCardResponse, Formation } from "../../shared/api/contracts";
 import { FORMATION_LABELS } from "../../shared/formations";
 
 export function MatchPage() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
-  const { ready, homeScore, awayScore } = useMatchFlow(sessionId);
-
-  const [myTeam, setMyTeam] = useState<AuctionTeamCardResponse[]>([]);
-  const [opponentTeam, setOpponentTeam] = useState<AuctionTeamCardResponse[]>([]);
-  const [myFormation, setMyFormation] = useState<Formation>("FOUR_FOUR_TWO");
-  const [opponentFormation, setOpponentFormation] = useState<Formation>("FOUR_FOUR_TWO");
-
-  useEffect(() => {
-    if (!sessionId) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const state = await getAuctionState(sessionId);
-        if (cancelled) return;
-        setMyTeam(state.myTeam);
-        setOpponentTeam(state.opponentTeam);
-        if (state.myFormation) setMyFormation(state.myFormation);
-        if (state.opponentFormation) setOpponentFormation(state.opponentFormation);
-      } catch {
-        // teams not critical for match display
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [sessionId]);
+  const {
+    ready, homeScore, awayScore,
+    myTeam, opponentTeam, myFormation, opponentFormation,
+  } = useMatchFlow(sessionId);
 
   const isWin = ready && homeScore !== null && awayScore !== null && homeScore > awayScore;
   const isLoss = ready && homeScore !== null && awayScore !== null && homeScore < awayScore;
