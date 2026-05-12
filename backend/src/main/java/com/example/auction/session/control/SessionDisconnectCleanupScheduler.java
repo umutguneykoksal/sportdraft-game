@@ -6,7 +6,6 @@ import com.example.auction.session.redis.ActivePlayer;
 import com.example.auction.session.redis.ActiveSession;
 import com.example.auction.session.redis.ActiveSessionStore;
 import java.time.Duration;
-import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -59,10 +58,16 @@ public class SessionDisconnectCleanupScheduler {
                     if (checkAndApplyForfeit(session)) continue;
                 }
 
-                // Both disconnected — clean up entirely
+                // Both disconnected — end as 0-0 draw and archive
                 if (sseEmitterRegistry.isDisconnectedLongerThan(sessionId, disconnectTimeout)) {
-                    log.info("Both players disconnected for session {}, deleting", sessionId);
-                    sessionStore.delete(sessionId);
+                    log.info("Both players disconnected for session {}, ending as 0-0 draw", sessionId);
+                    long vBefore = session.getVersion();
+                    session.setHomeScore(0);
+                    session.setAwayScore(0);
+                    session.moveToFinished();
+                    sessionStore.saveIfVersionMatch(session, vBefore);
+                    try { sessionArchiver.archive(session); }
+                    catch (Exception ex) { log.warn("Failed to archive draw session {}", sessionId, ex); }
                     sseEmitterRegistry.forgetSession(sessionId);
                 }
             } catch (Exception e) {
@@ -78,11 +83,17 @@ public class SessionDisconnectCleanupScheduler {
         ActivePlayer connectedPlayer = null;
 
         for (ActivePlayer p : players) {
+            boolean hasEmitter = sseEmitterRegistry.hasActivePlayerEmitter(sessionId, p.getUserId());
+            if (hasEmitter) {
+                // Player has a live SSE connection — definitely not disconnected
+                sseEmitterRegistry.forgetPlayerDisconnect(sessionId, p.getUserId());
+                connectedPlayer = p;
+                continue;
+            }
             boolean disconnected = sseEmitterRegistry.isPlayerDisconnectedLongerThan(
                 sessionId, p.getUserId(), disconnectTimeout);
-            boolean hasEmitter = sseEmitterRegistry.hasActivePlayerEmitter(sessionId, p.getUserId());
-            log.debug("Session {} player {} ({}) disconnected={} hasEmitter={}",
-                sessionId, p.getNickname(), p.getUserId(), disconnected, hasEmitter);
+            log.debug("Session {} player {} ({}) hasEmitter={} disconnected={}",
+                sessionId, p.getNickname(), p.getUserId(), false, disconnected);
             if (disconnected) {
                 disconnectedPlayer = p;
             } else {
@@ -90,26 +101,13 @@ public class SessionDisconnectCleanupScheduler {
             }
         }
 
-        // Both players disconnected past threshold — pick the one who disconnected first as "forfeiter"
-        if (disconnectedPlayer != null && connectedPlayer == null && players.size() == 2) {
-            ActivePlayer first = players.get(0);
-            ActivePlayer second = players.get(1);
-            Instant firstDc = sseEmitterRegistry.getPlayerDisconnectedAt(sessionId, first.getUserId());
-            Instant secondDc = sseEmitterRegistry.getPlayerDisconnectedAt(sessionId, second.getUserId());
-            if (firstDc != null && secondDc != null) {
-                if (firstDc.isBefore(secondDc)) {
-                    disconnectedPlayer = first;
-                    connectedPlayer = second;
-                } else {
-                    disconnectedPlayer = second;
-                    connectedPlayer = first;
-                }
-                log.info("Both players disconnected in session {}, earliest disconnect: {} ({})",
-                    sessionId, disconnectedPlayer.getNickname(), disconnectedPlayer.getUserId());
-            }
-        }
-
+        // Forfeit only when exactly one player is disconnected and the other is confirmed connected
         if (disconnectedPlayer == null || connectedPlayer == null) return false;
+        if (!sseEmitterRegistry.hasActivePlayerEmitter(sessionId, connectedPlayer.getUserId())) {
+            log.debug("Session {} skipping forfeit — winner {} also has no active emitter",
+                sessionId, connectedPlayer.getNickname());
+            return false;
+        }
 
         log.info("Forfeit: player {} disconnected from session {}, awarding 3-0 to {}",
             disconnectedPlayer.getNickname(), sessionId, connectedPlayer.getNickname());
