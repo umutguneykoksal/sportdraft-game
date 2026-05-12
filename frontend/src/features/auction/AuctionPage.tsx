@@ -249,7 +249,7 @@ export function AuctionPage() {
 
   // 6b. Track when bidding opens to both players
   useEffect(() => {
-    if (!round || !round.turnOpenAt || isMyTurn) {
+    if (!round || !round.turnOpenAt) {
       setTurnIsOpen(false);
       return;
     }
@@ -258,11 +258,12 @@ export function AuctionPage() {
       return adjustedNow >= new Date(round.turnOpenAt!).getTime();
     };
     if (check()) { setTurnIsOpen(true); return; }
+    setTurnIsOpen(false);
     const timer = setInterval(() => {
       if (check()) { setTurnIsOpen(true); clearInterval(timer); }
     }, 250);
     return () => clearInterval(timer);
-  }, [round, isMyTurn]);
+  }, [round?.roundId, round?.turnOpenAt]);
 
   // 7. Match-start deadline countdown timer
   useEffect(() => {
