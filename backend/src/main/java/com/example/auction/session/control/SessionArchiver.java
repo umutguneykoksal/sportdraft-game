@@ -4,7 +4,7 @@ import com.example.auction.session.entity.MatchHistory;
 import com.example.auction.session.entity.MatchHistoryRepository;
 import com.example.auction.session.redis.ActivePlayer;
 import com.example.auction.session.redis.ActiveSession;
-import com.example.auction.session.redis.ActiveSessionStore;
+import com.example.auction.session.redis.SessionStore;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Instant;
 import java.util.List;
