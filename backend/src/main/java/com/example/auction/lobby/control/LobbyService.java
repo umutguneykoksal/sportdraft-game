@@ -137,6 +137,13 @@ public class LobbyService {
 
         session.getPlayers().remove(player);
 
+        // Empty room — delete instead of leaving a zombie session in Redis
+        if (session.playerCount() == 0) {
+            sessionStore.delete(sessionId);
+            sseEmitterRegistry.forgetSession(sessionId);
+            return snapshot(session, userId);
+        }
+
         boolean needsReset = session.playerCount() < 2
             && (session.getStatus() == SessionStatus.COUNTDOWN
                 || session.getStatus() == SessionStatus.FORMATION_SELECT);

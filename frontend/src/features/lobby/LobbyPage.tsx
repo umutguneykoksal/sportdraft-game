@@ -161,7 +161,7 @@ export function LobbyPage() {
   } = useLobbyFlow();
 
   const [nicknameInput, setNicknameInput] = useState(session.nickname);
-  const isInSession = !!snapshot;
+  const isInSession = snapshot?.joined === true;
   const status = snapshot?.status;
   const nicknameReady = nicknameInput.trim().length >= 2;
 

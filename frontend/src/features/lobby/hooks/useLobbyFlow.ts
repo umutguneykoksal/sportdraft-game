@@ -38,6 +38,7 @@ export function useLobbyFlow() {
   const lastProcessedEventIdx = useRef(-1);
   const sessionIdRef = useRef(sessionId);
   sessionIdRef.current = sessionId;
+  const syncSeqRef = useRef(0);
 
   // 1. Restore session on mount
   useEffect(() => {
@@ -92,10 +93,13 @@ export function useLobbyFlow() {
     prevConnectedRef.current = isConnected;
     const sid = sessionIdRef.current;
     if (!sid || !isConnected || !wasConnected) return;
-    getSessionSnapshot(sid).then(setSnapshot).catch(() => {});
+    const seq = ++syncSeqRef.current;
+    getSessionSnapshot(sid).then((snap) => {
+      if (seq === syncSeqRef.current) setSnapshot(snap);
+    }).catch(() => {});
   }, [isConnected]);
 
-  // 5. SSE event handler
+  // 5. SSE event handler — guard with syncSeq to discard stale fetches
   useEffect(() => {
     if (events.length === 0) return;
     const idx = events.length - 1;
@@ -111,7 +115,12 @@ export function useLobbyFlow() {
       "formation_phase_started", "formation_ready", "auctioning_started",
     ];
     if (refetchEvents.includes(latest.eventType)) {
-      getSessionSnapshot(sid).then(setSnapshot).catch(() => {});
+      const seq = ++syncSeqRef.current;
+      getSessionSnapshot(sid).then((snap) => {
+        if (seq === syncSeqRef.current && sessionIdRef.current === sid) {
+          setSnapshot(snap);
+        }
+      }).catch(() => {});
     }
   }, [events]);
 
@@ -176,12 +185,10 @@ export function useLobbyFlow() {
     setLoading(true);
     setError(null);
     try {
-      const response = await leaveLobby(snapshot.sessionId);
-      setSnapshot(response);
-      if (!response.joined) {
-        clearActiveSessionId();
-        setSnapshot(null);
-      }
+      ++syncSeqRef.current;
+      await leaveLobby(snapshot.sessionId);
+      clearActiveSessionId();
+      setSnapshot(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to leave lobby");
     } finally {
