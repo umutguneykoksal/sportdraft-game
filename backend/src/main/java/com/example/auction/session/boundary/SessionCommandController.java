@@ -32,7 +32,8 @@ public class SessionCommandController {
         @Valid @RequestBody(required = false) JoinLobbyRequest request,
         @RequestHeader("Authorization") String authorization
     ) {
-        return sessionOrchestrator.joinLobby(authTokenResolver.resolveUserId(authorization));
+        String nickname = request != null ? request.nickname() : null;
+        return sessionOrchestrator.joinLobby(authTokenResolver.resolveUserId(authorization), nickname);
     }
 
     @DeleteMapping("/sessions/{sessionId}/players/me")

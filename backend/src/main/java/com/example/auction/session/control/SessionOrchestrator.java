@@ -18,8 +18,8 @@ public class SessionOrchestrator {
         this.auctionService = auctionService;
     }
 
-    public SessionSnapshotResponse joinLobby(UUID userId) {
-        return lobbyService.joinLobby(userId);
+    public SessionSnapshotResponse joinLobby(UUID userId, String nickname) {
+        return lobbyService.joinLobby(userId, nickname);
     }
 
     public SessionSnapshotResponse leaveLobby(UUID sessionId, UUID userId) {

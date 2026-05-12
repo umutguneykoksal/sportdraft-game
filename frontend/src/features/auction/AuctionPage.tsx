@@ -270,6 +270,7 @@ export function AuctionPage() {
     if (!isMyTurn) { setError("It is not your turn"); return; }
     const amountCents = Number(amount);
     if (!Number.isFinite(amountCents) || amountCents <= 0) { setError("Amount must be a positive number"); return; }
+    if (amountCents > budget) { setError(`Insufficient budget. Maximum bid: ${budget} cr`); return; }
     setLoading(true); setError(null);
     try { setRound(await placeBid(sessionId, round.roundId, amountCents)); }
     catch (e) { setError(e instanceof Error ? e.message : "Failed to place bid"); }
@@ -482,6 +483,7 @@ export function AuctionPage() {
                       onChange={(e) => setAmount(e.target.value)}
                       type="number"
                       min={1}
+                      max={budget}
                       placeholder="Bid (cr)"
                       disabled={loading || !isMyTurn || mySquadFull}
                       className="flex-1 bg-surface-elevated border border-white/10 rounded-lg px-3 py-2 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-accent disabled:opacity-40"
@@ -490,7 +492,7 @@ export function AuctionPage() {
                       onClick={() => {
                         const current = Number(amount);
                         const safe = Number.isFinite(current) ? current : Math.max(1, (round?.highestBidCents ?? 0) + 1);
-                        setAmount(String(safe + 1));
+                        setAmount(String(Math.min(safe + 1, budget)));
                       }}
                       disabled={loading || !isMyTurn || mySquadFull}
                       className="bg-surface-elevated border border-white/10 text-white px-3 py-2 rounded-lg hover:bg-white/10 disabled:opacity-40 transition-colors"
@@ -501,7 +503,7 @@ export function AuctionPage() {
                       onClick={() => {
                         const current = Number(amount);
                         const safe = Number.isFinite(current) ? current : Math.max(1, (round?.highestBidCents ?? 0) + 1);
-                        setAmount(String(safe + 5));
+                        setAmount(String(Math.min(safe + 5, budget)));
                       }}
                       disabled={loading || !isMyTurn || mySquadFull}
                       className="bg-surface-elevated border border-white/10 text-white px-3 py-2 rounded-lg hover:bg-white/10 disabled:opacity-40 transition-colors"

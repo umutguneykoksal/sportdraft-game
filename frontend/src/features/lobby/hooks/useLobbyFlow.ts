@@ -126,10 +126,11 @@ export function useLobbyFlow() {
   // ---- Handlers ----
 
   const handleJoin = async () => {
+    const fresh = getOrCreateClientSession();
     setLoading(true);
     setError(null);
     try {
-      setSnapshot(await joinLobby(session.nickname));
+      setSnapshot(await joinLobby(fresh.nickname));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to join lobby");
     } finally {

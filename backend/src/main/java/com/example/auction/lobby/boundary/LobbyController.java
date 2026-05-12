@@ -28,7 +28,8 @@ public class LobbyController {
         @Valid @RequestBody(required = false) JoinLobbyRequest request,
         @RequestHeader("Authorization") String authorization
     ) {
-        return lobbyService.joinLobby(extractUserId(authorization));
+        String nickname = request != null ? request.nickname() : null;
+        return lobbyService.joinLobby(extractUserId(authorization), nickname);
     }
 
     @DeleteMapping("/sessions/{sessionId}/players/me")

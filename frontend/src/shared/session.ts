@@ -14,13 +14,13 @@ export function getOrCreateClientSession(): ClientSession {
     localStorage.setItem(TOKEN_KEY, token);
   }
 
-  let nickname = localStorage.getItem(NICKNAME_KEY);
-  if (!nickname) {
-    nickname = `Player-${token.slice(0, 6)}`;
-    localStorage.setItem(NICKNAME_KEY, nickname);
-  }
+  const nickname = localStorage.getItem(NICKNAME_KEY) ?? "";
 
   return { token, nickname };
+}
+
+export function saveNickname(nickname: string) {
+  localStorage.setItem(NICKNAME_KEY, nickname);
 }
 
 export function setActiveSessionId(sessionId: string) {

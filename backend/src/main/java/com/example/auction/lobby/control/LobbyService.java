@@ -29,7 +29,7 @@ public class LobbyService {
         this.sseEmitterRegistry = sseEmitterRegistry;
     }
 
-    public SessionSnapshotResponse joinLobby(UUID userId) {
+    public SessionSnapshotResponse joinLobby(UUID userId, String nickname) {
         List<ActiveSession> waitingSessions = sessionStore.findWaitingSessions();
         ActiveSession target = waitingSessions.stream()
             .filter(s -> s.playerCount() < 2)
@@ -47,8 +47,11 @@ public class LobbyService {
 
         long versionBefore = target.getVersion();
         if (!target.hasPlayerWithUserId(userId)) {
+            String safeName = (nickname != null && !nickname.isBlank())
+                ? nickname.strip().substring(0, Math.min(nickname.strip().length(), 20))
+                : "Player-" + userId.toString().substring(0, 6);
             ActivePlayer player = new ActivePlayer(
-                UUID.randomUUID(), userId, Formation.FOUR_FOUR_TWO, STARTING_BUDGET_CENTS
+                UUID.randomUUID(), userId, safeName, Formation.FOUR_FOUR_TWO, STARTING_BUDGET_CENTS
             );
             target.getPlayers().add(player);
         }

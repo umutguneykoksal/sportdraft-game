@@ -233,7 +233,8 @@ public class AuctionService {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "Bid is below minimum increment");
         }
         if (request.amountCents() > bidder.getRemainingBudgetCents()) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "Insufficient budget");
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                "Insufficient budget. Maximum bid: %d cr".formatted(bidder.getRemainingBudgetCents()));
         }
         if (openSlotsForPosition(bidder, roundCard.getPosition(), cardMap) <= 0) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "No open slot for this card position");
@@ -242,9 +243,10 @@ public class AuctionService {
         long remainingAfterBid = bidder.getRemainingBudgetCents() - request.amountCents();
         long reserveRequired = Math.max(totalOpen - 1, 0);
         if (remainingAfterBid < reserveRequired) {
+            long maxAllowed = bidder.getRemainingBudgetCents() - reserveRequired;
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
-                "Bid violates reserve rule: keep at least %d cents for %d remaining slots"
-                    .formatted(reserveRequired, Math.max(totalOpen - 1, 0)));
+                "Must reserve %d cr for %d remaining slots. Maximum bid: %d cr"
+                    .formatted(reserveRequired, Math.max(totalOpen - 1, 0), maxAllowed));
         }
 
         Instant newEndsAt = round.getEndsAt();

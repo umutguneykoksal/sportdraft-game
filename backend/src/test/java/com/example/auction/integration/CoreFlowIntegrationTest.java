@@ -65,8 +65,8 @@ class CoreFlowIntegrationTest {
         UUID user1 = UUID.randomUUID();
         UUID user2 = UUID.randomUUID();
 
-        SessionSnapshotResponse firstJoin = lobbyService.joinLobby(user1);
-        SessionSnapshotResponse secondJoin = lobbyService.joinLobby(user2);
+        SessionSnapshotResponse firstJoin = lobbyService.joinLobby(user1, "TestPlayer1");
+        SessionSnapshotResponse secondJoin = lobbyService.joinLobby(user2, "TestPlayer2");
         UUID sessionId = secondJoin.sessionId();
         assertThat(firstJoin.sessionId()).isEqualTo(sessionId);
 

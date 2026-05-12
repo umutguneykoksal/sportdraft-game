@@ -1,6 +1,8 @@
+import { useState } from "react";
 import { useLobbyFlow } from "./hooks/useLobbyFlow";
 import { FORMATION_LABELS, FORMATION_DOTS } from "../../shared/formations";
 import type { Formation } from "../../shared/api/contracts";
+import { saveNickname } from "../../shared/session";
 
 function FormationCard({
   formation,
@@ -76,8 +78,16 @@ export function LobbyPage() {
     chooseFormation,
   } = useLobbyFlow();
 
+  const [nicknameInput, setNicknameInput] = useState(session.nickname);
   const isInSession = !!snapshot;
   const status = snapshot?.status;
+  const nicknameReady = nicknameInput.trim().length >= 2;
+
+  const onJoin = () => {
+    const trimmed = nicknameInput.trim().substring(0, 20);
+    saveNickname(trimmed);
+    handleJoin();
+  };
 
   return (
     <div className="min-h-screen bg-surface flex flex-col items-center px-4 py-8">
@@ -91,21 +101,38 @@ export function LobbyPage() {
         </p>
       </div>
 
-      {/* Player Info */}
-      <div className="bg-surface-card rounded-xl border border-white/10 p-4 mb-6 w-full max-w-md text-center">
-        <p className="text-slate-400 text-sm">Playing as</p>
-        <p className="text-white font-semibold text-lg">{session.nickname}</p>
-      </div>
-
-      {/* Join / Status */}
+      {/* Nickname + Join */}
       {!isInSession && (
-        <button
-          onClick={handleJoin}
-          disabled={loading}
-          className="bg-accent hover:bg-blue-600 disabled:opacity-50 text-white font-bold py-3 px-8 rounded-xl text-lg transition-colors"
-        >
-          {loading ? "Joining..." : "Find Match"}
-        </button>
+        <div className="w-full max-w-md space-y-4">
+          <div className="bg-surface-card rounded-xl border border-white/10 p-5">
+            <label className="block text-slate-400 text-sm mb-2">Choose your nickname</label>
+            <input
+              value={nicknameInput}
+              onChange={(e) => setNicknameInput(e.target.value)}
+              maxLength={20}
+              placeholder="Enter nickname..."
+              className="w-full bg-surface-elevated border border-white/10 rounded-lg px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-accent text-lg"
+            />
+            {nicknameInput.trim().length > 0 && nicknameInput.trim().length < 2 && (
+              <p className="text-red-400 text-xs mt-1">Minimum 2 characters</p>
+            )}
+          </div>
+          <button
+            onClick={onJoin}
+            disabled={loading || !nicknameReady}
+            className="w-full bg-accent hover:bg-blue-600 disabled:opacity-50 text-white font-bold py-3 px-8 rounded-xl text-lg transition-colors"
+          >
+            {loading ? "Joining..." : "Find Match"}
+          </button>
+        </div>
+      )}
+
+      {/* Player info when in session */}
+      {isInSession && (
+        <div className="bg-surface-card rounded-xl border border-white/10 p-4 mb-6 w-full max-w-md text-center">
+          <p className="text-slate-400 text-sm">Playing as</p>
+          <p className="text-white font-semibold text-lg">{session.nickname}</p>
+        </div>
       )}
 
       {isInSession && (

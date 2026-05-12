@@ -12,6 +12,7 @@ public class ActivePlayer {
 
     private UUID id;
     private UUID userId;
+    private String nickname;
     private Formation formation;
     private boolean formationConfirmed;
     private long remainingBudgetCents;
@@ -20,9 +21,10 @@ public class ActivePlayer {
     public ActivePlayer() {
     }
 
-    public ActivePlayer(UUID id, UUID userId, Formation formation, long remainingBudgetCents) {
+    public ActivePlayer(UUID id, UUID userId, String nickname, Formation formation, long remainingBudgetCents) {
         this.id = id;
         this.userId = userId;
+        this.nickname = nickname;
         this.formation = formation;
         this.formationConfirmed = false;
         this.remainingBudgetCents = remainingBudgetCents;
@@ -69,6 +71,8 @@ public class ActivePlayer {
     public void setId(UUID id) { this.id = id; }
     public UUID getUserId() { return userId; }
     public void setUserId(UUID userId) { this.userId = userId; }
+    public String getNickname() { return nickname; }
+    public void setNickname(String nickname) { this.nickname = nickname; }
     public Formation getFormation() { return formation; }
     public void setFormation(Formation formation) { this.formation = formation; }
     public boolean isFormationConfirmed() { return formationConfirmed; }
