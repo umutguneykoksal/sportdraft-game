@@ -1,6 +1,7 @@
 package com.example.auction.session.redis;
 
 import com.example.auction.bidding.entity.RoundStatus;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -63,6 +64,7 @@ public class ActiveRound {
         return false;
     }
 
+    @JsonIgnore
     public boolean areBothReady() {
         return readyUserOneId != null && readyUserTwoId != null;
     }

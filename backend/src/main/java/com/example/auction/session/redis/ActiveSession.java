@@ -2,6 +2,7 @@ package com.example.auction.session.redis;
 
 import com.example.auction.bidding.entity.RoundStatus;
 import com.example.auction.session.entity.SessionStatus;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -100,10 +101,12 @@ public class ActiveSession {
         return false;
     }
 
+    @JsonIgnore
     public boolean areBothMatchStartReady() {
         return matchStartReadyUserOneId != null && matchStartReadyUserTwoId != null;
     }
 
+    @JsonIgnore
     public int matchStartReadyCount() {
         int n = 0;
         if (matchStartReadyUserOneId != null) n++;
@@ -113,6 +116,7 @@ public class ActiveSession {
 
     // --- Aggregate query helpers ---
 
+    @JsonIgnore
     public int playerCount() {
         return players.size();
     }

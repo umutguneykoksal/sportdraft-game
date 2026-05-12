@@ -1,6 +1,7 @@
 package com.example.auction.session.redis;
 
 import com.example.auction.session.entity.Formation;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -52,10 +53,12 @@ public class ActivePlayer {
         this.cardIds.add(cardId);
     }
 
+    @JsonIgnore
     public int cardCount() {
         return cardIds.size();
     }
 
+    @JsonIgnore
     public boolean isRosterFull() {
         return cardIds.size() >= MAX_ROSTER_SIZE;
     }
