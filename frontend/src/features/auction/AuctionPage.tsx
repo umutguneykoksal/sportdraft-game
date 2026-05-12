@@ -274,24 +274,17 @@ export function AuctionPage() {
     })();
   }, [sessionId, auctionPhaseActive, round, loading]);
 
-  // 9. Auto-take at 1 cr when opponent can't bid
-  const autoTakeRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (!sessionId || !round || !isMyTurn || round.opponentCanBid !== false || loading) return;
-    if (autoTakeRef.current === round.roundId) return;
-    autoTakeRef.current = round.roundId;
-    (async () => {
-      try {
-        setRound(await placeBid(sessionId, round.roundId, 1));
-      } catch {
-        autoTakeRef.current = null;
-      }
-    })();
-  }, [sessionId, round, isMyTurn, loading]);
-
   // ---- Handlers ----
 
   if (!sessionId) return <div className="p-8 text-white">Session ID missing</div>;
+
+  const handleTake = async () => {
+    if (!round) return;
+    setLoading(true); setError(null);
+    try { setRound(await placeBid(sessionId, round.roundId, 1)); }
+    catch (e) { setError(e instanceof Error ? e.message : "Failed to take card"); }
+    finally { setLoading(false); }
+  };
 
   const handleBid = async () => {
     if (!round) { setError("Start a round first"); return; }
@@ -476,10 +469,23 @@ export function AuctionPage() {
                 {/* Bid Controls */}
                 {isMyTurn && round.opponentCanBid === false ? (
                   <div className="space-y-3">
-                    <div className="bg-accent-green/10 border border-accent-green/30 rounded-lg px-3 py-3 text-center">
-                      <p className="text-accent-green text-sm font-medium animate-pulse">Taking for 1 cr...</p>
-                      <p className="text-slate-400 text-xs mt-1">Opponent can't bid on this card</p>
+                    <div className="bg-amber-900/20 border border-amber-500/30 rounded-lg px-3 py-2 text-center">
+                      <p className="text-amber-400 text-sm font-medium">Opponent can't bid on this card</p>
                     </div>
+                    <button
+                      onClick={handleTake}
+                      disabled={loading || mySquadFull}
+                      className="w-full bg-accent-green hover:bg-green-600 disabled:opacity-40 text-white font-bold py-3 rounded-lg transition-colors text-lg"
+                    >
+                      Take for 1 cr
+                    </button>
+                    <button
+                      onClick={handlePassRound}
+                      disabled={loading}
+                      className="w-full bg-red-900/30 border border-red-500/30 text-red-400 hover:bg-red-900/50 disabled:opacity-40 py-2 rounded-lg transition-colors text-sm font-medium"
+                    >
+                      Pass
+                    </button>
                   </div>
                 ) : (
                   <div className="space-y-3">
