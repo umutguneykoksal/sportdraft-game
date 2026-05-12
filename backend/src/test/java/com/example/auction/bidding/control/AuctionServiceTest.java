@@ -62,8 +62,8 @@ class AuctionServiceTest {
     void startRoundRejectsWhenOpenRoundAlreadyExists() {
         UUID sessionId = UUID.randomUUID();
         ActiveSession session = new ActiveSession(sessionId, SessionStatus.AUCTIONING, Instant.now());
-        session.getPlayers().add(new ActivePlayer(UUID.randomUUID(), UUID.randomUUID(), Formation.FOUR_FOUR_TWO, 100));
-        session.getPlayers().add(new ActivePlayer(UUID.randomUUID(), UUID.randomUUID(), Formation.FOUR_FOUR_TWO, 100));
+        session.getPlayers().add(new ActivePlayer(UUID.randomUUID(), UUID.randomUUID(), "P1", Formation.FOUR_FOUR_TWO, 100));
+        session.getPlayers().add(new ActivePlayer(UUID.randomUUID(), UUID.randomUUID(), "P2", Formation.FOUR_FOUR_TWO, 100));
 
         ActiveRound openRound = new ActiveRound(
             UUID.randomUUID(), UUID.randomUUID(),
