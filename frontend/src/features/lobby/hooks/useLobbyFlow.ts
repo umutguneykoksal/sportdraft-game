@@ -28,6 +28,7 @@ export function useLobbyFlow() {
   const { events, isConnected } = useSessionStream(sessionId);
   const restoredRef = useRef(false);
   const prevConnectedRef = useRef(false);
+  const lastProcessedEventIdx = useRef(-1);
 
   // ---- Effects ----
 
@@ -88,14 +89,17 @@ export function useLobbyFlow() {
 
   // 5. SSE event handler (real-time lobby updates)
   useEffect(() => {
-    const latest = events.at(-1);
-    if (!latest || !snapshot) return;
+    if (!snapshot || events.length === 0) return;
+    const idx = events.length - 1;
+    if (idx <= lastProcessedEventIdx.current) return;
+    lastProcessedEventIdx.current = idx;
 
-    const lobbyEvents = [
+    const latest = events[idx];
+    const refetchEvents = [
       "lobby_updated", "countdown_started", "countdown_cancelled",
-      "formation_phase_started", "formation_chosen", "auctioning_started",
+      "formation_phase_started", "auctioning_started",
     ];
-    if (lobbyEvents.includes(latest.eventType)) {
+    if (refetchEvents.includes(latest.eventType)) {
       getSessionSnapshot(snapshot.sessionId).then(setSnapshot).catch(() => {});
     }
   }, [events, snapshot]);
@@ -147,7 +151,7 @@ export function useLobbyFlow() {
   };
 
   const chooseFormation = async (formation: Formation) => {
-    if (!snapshot) {
+    if (!snapshot || loading || snapshot.myFormation === formation) {
       return;
     }
     setLoading(true);
