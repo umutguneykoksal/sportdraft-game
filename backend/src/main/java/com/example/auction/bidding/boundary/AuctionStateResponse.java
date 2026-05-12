@@ -6,6 +6,7 @@ public record AuctionStateResponse(
     AuctionRoundResponse currentRound,
     List<AuctionTeamCardResponse> myTeam,
     List<AuctionTeamCardResponse> opponentTeam,
+    String myFormation,
     String opponentFormation
 ) {
 }

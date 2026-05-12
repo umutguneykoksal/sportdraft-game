@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useMatchFlow } from "./hooks/useMatchFlow";
 import { TeamPitch } from "../../shared/components/TeamPitch";
-import { getAuctionState, getSessionSnapshot } from "../../shared/api";
+import { getAuctionState } from "../../shared/api";
 import type { AuctionTeamCardResponse, Formation } from "../../shared/api/contracts";
 import { FORMATION_LABELS } from "../../shared/formations";
 
@@ -21,14 +21,11 @@ export function MatchPage() {
     let cancelled = false;
     (async () => {
       try {
-        const [state, snap] = await Promise.all([
-          getAuctionState(sessionId),
-          getSessionSnapshot(sessionId),
-        ]);
+        const state = await getAuctionState(sessionId);
         if (cancelled) return;
         setMyTeam(state.myTeam);
         setOpponentTeam(state.opponentTeam);
-        if (snap.myFormation) setMyFormation(snap.myFormation);
+        if (state.myFormation) setMyFormation(state.myFormation);
         if (state.opponentFormation) setOpponentFormation(state.opponentFormation);
       } catch {
         // teams not critical for match display
@@ -109,6 +106,7 @@ export function MatchPage() {
                 cards={myTeam}
                 teamColor="#3b82f6"
                 teamBorderColor="#60a5fa"
+                showAmount
               />
             </div>
             <div className="px-4 py-2 border-t border-white/10 max-h-48 overflow-y-auto">
@@ -120,7 +118,7 @@ export function MatchPage() {
                       <span className="text-white">{c.cardName}</span>
                       <span className="text-slate-500">{c.rating}</span>
                     </div>
-                    <span className="text-slate-400">{(c.amountCents / 100).toFixed(2)}</span>
+                    <span className="text-slate-400">{c.amountCents} cr</span>
                   </div>
                 ))}
               </div>
@@ -142,6 +140,7 @@ export function MatchPage() {
                 away
                 teamColor="#ef4444"
                 teamBorderColor="#f87171"
+                showAmount
               />
             </div>
             <div className="px-4 py-2 border-t border-white/10 max-h-48 overflow-y-auto">
@@ -153,7 +152,7 @@ export function MatchPage() {
                       <span className="text-white">{c.cardName}</span>
                       <span className="text-slate-500">{c.rating}</span>
                     </div>
-                    <span className="text-slate-400">{(c.amountCents / 100).toFixed(2)}</span>
+                    <span className="text-slate-400">{c.amountCents} cr</span>
                   </div>
                 ))}
               </div>

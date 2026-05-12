@@ -8,6 +8,7 @@ interface TeamPitchProps {
   teamColor?: string;
   teamBorderColor?: string;
   highlightPosition?: Position;
+  showAmount?: boolean;
 }
 
 const HIGHLIGHT_BG = "#fbbf24";
@@ -55,6 +56,7 @@ export function TeamPitch({
   cards,
   teamColor = "#ffffff",
   highlightPosition,
+  showAmount,
 }: TeamPitchProps) {
   const slots = buildSlots(formation, cards, highlightPosition);
 
@@ -163,6 +165,24 @@ export function TeamPitch({
                 }}
               >
                 {slot.card!.cardName}
+              </span>
+            )}
+
+            {/* Bid amount badge */}
+            {filled && showAmount && (
+              <span
+                style={{
+                  fontSize: "clamp(5px, 1.8cqw, 9px)",
+                  lineHeight: 1,
+                  marginTop: "clamp(0px, 0.2cqw, 2px)",
+                  padding: "clamp(1px, 0.2cqw, 2px) clamp(2px, 0.4cqw, 4px)",
+                  borderRadius: "clamp(1px, 0.3cqw, 3px)",
+                  color: "#fbbf24",
+                  backgroundColor: "rgba(0,0,0,0.7)",
+                  fontWeight: 700,
+                }}
+              >
+                {slot.card!.amountCents} cr
               </span>
             )}
 

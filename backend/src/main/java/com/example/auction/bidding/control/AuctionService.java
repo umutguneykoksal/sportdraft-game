@@ -362,7 +362,7 @@ public class AuctionService {
             .map(r -> toResponse(r, cardMap.get(r.getCardId()), sessionId))
             .orElse(null);
 
-        return new AuctionStateResponse(currentRound, myTeam, opponentTeam, opponent.getFormation().name());
+        return new AuctionStateResponse(currentRound, myTeam, opponentTeam, me.getFormation().name(), opponent.getFormation().name());
     }
 
     // --- Scheduled jobs ---

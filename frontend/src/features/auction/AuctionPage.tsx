@@ -41,6 +41,7 @@ export function AuctionPage() {
   const [loading, setLoading] = useState(false);
   const [myTeam, setMyTeam] = useState<AuctionTeamCardResponse[]>([]);
   const [opponentTeam, setOpponentTeam] = useState<AuctionTeamCardResponse[]>([]);
+  const [myFormation, setMyFormation] = useState<Formation>("FOUR_FOUR_TWO");
   const [opponentFormation, setOpponentFormation] = useState<Formation>("FOUR_FOUR_TWO");
   const [secondsLeft, setSecondsLeft] = useState<number>(0);
   const [sessionSnap, setSessionSnap] = useState<SessionSnapshotResponse | null>(null);
@@ -57,11 +58,11 @@ export function AuctionPage() {
   const auctionPhaseActive = sessionSnap?.status === "AUCTIONING";
   const streamSessionId = sessionId && sessionSnap?.joined ? sessionId : null;
   const { events, isConnected } = useSessionStream(streamSessionId);
-  const myFormation: Formation = sessionSnap?.myFormation ?? "FOUR_FOUR_TWO";
 
-  // Budget: starting 10000 minus spent
+
+  // Budget: starting 100 minus spent
   const spent = myTeam.reduce((sum, c) => sum + c.amountCents, 0);
-  const budget = 10000 - spent;
+  const budget = 100 - spent;
 
   // ---- Shared helpers ----
 
@@ -73,6 +74,7 @@ export function AuctionPage() {
     setRound(auctionState.currentRound);
     setMyTeam(mapCards(auctionState.myTeam));
     setOpponentTeam(mapCards(auctionState.opponentTeam));
+    if (auctionState.myFormation) setMyFormation(auctionState.myFormation as Formation);
     if (auctionState.opponentFormation) setOpponentFormation(auctionState.opponentFormation);
   };
 
@@ -302,7 +304,7 @@ export function AuctionPage() {
 
   const timerPercent = round ? Math.min(100, (secondsLeft / 30) * 100) : 0;
   const timerColor = secondsLeft <= 5 ? "bg-red-500" : secondsLeft <= 10 ? "bg-amber-500" : "bg-accent";
-  const budgetPercent = Math.max(0, (budget / 10000) * 100);
+  const budgetPercent = Math.max(0, (budget / 100) * 100);
 
   const positionColors: Record<string, string> = {
     GK: "bg-yellow-500",
@@ -329,7 +331,7 @@ export function AuctionPage() {
           <div className="flex items-center gap-3">
             <div className="text-right">
               <p className="text-xs text-slate-400">Budget</p>
-              <p className="text-base sm:text-lg font-bold text-white">{(budget / 100).toFixed(2)} <span className="text-xs text-slate-400">cr</span></p>
+              <p className="text-base sm:text-lg font-bold text-white">{budget} <span className="text-xs text-slate-400">cr</span></p>
             </div>
             <div className="w-20 sm:w-32 h-2 bg-surface-elevated rounded-full overflow-hidden">
               <div
@@ -421,7 +423,7 @@ export function AuctionPage() {
                         <span className="text-white">{c.cardName}</span>
                         <span className="text-slate-500">{c.rating}</span>
                       </div>
-                      <span className="text-slate-400">{(c.amountCents / 100).toFixed(2)}</span>
+                      <span className="text-slate-400">{c.amountCents} cr</span>
                     </div>
                   ))}
                 </div>
@@ -464,7 +466,7 @@ export function AuctionPage() {
                   <p className="text-xs text-slate-400">Highest Bid</p>
                   <p className="text-2xl font-bold text-white">
                     {round.highestBidCents > 0
-                      ? `${(round.highestBidCents / 100).toFixed(2)}`
+                      ? `${round.highestBidCents} cr`
                       : "No bids"}
                   </p>
                   <p className="text-xs text-slate-400 mt-1">
@@ -480,7 +482,7 @@ export function AuctionPage() {
                       onChange={(e) => setAmount(e.target.value)}
                       type="number"
                       min={1}
-                      placeholder="Bid (cents)"
+                      placeholder="Bid (cr)"
                       disabled={loading || !isMyTurn || mySquadFull}
                       className="flex-1 bg-surface-elevated border border-white/10 rounded-lg px-3 py-2 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-accent disabled:opacity-40"
                     />
@@ -613,7 +615,7 @@ export function AuctionPage() {
                         <span className="text-white">{c.cardName}</span>
                         <span className="text-slate-500">{c.rating}</span>
                       </div>
-                      <span className="text-slate-400">{(c.amountCents / 100).toFixed(2)}</span>
+                      <span className="text-slate-400">{c.amountCents} cr</span>
                     </div>
                   ))}
                 </div>

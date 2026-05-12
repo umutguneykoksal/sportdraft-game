@@ -62,6 +62,7 @@ export interface AuctionStateResponse {
   currentRound: AuctionRoundResponse | null;
   myTeam: AuctionTeamCardResponse[];
   opponentTeam: AuctionTeamCardResponse[];
+  myFormation: Formation | null;
   opponentFormation: Formation | null;
 }
 
