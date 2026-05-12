@@ -30,6 +30,14 @@ export async function selectFormation(sessionId: string, formation: Formation): 
   return parseOrThrow<SessionSnapshotResponse>(response, `selectFormation failed: ${response.status}`);
 }
 
+export async function confirmFormationReady(sessionId: string): Promise<SessionSnapshotResponse> {
+  const response = await fetch(`${getApiBase()}/api/sessions/${sessionId}/confirm-formation-ready`, {
+    method: "POST",
+    headers: authHeaders(),
+  });
+  return parseOrThrow<SessionSnapshotResponse>(response, `confirmFormationReady failed: ${response.status}`);
+}
+
 export async function confirmMatchStart(sessionId: string): Promise<SessionSnapshotResponse> {
   const response = await fetch(`${getApiBase()}/api/sessions/${sessionId}/confirm-match-start`, {
     method: "POST",

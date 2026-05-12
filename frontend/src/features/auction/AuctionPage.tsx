@@ -14,6 +14,7 @@ import {
   SessionSnapshotResponse,
   startRound,
 } from "../../shared/api";
+import { ROUND_STATUS_LABELS } from "../../shared/api/contracts";
 import { clearActiveSessionId, setActiveSessionId } from "../../shared/session";
 import { useSessionStream } from "../../shared/sse";
 import { TeamPitch } from "../../shared/components/TeamPitch";
@@ -48,6 +49,7 @@ export function AuctionPage() {
   const [matchStartSecondsLeft, setMatchStartSecondsLeft] = useState<number>(0);
   const previousRoundIdRef = useRef<string | null>(null);
   const serverClockOffsetMsRef = useRef<number>(0);
+  const roundTotalSecondsRef = useRef<number>(15);
   const syncSeqRef = useRef(0);
   const prevConnectedRef = useRef(false);
   const isMyTurn = !!myUserId && !!round && round.currentTurnUserId === myUserId;
@@ -235,7 +237,13 @@ export function AuctionPage() {
       const adjustedNow = Date.now() + serverClockOffsetMsRef.current;
       return Math.max(0, Math.ceil((new Date(round.endsAt).getTime() - adjustedNow) / 1000));
     };
-    setSecondsLeft(computeSecondsLeft());
+    const initial = computeSecondsLeft();
+    if (previousRoundIdRef.current !== round.roundId) {
+      roundTotalSecondsRef.current = initial;
+    } else if (initial > roundTotalSecondsRef.current) {
+      roundTotalSecondsRef.current = initial;
+    }
+    setSecondsLeft(initial);
     const timer = setInterval(() => setSecondsLeft(computeSecondsLeft()), 250);
     return () => clearInterval(timer);
   }, [round]);
@@ -303,7 +311,9 @@ export function AuctionPage() {
 
   // ---- Computed ----
 
-  const timerPercent = round ? Math.min(100, (secondsLeft / 30) * 100) : 0;
+  const timerPercent = round && roundTotalSecondsRef.current > 0
+    ? Math.min(100, (secondsLeft / roundTotalSecondsRef.current) * 100)
+    : 0;
   const timerColor = secondsLeft <= 5 ? "bg-red-500" : secondsLeft <= 10 ? "bg-amber-500" : "bg-accent";
   const budgetPercent = Math.max(0, (budget / 100) * 100);
 
@@ -471,7 +481,7 @@ export function AuctionPage() {
                       : "No bids"}
                   </p>
                   <p className="text-xs text-slate-400 mt-1">
-                    Status: {round.status}
+                    {ROUND_STATUS_LABELS[round.status] ?? round.status}
                   </p>
                 </div>
 
@@ -567,17 +577,6 @@ export function AuctionPage() {
                   {loading ? "Starting..." : "Start Round"}
                 </button>
               </div>
-            )}
-
-            {/* Start Round button when round exists but also available */}
-            {round && auctionPhaseActive && (
-              <button
-                onClick={handleStartRound}
-                disabled={loading}
-                className="w-full bg-surface-card border border-white/10 text-slate-300 hover:text-white hover:bg-surface-elevated disabled:opacity-50 py-2 rounded-lg transition-colors text-sm"
-              >
-                {loading ? "Starting..." : "Start Next Round"}
-              </button>
             )}
 
             {/* Error */}

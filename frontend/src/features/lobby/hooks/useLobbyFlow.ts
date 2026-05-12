@@ -7,6 +7,7 @@ import {
   joinLobby,
   leaveLobby,
   selectFormation,
+  confirmFormationReady,
 } from "../../../shared/api";
 import {
   clearActiveSessionId,
@@ -103,7 +104,7 @@ export function useLobbyFlow() {
     const latest = events[idx];
     const refetchEvents = [
       "lobby_updated", "countdown_started", "countdown_cancelled",
-      "formation_phase_started", "auctioning_started",
+      "formation_phase_started", "formation_ready", "auctioning_started",
     ];
     if (refetchEvents.includes(latest.eventType)) {
       getSessionSnapshot(sid).then(setSnapshot).catch(() => {});
@@ -157,6 +158,19 @@ export function useLobbyFlow() {
     }
   };
 
+  const handleStartAuction = async () => {
+    if (!snapshot) return;
+    setLoading(true);
+    setError(null);
+    try {
+      setSnapshot(await confirmFormationReady(snapshot.sessionId));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to start auction");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const chooseFormation = async (formation: Formation) => {
     if (!snapshot || loading || snapshot.myFormation === formation) {
       return;
@@ -182,6 +196,7 @@ export function useLobbyFlow() {
     formations: ALL_FORMATIONS,
     handleJoin,
     handleLeave,
+    handleStartAuction,
     chooseFormation,
   };
 }

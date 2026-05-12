@@ -80,6 +80,14 @@ public class SessionController {
         return lobbyService.selectFormation(sessionId, extractUserId(authorization), request.formation());
     }
 
+    @PostMapping("/{sessionId}/confirm-formation-ready")
+    public SessionSnapshotResponse confirmFormationReady(
+        @PathVariable UUID sessionId,
+        @RequestHeader("Authorization") String authorization
+    ) {
+        return lobbyService.confirmFormationReady(sessionId, extractUserId(authorization));
+    }
+
     @PostMapping("/{sessionId}/confirm-match-start")
     public SessionSnapshotResponse confirmMatchStart(
         @PathVariable UUID sessionId,

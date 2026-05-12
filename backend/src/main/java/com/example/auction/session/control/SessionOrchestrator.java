@@ -34,6 +34,10 @@ public class SessionOrchestrator {
         return lobbyService.selectFormation(sessionId, userId, formation);
     }
 
+    public SessionSnapshotResponse confirmFormationReady(UUID sessionId, UUID userId) {
+        return lobbyService.confirmFormationReady(sessionId, userId);
+    }
+
     public SessionSnapshotResponse confirmMatchStart(UUID sessionId, UUID userId) {
         auctionService.confirmMatchStart(sessionId, userId);
         return lobbyService.getSnapshot(sessionId, userId);

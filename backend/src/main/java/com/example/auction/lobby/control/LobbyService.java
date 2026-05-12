@@ -85,7 +85,10 @@ public class LobbyService {
 
         session.getPlayers().remove(player);
 
-        if (session.playerCount() < 2 && session.getStatus() == SessionStatus.COUNTDOWN) {
+        boolean needsReset = session.playerCount() < 2
+            && (session.getStatus() == SessionStatus.COUNTDOWN
+                || session.getStatus() == SessionStatus.FORMATION_SELECT);
+        if (needsReset) {
             session.moveToWaiting();
             sessionStore.saveIfVersionMatch(session, versionBefore);
             sseEmitterRegistry.broadcast(
@@ -115,19 +118,45 @@ public class LobbyService {
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Player not in session"));
 
         player.selectFormation(formation);
+        sessionStore.saveIfVersionMatch(session, versionBefore);
 
         sseEmitterRegistry.broadcast(
             sessionId, "formation_chosen",
             Map.of("sessionId", sessionId, "userId", userId, "formation", formation)
         );
 
-        if (session.playerCount() == 2
-            && session.getPlayers().stream().allMatch(ActivePlayer::isFormationConfirmed)) {
+        return snapshot(session, userId);
+    }
+
+    public SessionSnapshotResponse confirmFormationReady(UUID sessionId, UUID userId) {
+        ActiveSession session = sessionStore.getById(sessionId);
+        long versionBefore = session.getVersion();
+
+        if (session.getStatus() != SessionStatus.FORMATION_SELECT) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Not in formation selection phase");
+        }
+        if (!session.hasPlayerWithUserId(userId)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Player not in session");
+        }
+
+        session.getPlayers().forEach(ActivePlayer::confirmDefaultFormationIfMissing);
+        boolean changed = session.registerMatchStartReady(userId);
+        if (!changed) {
+            return snapshot(session, userId);
+        }
+
+        if (session.areBothMatchStartReady()) {
             session.moveToAuctioning();
             sessionStore.saveIfVersionMatch(session, versionBefore);
             sseEmitterRegistry.broadcast(sessionId, "auctioning_started", Map.of("sessionId", sessionId));
         } else {
+            session.setCountdownEndsAt(Instant.now().plus(10, ChronoUnit.SECONDS));
             sessionStore.saveIfVersionMatch(session, versionBefore);
+            sseEmitterRegistry.broadcast(
+                sessionId, "formation_ready",
+                Map.of("sessionId", sessionId, "readyCount", session.matchStartReadyCount(),
+                       "countdownEndsAt", session.getCountdownEndsAt())
+            );
         }
 
         return snapshot(session, userId);
@@ -146,7 +175,7 @@ public class LobbyService {
             if (session.getCountdownEndsAt() != null && !session.getCountdownEndsAt().isAfter(now)) {
                 long vBefore = session.getVersion();
                 if (session.playerCount() == 2) {
-                    session.moveToFormationSelect(now.plus(30, ChronoUnit.SECONDS));
+                    session.moveToFormationSelect(null);
                     sessionStore.saveIfVersionMatch(session, vBefore);
                     sseEmitterRegistry.broadcast(
                         session.getId(), "formation_phase_started",
@@ -160,7 +189,8 @@ public class LobbyService {
         }
 
         for (ActiveSession session : sessionStore.findByStatus(SessionStatus.FORMATION_SELECT)) {
-            if (session.getCountdownEndsAt() != null && !session.getCountdownEndsAt().isAfter(now)) {
+            if (session.getCountdownEndsAt() != null && !session.getCountdownEndsAt().isAfter(now)
+                && session.matchStartReadyCount() > 0) {
                 long vBefore = session.getVersion();
                 if (session.playerCount() == 2) {
                     session.getPlayers().forEach(ActivePlayer::confirmDefaultFormationIfMissing);
@@ -184,8 +214,11 @@ public class LobbyService {
         Instant matchStartDeadlineAt = null;
         int matchStartReadyCount = 0;
         boolean matchStartConfirmedByMe = false;
-        if (session.getStatus() == SessionStatus.MATCH_START_PENDING) {
-            matchStartDeadlineAt = session.getMatchStartDeadlineAt();
+        if (session.getStatus() == SessionStatus.MATCH_START_PENDING
+            || session.getStatus() == SessionStatus.FORMATION_SELECT) {
+            matchStartDeadlineAt = session.getStatus() == SessionStatus.MATCH_START_PENDING
+                ? session.getMatchStartDeadlineAt()
+                : session.getCountdownEndsAt();
             matchStartReadyCount = session.matchStartReadyCount();
             matchStartConfirmedByMe = userId.equals(session.getMatchStartReadyUserOneId())
                 || userId.equals(session.getMatchStartReadyUserTwoId());

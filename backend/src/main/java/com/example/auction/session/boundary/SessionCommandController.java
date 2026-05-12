@@ -65,6 +65,14 @@ public class SessionCommandController {
         );
     }
 
+    @PostMapping("/sessions/{sessionId}/confirm-formation-ready")
+    public SessionSnapshotResponse confirmFormationReady(
+        @PathVariable UUID sessionId,
+        @RequestHeader("Authorization") String authorization
+    ) {
+        return sessionOrchestrator.confirmFormationReady(sessionId, authTokenResolver.resolveUserId(authorization));
+    }
+
     @PostMapping("/sessions/{sessionId}/confirm-match-start")
     public SessionSnapshotResponse confirmMatchStart(
         @PathVariable UUID sessionId,

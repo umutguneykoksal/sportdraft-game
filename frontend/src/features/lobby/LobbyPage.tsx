@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useLobbyFlow } from "./hooks/useLobbyFlow";
 import { FORMATION_LABELS, FORMATION_DOTS } from "../../shared/formations";
 import type { Formation } from "../../shared/api/contracts";
+import { SESSION_STATUS_LABELS } from "../../shared/api/contracts";
 import { saveNickname } from "../../shared/session";
 
 function FormationCard({
@@ -75,6 +76,7 @@ export function LobbyPage() {
     formations,
     handleJoin,
     handleLeave,
+    handleStartAuction,
     chooseFormation,
   } = useLobbyFlow();
 
@@ -141,7 +143,7 @@ export function LobbyPage() {
           <div className="bg-surface-card rounded-xl border border-white/10 p-4 flex items-center justify-between">
             <div>
               <span className="text-slate-400 text-sm">Status</span>
-              <p className="text-white font-semibold">{status}</p>
+              <p className="text-white font-semibold">{status ? SESSION_STATUS_LABELS[status] : "—"}</p>
             </div>
             <div className="text-center">
               <span className="text-slate-400 text-sm">Players</span>
@@ -157,13 +159,13 @@ export function LobbyPage() {
             </div>
           </div>
 
-          {/* Countdown */}
-          {countdownSecondsLeft !== null && countdownSecondsLeft > 0 && (
+          {/* Lobby Countdown (before formation phase) */}
+          {status === "COUNTDOWN" && countdownSecondsLeft !== null && countdownSecondsLeft > 0 && (
             <div className="text-center">
               <div className="inline-flex items-center justify-center w-24 h-24 rounded-full border-4 border-accent bg-surface-card">
                 <span className="text-3xl font-bold text-white">{countdownSecondsLeft}</span>
               </div>
-              <p className="text-slate-400 mt-2 text-sm">Match starting...</p>
+              <p className="text-slate-400 mt-2 text-sm">Opponent found! Starting...</p>
             </div>
           )}
 
@@ -181,34 +183,76 @@ export function LobbyPage() {
 
           {/* Formation Selection */}
           {status === "FORMATION_SELECT" && (
-            <div>
-              <h3 className="text-xl font-bold text-white text-center mb-4">
-                Choose Your Formation
-              </h3>
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mx-auto">
-                {formations.map((f) => (
-                  <FormationCard
-                    key={f}
-                    formation={f}
-                    selected={snapshot.myFormation === f}
-                    onSelect={() => chooseFormation(f)}
-                    disabled={loading}
-                  />
-                ))}
+            <div className="space-y-6">
+              <div>
+                <h3 className="text-xl font-bold text-white text-center mb-4">
+                  Choose Your Formation
+                </h3>
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mx-auto">
+                  {formations.map((f) => (
+                    <FormationCard
+                      key={f}
+                      formation={f}
+                      selected={snapshot.myFormation === f}
+                      onSelect={() => chooseFormation(f)}
+                      disabled={loading || snapshot.matchStartConfirmedByMe}
+                    />
+                  ))}
+                </div>
+              </div>
+
+              {/* Formation Ready Countdown */}
+              {countdownSecondsLeft !== null && countdownSecondsLeft > 0 && snapshot.matchStartReadyCount > 0 && (
+                <div className="text-center">
+                  <div className="inline-flex items-center justify-center w-20 h-20 rounded-full border-4 border-accent bg-surface-card">
+                    <span className="text-2xl font-bold text-white">{countdownSecondsLeft}</span>
+                  </div>
+                  <p className="text-slate-400 mt-2 text-sm">
+                    {snapshot.matchStartConfirmedByMe
+                      ? "Waiting for opponent..."
+                      : "Opponent is ready! Auction starting..."}
+                  </p>
+                </div>
+              )}
+
+              {/* Start + Leave buttons */}
+              <div className="flex gap-3 justify-center">
+                <button
+                  onClick={handleStartAuction}
+                  disabled={loading || snapshot.matchStartConfirmedByMe}
+                  className={`font-bold py-3 px-8 rounded-xl text-lg transition-colors ${
+                    snapshot.matchStartConfirmedByMe
+                      ? "bg-accent-green/20 text-accent-green border border-accent-green/30 cursor-default"
+                      : "bg-accent hover:bg-blue-600 disabled:opacity-50 text-white"
+                  }`}
+                >
+                  {snapshot.matchStartConfirmedByMe
+                    ? `Ready (${snapshot.matchStartReadyCount}/2)`
+                    : "Start Auction"}
+                </button>
+                <button
+                  onClick={handleLeave}
+                  disabled={loading}
+                  className="bg-red-900/30 border border-red-500/30 text-red-400 hover:bg-red-900/50 font-bold py-3 px-8 rounded-xl text-lg transition-colors disabled:opacity-50"
+                >
+                  Leave
+                </button>
               </div>
             </div>
           )}
 
-          {/* Leave Button */}
-          <div className="text-center">
-            <button
-              onClick={handleLeave}
-              disabled={loading}
-              className="text-red-400 hover:text-red-300 text-sm underline disabled:opacity-50 transition-colors"
-            >
-              Leave Lobby
-            </button>
-          </div>
+          {/* Leave Button (non-formation phases) */}
+          {status !== "FORMATION_SELECT" && (
+            <div className="text-center">
+              <button
+                onClick={handleLeave}
+                disabled={loading}
+                className="text-red-400 hover:text-red-300 text-sm underline disabled:opacity-50 transition-colors"
+              >
+                Leave Lobby
+              </button>
+            </div>
+          )}
         </div>
       )}
 

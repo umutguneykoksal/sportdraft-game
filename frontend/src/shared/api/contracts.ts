@@ -8,6 +8,23 @@ export type SessionStatus =
   | "AWAITING_RESULT"
   | "FINISHED";
 
+export const SESSION_STATUS_LABELS: Record<SessionStatus, string> = {
+  WAITING: "Waiting for opponent",
+  COUNTDOWN: "Match starting",
+  FORMATION_SELECT: "Choose formation",
+  AUCTIONING: "Auction in progress",
+  MATCH_START_PENDING: "Confirm match start",
+  FINALIZING: "Simulating match",
+  AWAITING_RESULT: "Simulating match",
+  FINISHED: "Match finished",
+};
+
+export const ROUND_STATUS_LABELS: Record<string, string> = {
+  OPEN: "Bidding open",
+  SOLD: "Sold",
+  PASSED: "Passed",
+};
+
 export type Formation =
   | "FOUR_FOUR_TWO"
   | "FOUR_THREE_THREE"
