@@ -49,19 +49,23 @@ public class SessionDisconnectCleanupScheduler {
     @Scheduled(fixedDelay = 5000)
     public void cleanupDisconnectedSessions() {
         for (UUID sessionId : sessionStore.findAllActiveIds()) {
-            ActiveSession session = sessionStore.findById(sessionId).orElse(null);
-            if (session == null) continue;
+            try {
+                ActiveSession session = sessionStore.findById(sessionId).orElse(null);
+                if (session == null) continue;
 
-            // Per-player forfeit: if one player disconnected for 20s while the other is still connected
-            if (session.playerCount() == 2 && FORFEIT_ELIGIBLE_STATUSES.contains(session.getStatus())) {
-                if (checkAndApplyForfeit(session)) continue;
-            }
+                // Per-player forfeit: if one player disconnected for 20s while the other is still connected
+                if (session.playerCount() == 2 && FORFEIT_ELIGIBLE_STATUSES.contains(session.getStatus())) {
+                    if (checkAndApplyForfeit(session)) continue;
+                }
 
-            // Both disconnected — clean up entirely
-            if (sseEmitterRegistry.isDisconnectedLongerThan(sessionId, disconnectTimeout)) {
-                log.info("Both players disconnected for session {}, deleting", sessionId);
-                sessionStore.delete(sessionId);
-                sseEmitterRegistry.forgetSession(sessionId);
+                // Both disconnected — clean up entirely
+                if (sseEmitterRegistry.isDisconnectedLongerThan(sessionId, disconnectTimeout)) {
+                    log.info("Both players disconnected for session {}, deleting", sessionId);
+                    sessionStore.delete(sessionId);
+                    sseEmitterRegistry.forgetSession(sessionId);
+                }
+            } catch (Exception e) {
+                log.warn("Error processing session {} in disconnect cleanup", sessionId, e);
             }
         }
     }
@@ -73,7 +77,10 @@ public class SessionDisconnectCleanupScheduler {
         ActivePlayer connectedPlayer = null;
 
         for (ActivePlayer p : players) {
-            if (sseEmitterRegistry.isPlayerDisconnectedLongerThan(sessionId, p.getUserId(), disconnectTimeout)) {
+            boolean disconnected = sseEmitterRegistry.isPlayerDisconnectedLongerThan(
+                sessionId, p.getUserId(), disconnectTimeout);
+            log.debug("Session {} player {} ({}) disconnected={}", sessionId, p.getNickname(), p.getUserId(), disconnected);
+            if (disconnected) {
                 disconnectedPlayer = p;
             } else {
                 connectedPlayer = p;

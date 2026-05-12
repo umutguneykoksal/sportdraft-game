@@ -11,12 +11,16 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 @Component
 public class SseEmitterRegistry {
+
+    private static final Logger log = LoggerFactory.getLogger(SseEmitterRegistry.class);
 
     private static final long TIMEOUT_MS = 30L * 60L * 1000L;
     /** Single SSE event name so browsers can use one EventSource.addEventListener. */
@@ -60,6 +64,7 @@ public class SseEmitterRegistry {
             disconnectedAtBySession.remove(sessionId);
             if (userId != null) {
                 playerDisconnectedAt.remove(sessionId + ":" + userId);
+                log.debug("SSE registered: session={} userId={} spectator={}", sessionId, userId, false);
             }
         }
         return emitter;
@@ -85,7 +90,11 @@ public class SseEmitterRegistry {
         }
         String key = sessionId + ":" + userId;
         Instant disconnectedAt = playerDisconnectedAt.computeIfAbsent(key, k -> Instant.now());
-        return disconnectedAt.plus(threshold).isBefore(Instant.now());
+        boolean expired = disconnectedAt.plus(threshold).isBefore(Instant.now());
+        long elapsedSec = Duration.between(disconnectedAt, Instant.now()).toSeconds();
+        log.debug("Player disconnect check: session={} userId={} emitterCount={} hasActive={} disconnectedForSec={} expired={}",
+            sessionId, userId, emitters.size(), false, elapsedSec, expired);
+        return expired;
     }
 
     public void forgetPlayerDisconnect(UUID sessionId, UUID userId) {
@@ -137,6 +146,7 @@ public class SseEmitterRegistry {
                 .anyMatch(e -> userId.equals(emitterToUserId.get(e)));
             if (!hasOtherPlayerEmitter) {
                 playerDisconnectedAt.putIfAbsent(sessionId + ":" + userId, Instant.now());
+                log.info("SSE disconnected: session={} userId={} — disconnect timer started", sessionId, userId);
             }
         }
         if (emitters.isEmpty()) {

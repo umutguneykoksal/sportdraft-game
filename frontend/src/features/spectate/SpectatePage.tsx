@@ -46,9 +46,12 @@ export function SpectatePage() {
   const serverClockOffsetMsRef = useRef(0);
   const roundTotalSecondsRef = useRef(15);
   const prevConnectedRef = useRef(false);
+  const wasEverConnectedRef = useRef(false);
   const syncSeqRef = useRef(0);
 
   const { events, isConnected } = useSpectateStream(sessionId ?? null);
+  if (isConnected) wasEverConnectedRef.current = true;
+  const showReconnecting = wasEverConnectedRef.current && !isConnected;
 
   const applyState = (s: SpectateStateResponse) => {
     setState(s);
@@ -203,7 +206,7 @@ export function SpectatePage() {
               <p className="text-xs text-slate-400">{state.awayNickname}</p>
               <p className="text-sm font-bold text-white">{state.awayBudget} cr</p>
             </div>
-            {!isConnected && (
+            {showReconnecting && (
               <span className="text-amber-400 text-xs animate-pulse">Reconnecting...</span>
             )}
           </div>
