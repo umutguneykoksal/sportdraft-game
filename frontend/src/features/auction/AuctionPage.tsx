@@ -275,17 +275,16 @@ export function AuctionPage() {
   }, [sessionId, auctionPhaseActive, round, loading]);
 
   // 9. Auto-take at 1 cr when opponent can't bid
-  const autoTakeRef = useRef(false);
+  const autoTakeRef = useRef<string | null>(null);
   useEffect(() => {
-    if (!sessionId || !round || !isMyTurn || round.opponentCanBid !== false || loading || autoTakeRef.current) return;
-    autoTakeRef.current = true;
+    if (!sessionId || !round || !isMyTurn || round.opponentCanBid !== false || loading) return;
+    if (autoTakeRef.current === round.roundId) return;
+    autoTakeRef.current = round.roundId;
     (async () => {
       try {
         setRound(await placeBid(sessionId, round.roundId, 1));
       } catch {
-        // will be retried on next state update
-      } finally {
-        autoTakeRef.current = false;
+        autoTakeRef.current = null;
       }
     })();
   }, [sessionId, round, isMyTurn, loading]);

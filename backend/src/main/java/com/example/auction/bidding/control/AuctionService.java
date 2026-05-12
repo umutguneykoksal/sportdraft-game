@@ -336,10 +336,19 @@ public class AuctionService {
         round.registerPass(userId);
         Card roundCard = cardMap.get(round.getCardId());
 
+        // If someone already bid, passing concedes — close as SOLD to highest bidder
+        if (round.getHighestBidderId() != null) {
+            closeRound(round, session, vBefore, cardMap);
+            return session.findOpenRound()
+                .map(r -> toResponseWithContext(r, cardMap.get(r.getCardId()), session, cardMap))
+                .orElse(toResponse(round, cardMap.get(round.getCardId()), sessionId));
+        }
+
+        // No bids yet — give turn to opponent if they can bid and haven't passed
         UUID opponentUserId = otherPlayerUserId(session, userId);
         ActivePlayer opponent = session.findPlayerByUserId(opponentUserId).orElse(null);
-        long minimumBid = round.getHighestBidCents() == 0 ? STARTING_BID : round.getHighestBidCents() + MIN_INCREMENT;
-        boolean opponentCanBid = opponent != null && canPlayerBidRound(opponent, roundCard, minimumBid, cardMap);
+        boolean opponentCanBid = opponent != null
+            && canPlayerBidRound(opponent, roundCard, STARTING_BID, cardMap);
 
         if (opponentCanBid && !round.hasUserPassed(opponentUserId)) {
             round.setCurrentTurnUserId(opponentUserId);
@@ -350,6 +359,7 @@ public class AuctionService {
             return response;
         }
 
+        // Both passed (or opponent can't bid) with no bids — close as PASSED
         closeRound(round, session, vBefore, cardMap);
         return session.findOpenRound()
             .map(r -> toResponseWithContext(r, cardMap.get(r.getCardId()), session, cardMap))
