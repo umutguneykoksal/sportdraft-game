@@ -105,15 +105,24 @@ public class SessionDisconnectCleanupScheduler {
             }
         }
 
-        // Forfeit requires exactly: one player past threshold, one NOT past threshold
-        if (disconnectedPlayer == null || connectedPlayer == null) {
-            log.debug("Session {} forfeit check result: disconnected={} connected={}",
-                sessionId,
-                disconnectedPlayer != null ? disconnectedPlayer.getNickname() : "none",
-                connectedPlayer != null ? connectedPlayer.getNickname() : "none");
-            return false;
+        // Both players disconnected past threshold → end as 0-0 draw
+        if (disconnectedPlayer != null && connectedPlayer == null) {
+            log.info("Both players disconnected past threshold in session {}, ending as 0-0 draw", sessionId);
+            long vBefore = session.getVersion();
+            session.setHomeScore(0);
+            session.setAwayScore(0);
+            session.moveToFinished();
+            sessionStore.saveIfVersionMatch(session, vBefore);
+            try { sessionArchiver.archive(session); }
+            catch (Exception e) { log.warn("Failed to archive draw session {}", sessionId, e); }
+            sseEmitterRegistry.forgetSession(sessionId);
+            return true;
         }
 
+        // No disconnected player found
+        if (disconnectedPlayer == null || connectedPlayer == null) return false;
+
+        // One disconnected, one connected → forfeit
         log.info("Forfeit: player {} disconnected from session {}, awarding 3-0 to {}",
             disconnectedPlayer.getNickname(), sessionId, connectedPlayer.getNickname());
 
