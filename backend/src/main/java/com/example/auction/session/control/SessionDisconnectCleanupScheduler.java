@@ -48,14 +48,18 @@ public class SessionDisconnectCleanupScheduler {
 
     @Scheduled(fixedDelay = 5000)
     public void cleanupDisconnectedSessions() {
-        for (UUID sessionId : sessionStore.findAllActiveIds()) {
+        List<UUID> activeIds = sessionStore.findAllActiveIds();
+        for (UUID sessionId : activeIds) {
             try {
                 ActiveSession session = sessionStore.findById(sessionId).orElse(null);
                 if (session == null) continue;
 
-                // Per-player forfeit: if one player disconnected for 20s while the other is still connected
+                // Per-player forfeit: if one player disconnected while the other is still connected
                 if (session.playerCount() == 2 && FORFEIT_ELIGIBLE_STATUSES.contains(session.getStatus())) {
                     if (checkAndApplyForfeit(session)) continue;
+                } else {
+                    log.debug("Session {} skipping forfeit check: playerCount={} status={}",
+                        sessionId, session.playerCount(), session.getStatus());
                 }
 
                 // Both disconnected — end as 0-0 draw and archive
@@ -101,11 +105,12 @@ public class SessionDisconnectCleanupScheduler {
             }
         }
 
-        // Forfeit only when exactly one player is disconnected and the other is confirmed connected
-        if (disconnectedPlayer == null || connectedPlayer == null) return false;
-        if (!sseEmitterRegistry.hasActivePlayerEmitter(sessionId, connectedPlayer.getUserId())) {
-            log.debug("Session {} skipping forfeit — winner {} also has no active emitter",
-                sessionId, connectedPlayer.getNickname());
+        // Forfeit requires exactly: one player past threshold, one NOT past threshold
+        if (disconnectedPlayer == null || connectedPlayer == null) {
+            log.debug("Session {} forfeit check result: disconnected={} connected={}",
+                sessionId,
+                disconnectedPlayer != null ? disconnectedPlayer.getNickname() : "none",
+                connectedPlayer != null ? connectedPlayer.getNickname() : "none");
             return false;
         }
 

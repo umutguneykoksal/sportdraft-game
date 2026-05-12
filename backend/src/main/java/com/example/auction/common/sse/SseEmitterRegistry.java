@@ -29,6 +29,7 @@ public class SseEmitterRegistry {
     private final Map<UUID, List<SseEmitter>> bySession = new ConcurrentHashMap<>();
     private final Set<SseEmitter> spectatorEmitters = ConcurrentHashMap.newKeySet();
     private final Map<SseEmitter, UUID> emitterToUserId = new ConcurrentHashMap<>();
+    private final Map<SseEmitter, Instant> emitterLastSendAt = new ConcurrentHashMap<>();
     private final Map<UUID, Instant> disconnectedAtBySession = new ConcurrentHashMap<>();
     /** Per-player disconnect tracking: key = "sessionId:userId" */
     private final Map<String, Instant> playerDisconnectedAt = new ConcurrentHashMap<>();
@@ -60,6 +61,7 @@ public class SseEmitterRegistry {
         if (userId != null) {
             emitterToUserId.put(emitter, userId);
         }
+        emitterLastSendAt.put(emitter, Instant.now());
         if (!spectator) {
             disconnectedAtBySession.remove(sessionId);
             if (userId != null) {
@@ -101,10 +103,17 @@ public class SseEmitterRegistry {
         playerDisconnectedAt.remove(sessionId + ":" + userId);
     }
 
+    private static final Duration STALE_EMITTER_THRESHOLD = Duration.ofSeconds(30);
+
     public boolean hasActivePlayerEmitter(UUID sessionId, UUID userId) {
+        Instant cutoff = Instant.now().minus(STALE_EMITTER_THRESHOLD);
         return bySession.getOrDefault(sessionId, List.of()).stream()
             .filter(e -> !spectatorEmitters.contains(e))
-            .anyMatch(e -> userId.equals(emitterToUserId.get(e)));
+            .filter(e -> userId.equals(emitterToUserId.get(e)))
+            .anyMatch(e -> {
+                Instant lastSend = emitterLastSendAt.get(e);
+                return lastSend != null && lastSend.isAfter(cutoff);
+            });
     }
 
     public Instant getPlayerDisconnectedAt(UUID sessionId, UUID userId) {
@@ -127,6 +136,7 @@ public class SseEmitterRegistry {
                         .name(SSE_EVENT_NAME)
                         .data(objectMapper.writeValueAsString(envelope))
                 );
+                emitterLastSendAt.put(emitter, Instant.now());
             } catch (IOException | IllegalStateException ex) {
                 emitter.completeWithError(ex);
                 remove(sessionId, emitter);
@@ -145,6 +155,7 @@ public class SseEmitterRegistry {
     private void remove(UUID sessionId, SseEmitter emitter) {
         boolean wasSpectator = spectatorEmitters.remove(emitter);
         UUID userId = emitterToUserId.remove(emitter);
+        emitterLastSendAt.remove(emitter);
         List<SseEmitter> emitters = bySession.get(sessionId);
         if (emitters == null) {
             return;
