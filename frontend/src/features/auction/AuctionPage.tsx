@@ -10,7 +10,6 @@ import {
   getSessionSnapshot,
   passRound,
   placeBid,
-  readyNextRound,
   SessionSnapshotResponse,
   startRound,
 } from "../../shared/api";
@@ -53,9 +52,6 @@ export function AuctionPage() {
   const syncSeqRef = useRef(0);
   const prevConnectedRef = useRef(false);
   const isMyTurn = !!myUserId && !!round && round.currentTurnUserId === myUserId;
-  const isReadyByMe = !!myUserId && !!round && (round.readyUserOneId === myUserId || round.readyUserTwoId === myUserId);
-  const readyCount = round ? [round.readyUserOneId, round.readyUserTwoId].filter(Boolean).length : 0;
-  const hasBidOnRound = !!round?.highestBidderId;
   const mySquadFull = myTeam.length >= 11;
   const auctionPhaseActive = sessionSnap?.status === "AUCTIONING";
   const streamSessionId = sessionId && sessionSnap?.joined ? sessionId : null;
@@ -170,7 +166,8 @@ export function AuctionPage() {
     // Auction round events → update round from payload
     if (
       (latest.eventType === "round_started" || latest.eventType === "bid_placed"
-        || latest.eventType === "round_ended" || latest.eventType === "round_ready")
+        || latest.eventType === "round_ended" || latest.eventType === "round_ready"
+        || latest.eventType === "turn_passed")
       && payload.round
     ) {
       const serverEventTime = Date.parse(latest.occurredAt);
@@ -261,24 +258,41 @@ export function AuctionPage() {
     return () => window.clearInterval(timer);
   }, [sessionSnap?.matchStartDeadlineAt]);
 
+  // 8. Auto-start next round when auction is active but no round exists
+  const autoStartRef = useRef(false);
+  useEffect(() => {
+    if (!sessionId || !auctionPhaseActive || round || loading || autoStartRef.current) return;
+    autoStartRef.current = true;
+    (async () => {
+      try {
+        setRound(await startRound(sessionId));
+      } catch {
+        // round may have already been started by the other player; poll will catch up
+      } finally {
+        autoStartRef.current = false;
+      }
+    })();
+  }, [sessionId, auctionPhaseActive, round, loading]);
+
+  // 9. Auto-take at 1 cr when opponent can't bid
+  const autoTakeRef = useRef(false);
+  useEffect(() => {
+    if (!sessionId || !round || !isMyTurn || round.opponentCanBid !== false || loading || autoTakeRef.current) return;
+    autoTakeRef.current = true;
+    (async () => {
+      try {
+        setRound(await placeBid(sessionId, round.roundId, 1));
+      } catch {
+        // will be retried on next state update
+      } finally {
+        autoTakeRef.current = false;
+      }
+    })();
+  }, [sessionId, round, isMyTurn, loading]);
+
   // ---- Handlers ----
 
   if (!sessionId) return <div className="p-8 text-white">Session ID missing</div>;
-
-  const handleStartRound = async () => {
-    setLoading(true); setError(null);
-    try { setRound(await startRound(sessionId)); }
-    catch (e) { setError(e instanceof Error ? e.message : "Failed to start round"); }
-    finally { setLoading(false); }
-  };
-
-  const handleTake = async () => {
-    if (!round) return;
-    setLoading(true); setError(null);
-    try { setRound(await placeBid(sessionId, round.roundId, 1)); }
-    catch (e) { setError(e instanceof Error ? e.message : "Failed to take card"); }
-    finally { setLoading(false); }
-  };
 
   const handleBid = async () => {
     if (!round) { setError("Start a round first"); return; }
@@ -293,13 +307,6 @@ export function AuctionPage() {
     finally { setLoading(false); }
   };
 
-  const handleReadyNext = async () => {
-    if (!round) return;
-    setLoading(true); setError(null);
-    try { setRound(await readyNextRound(sessionId, round.roundId)); }
-    catch (e) { setError(e instanceof Error ? e.message : "Failed to ready next"); }
-    finally { setLoading(false); }
-  };
 
   const handlePassRound = async () => {
     if (!round) return;
@@ -470,23 +477,10 @@ export function AuctionPage() {
                 {/* Bid Controls */}
                 {isMyTurn && round.opponentCanBid === false ? (
                   <div className="space-y-3">
-                    <div className="bg-amber-900/20 border border-amber-500/30 rounded-lg px-3 py-2 text-center">
-                      <p className="text-amber-400 text-sm font-medium">Opponent can't bid on this card</p>
+                    <div className="bg-accent-green/10 border border-accent-green/30 rounded-lg px-3 py-3 text-center">
+                      <p className="text-accent-green text-sm font-medium animate-pulse">Taking for 1 cr...</p>
+                      <p className="text-slate-400 text-xs mt-1">Opponent can't bid on this card</p>
                     </div>
-                    <button
-                      onClick={handleTake}
-                      disabled={loading || mySquadFull}
-                      className="w-full bg-accent-green hover:bg-green-600 disabled:opacity-40 text-white font-bold py-3 rounded-lg transition-colors text-lg"
-                    >
-                      Take 1 cr
-                    </button>
-                    <button
-                      onClick={handlePassRound}
-                      disabled={loading}
-                      className="w-full bg-red-900/30 border border-red-500/30 text-red-400 hover:bg-red-900/50 disabled:opacity-40 py-2 rounded-lg transition-colors text-sm font-medium"
-                    >
-                      Pass
-                    </button>
                   </div>
                 ) : (
                   <div className="space-y-3">
@@ -533,22 +527,13 @@ export function AuctionPage() {
                       Place Bid
                     </button>
 
-                    <div className="flex gap-2">
-                      <button
-                        onClick={handlePassRound}
-                        disabled={loading || !isMyTurn}
-                        className="flex-1 bg-red-900/30 border border-red-500/30 text-red-400 hover:bg-red-900/50 disabled:opacity-40 py-2 rounded-lg transition-colors text-sm font-medium"
-                      >
-                        Pass
-                      </button>
-                      <button
-                        onClick={handleReadyNext}
-                        disabled={loading || round.status !== "OPEN" || isReadyByMe || hasBidOnRound}
-                        className="flex-1 bg-accent-green/20 border border-accent-green/30 text-accent-green hover:bg-accent-green/30 disabled:opacity-40 py-2 rounded-lg transition-colors text-sm font-medium"
-                      >
-                        {isReadyByMe ? "Ready!" : `Ready (${readyCount}/2)`}
-                      </button>
-                    </div>
+                    <button
+                      onClick={handlePassRound}
+                      disabled={loading || !isMyTurn}
+                      className="w-full bg-red-900/30 border border-red-500/30 text-red-400 hover:bg-red-900/50 disabled:opacity-40 py-2 rounded-lg transition-colors text-sm font-medium"
+                    >
+                      Pass
+                    </button>
                   </div>
                 )}
 
@@ -569,17 +554,10 @@ export function AuctionPage() {
               </div>
             )}
 
-            {/* No Round / Start Round */}
+            {/* Waiting for next round */}
             {auctionPhaseActive && !round && (
               <div className="bg-surface-card rounded-xl border border-white/10 p-6 text-center">
-                <p className="text-slate-400 mb-4">No active round</p>
-                <button
-                  onClick={handleStartRound}
-                  disabled={loading}
-                  className="bg-accent hover:bg-blue-600 disabled:opacity-50 text-white font-bold py-3 px-6 rounded-lg transition-colors"
-                >
-                  {loading ? "Starting..." : "Start Round"}
-                </button>
+                <p className="text-slate-400 animate-pulse">Starting next round...</p>
               </div>
             )}
 

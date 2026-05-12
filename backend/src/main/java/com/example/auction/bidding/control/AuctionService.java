@@ -328,9 +328,26 @@ public class AuctionService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Not your turn");
         }
 
+        round.registerPass(userId);
+        Card roundCard = cardMap.get(round.getCardId());
+
+        UUID opponentUserId = otherPlayerUserId(session, userId);
+        ActivePlayer opponent = session.findPlayerByUserId(opponentUserId).orElse(null);
+        long minimumBid = round.getHighestBidCents() == 0 ? STARTING_BID : round.getHighestBidCents() + MIN_INCREMENT;
+        boolean opponentCanBid = opponent != null && canPlayerBidRound(opponent, roundCard, minimumBid, cardMap);
+
+        if (opponentCanBid && !round.hasUserPassed(opponentUserId)) {
+            round.setCurrentTurnUserId(opponentUserId);
+            sessionStore.saveIfVersionMatch(session, vBefore);
+            AuctionRoundResponse response = toResponseWithContext(round, roundCard, session, cardMap);
+            sseEmitterRegistry.broadcast(sessionId, "turn_passed",
+                Map.of("round", response, "userId", userId));
+            return response;
+        }
+
         closeRound(round, session, vBefore, cardMap);
         return session.findOpenRound()
-            .map(r -> toResponse(r, cardMap.get(r.getCardId()), sessionId))
+            .map(r -> toResponseWithContext(r, cardMap.get(r.getCardId()), session, cardMap))
             .orElse(toResponse(round, cardMap.get(round.getCardId()), sessionId));
     }
 

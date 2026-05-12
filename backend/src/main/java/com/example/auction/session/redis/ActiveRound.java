@@ -21,6 +21,7 @@ public class ActiveRound {
     private UUID readyUserTwoId;
     private RoundStatus status;
     private List<ActiveBid> bids = new ArrayList<>();
+    private List<UUID> passedUserIds = new ArrayList<>();
 
     public ActiveRound() {
     }
@@ -45,6 +46,7 @@ public class ActiveRound {
         this.currentTurnUserId = nextTurnUserId;
         this.readyUserOneId = null;
         this.readyUserTwoId = null;
+        this.passedUserIds.clear();
     }
 
     public void markSold() {
@@ -67,6 +69,21 @@ public class ActiveRound {
     @JsonIgnore
     public boolean areBothReady() {
         return readyUserOneId != null && readyUserTwoId != null;
+    }
+
+    public boolean registerPass(UUID userId) {
+        if (userId == null || passedUserIds.contains(userId)) return false;
+        passedUserIds.add(userId);
+        return true;
+    }
+
+    public boolean hasUserPassed(UUID userId) {
+        return passedUserIds.contains(userId);
+    }
+
+    @JsonIgnore
+    public boolean haveBothPassed() {
+        return passedUserIds.size() >= 2;
     }
 
     public boolean hasBidWithIdempotencyKey(UUID idempotencyKey) {
@@ -99,4 +116,6 @@ public class ActiveRound {
     public void setStatus(RoundStatus status) { this.status = status; }
     public List<ActiveBid> getBids() { return bids; }
     public void setBids(List<ActiveBid> bids) { this.bids = bids; }
+    public List<UUID> getPassedUserIds() { return passedUserIds; }
+    public void setPassedUserIds(List<UUID> passedUserIds) { this.passedUserIds = passedUserIds; }
 }
