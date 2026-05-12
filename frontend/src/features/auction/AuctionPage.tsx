@@ -272,6 +272,14 @@ export function AuctionPage() {
     finally { setLoading(false); }
   };
 
+  const handleTake = async () => {
+    if (!round) return;
+    setLoading(true); setError(null);
+    try { setRound(await placeBid(sessionId, round.roundId, 1)); }
+    catch (e) { setError(e instanceof Error ? e.message : "Failed to take card"); }
+    finally { setLoading(false); }
+  };
+
   const handleBid = async () => {
     if (!round) { setError("Start a round first"); return; }
     if (myTeam.length >= 11) { setError("Your squad is full"); return; }
@@ -357,36 +365,10 @@ export function AuctionPage() {
         </div>
       </div>
 
-      {/* Match Start Pending Overlay */}
+      {/* Squads Complete */}
       {sessionSnap?.status === "MATCH_START_PENDING" && (
-        <div className="bg-accent/10 border-b border-accent/30 px-4 py-4">
-          <div className="max-w-lg mx-auto text-center">
-            <h3 className="text-xl font-bold text-white mb-2">All Squads Complete!</h3>
-            <p className="text-slate-300 text-sm mb-3">
-              Both teams have 11 players. Confirm to start the match.
-            </p>
-            <div className="flex items-center justify-center gap-4 mb-3">
-              <div className="text-center">
-                <p className="text-3xl font-bold text-white">{matchStartSecondsLeft}s</p>
-                <p className="text-xs text-slate-400">remaining</p>
-              </div>
-              <div className="text-center">
-                <p className="text-3xl font-bold text-white">{sessionSnap.matchStartReadyCount}/2</p>
-                <p className="text-xs text-slate-400">confirmed</p>
-              </div>
-            </div>
-            <button
-              onClick={handleConfirmMatchStart}
-              disabled={loading || sessionSnap.matchStartConfirmedByMe}
-              className={`px-6 py-2 rounded-lg font-bold transition-colors ${
-                sessionSnap.matchStartConfirmedByMe
-                  ? "bg-accent-green/20 text-accent-green cursor-default"
-                  : "bg-accent-green hover:bg-green-600 text-white"
-              } disabled:opacity-60`}
-            >
-              {sessionSnap.matchStartConfirmedByMe ? "Ready!" : "Start Match"}
-            </button>
-          </div>
+        <div className="bg-accent-green/10 border-b border-accent-green/30 px-4 py-4 text-center">
+          <p className="text-lg font-bold text-accent-green animate-pulse">All squads complete! Starting match...</p>
         </div>
       )}
 
@@ -486,67 +468,89 @@ export function AuctionPage() {
                 </div>
 
                 {/* Bid Controls */}
-                <div className="space-y-3">
-                  <div className="flex gap-2">
-                    <input
-                      value={amount}
-                      onChange={(e) => setAmount(e.target.value)}
-                      type="number"
-                      min={1}
-                      max={budget}
-                      placeholder="Bid (cr)"
-                      disabled={loading || !isMyTurn || mySquadFull}
-                      className="flex-1 bg-surface-elevated border border-white/10 rounded-lg px-3 py-2 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-accent disabled:opacity-40"
-                    />
+                {isMyTurn && round.opponentCanBid === false ? (
+                  <div className="space-y-3">
+                    <div className="bg-amber-900/20 border border-amber-500/30 rounded-lg px-3 py-2 text-center">
+                      <p className="text-amber-400 text-sm font-medium">Opponent can't bid on this card</p>
+                    </div>
                     <button
-                      onClick={() => {
-                        const current = Number(amount);
-                        const safe = Number.isFinite(current) ? current : Math.max(1, (round?.highestBidCents ?? 0) + 1);
-                        setAmount(String(Math.min(safe + 1, budget)));
-                      }}
-                      disabled={loading || !isMyTurn || mySquadFull}
-                      className="bg-surface-elevated border border-white/10 text-white px-3 py-2 rounded-lg hover:bg-white/10 disabled:opacity-40 transition-colors"
+                      onClick={handleTake}
+                      disabled={loading || mySquadFull}
+                      className="w-full bg-accent-green hover:bg-green-600 disabled:opacity-40 text-white font-bold py-3 rounded-lg transition-colors text-lg"
                     >
-                      +1
+                      Take 1 cr
                     </button>
-                    <button
-                      onClick={() => {
-                        const current = Number(amount);
-                        const safe = Number.isFinite(current) ? current : Math.max(1, (round?.highestBidCents ?? 0) + 1);
-                        setAmount(String(Math.min(safe + 5, budget)));
-                      }}
-                      disabled={loading || !isMyTurn || mySquadFull}
-                      className="bg-surface-elevated border border-white/10 text-white px-3 py-2 rounded-lg hover:bg-white/10 disabled:opacity-40 transition-colors"
-                    >
-                      +5
-                    </button>
-                  </div>
-
-                  <button
-                    onClick={handleBid}
-                    disabled={loading || !isMyTurn || mySquadFull}
-                    className="w-full bg-accent hover:bg-blue-600 disabled:opacity-40 text-white font-bold py-3 rounded-lg transition-colors"
-                  >
-                    Place Bid
-                  </button>
-
-                  <div className="flex gap-2">
                     <button
                       onClick={handlePassRound}
-                      disabled={loading || !isMyTurn}
-                      className="flex-1 bg-red-900/30 border border-red-500/30 text-red-400 hover:bg-red-900/50 disabled:opacity-40 py-2 rounded-lg transition-colors text-sm font-medium"
+                      disabled={loading}
+                      className="w-full bg-red-900/30 border border-red-500/30 text-red-400 hover:bg-red-900/50 disabled:opacity-40 py-2 rounded-lg transition-colors text-sm font-medium"
                     >
                       Pass
                     </button>
-                    <button
-                      onClick={handleReadyNext}
-                      disabled={loading || round.status !== "OPEN" || isReadyByMe || hasBidOnRound}
-                      className="flex-1 bg-accent-green/20 border border-accent-green/30 text-accent-green hover:bg-accent-green/30 disabled:opacity-40 py-2 rounded-lg transition-colors text-sm font-medium"
-                    >
-                      {isReadyByMe ? "Ready!" : `Ready (${readyCount}/2)`}
-                    </button>
                   </div>
-                </div>
+                ) : (
+                  <div className="space-y-3">
+                    <div className="flex gap-2">
+                      <input
+                        value={amount}
+                        onChange={(e) => setAmount(e.target.value)}
+                        type="number"
+                        min={1}
+                        max={budget}
+                        placeholder="Bid (cr)"
+                        disabled={loading || !isMyTurn || mySquadFull}
+                        className="flex-1 bg-surface-elevated border border-white/10 rounded-lg px-3 py-2 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-accent disabled:opacity-40"
+                      />
+                      <button
+                        onClick={() => {
+                          const current = Number(amount);
+                          const safe = Number.isFinite(current) ? current : Math.max(1, (round?.highestBidCents ?? 0) + 1);
+                          setAmount(String(Math.min(safe + 1, budget)));
+                        }}
+                        disabled={loading || !isMyTurn || mySquadFull}
+                        className="bg-surface-elevated border border-white/10 text-white px-3 py-2 rounded-lg hover:bg-white/10 disabled:opacity-40 transition-colors"
+                      >
+                        +1
+                      </button>
+                      <button
+                        onClick={() => {
+                          const current = Number(amount);
+                          const safe = Number.isFinite(current) ? current : Math.max(1, (round?.highestBidCents ?? 0) + 1);
+                          setAmount(String(Math.min(safe + 5, budget)));
+                        }}
+                        disabled={loading || !isMyTurn || mySquadFull}
+                        className="bg-surface-elevated border border-white/10 text-white px-3 py-2 rounded-lg hover:bg-white/10 disabled:opacity-40 transition-colors"
+                      >
+                        +5
+                      </button>
+                    </div>
+
+                    <button
+                      onClick={handleBid}
+                      disabled={loading || !isMyTurn || mySquadFull}
+                      className="w-full bg-accent hover:bg-blue-600 disabled:opacity-40 text-white font-bold py-3 rounded-lg transition-colors"
+                    >
+                      Place Bid
+                    </button>
+
+                    <div className="flex gap-2">
+                      <button
+                        onClick={handlePassRound}
+                        disabled={loading || !isMyTurn}
+                        className="flex-1 bg-red-900/30 border border-red-500/30 text-red-400 hover:bg-red-900/50 disabled:opacity-40 py-2 rounded-lg transition-colors text-sm font-medium"
+                      >
+                        Pass
+                      </button>
+                      <button
+                        onClick={handleReadyNext}
+                        disabled={loading || round.status !== "OPEN" || isReadyByMe || hasBidOnRound}
+                        className="flex-1 bg-accent-green/20 border border-accent-green/30 text-accent-green hover:bg-accent-green/30 disabled:opacity-40 py-2 rounded-lg transition-colors text-sm font-medium"
+                      >
+                        {isReadyByMe ? "Ready!" : `Ready (${readyCount}/2)`}
+                      </button>
+                    </div>
+                  </div>
+                )}
 
                 {/* Turn Indicator */}
                 <div className={`mt-3 text-center text-sm font-medium py-2 rounded-lg ${

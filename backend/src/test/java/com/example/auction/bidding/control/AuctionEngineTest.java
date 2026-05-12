@@ -38,7 +38,8 @@ class AuctionEngineTest {
             null,
             null,
             Instant.now(),
-            "OPEN"
+            "OPEN",
+            true
         );
         when(auctionService.startRound(sessionId)).thenReturn(round);
 

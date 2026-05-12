@@ -178,7 +178,7 @@ public class AuctionService {
 
         sessionStore.saveIfVersionMatch(session, vBefore);
         Card roundCard = cardMap.get(createdRound.getCardId());
-        AuctionRoundResponse response = toResponse(createdRound, roundCard, sessionId);
+        AuctionRoundResponse response = toResponseWithContext(createdRound, roundCard, session, cardMap);
         sseEmitterRegistry.broadcast(sessionId, "round_started", Map.of("round", response));
         meterRegistry.counter("auction.round.started").increment();
         return response;
@@ -263,7 +263,7 @@ public class AuctionService {
         normalizeTurnForRound(round, session, cardMap);
         sessionStore.saveIfVersionMatch(session, vBefore);
 
-        AuctionRoundResponse response = toResponse(round, roundCard, sessionId);
+        AuctionRoundResponse response = toResponseWithContext(round, roundCard, session, cardMap);
         sseEmitterRegistry.broadcast(
             sessionId, "bid_placed",
             Map.of("round", response, "userId", userId, "amountCents", request.amountCents())
@@ -338,8 +338,9 @@ public class AuctionService {
         ActiveSession session = sessionStore.getById(sessionId);
         TeamSnapshot teams = buildTeamSnapshot(session, userId);
 
+        Map<UUID, Card> cardMap = loadCardMap();
         AuctionRoundResponse currentRound = session.findOpenRound()
-            .map(r -> toResponse(r, loadCardMap().get(r.getCardId()), sessionId))
+            .map(r -> toResponseWithContext(r, cardMap.get(r.getCardId()), session, cardMap))
             .orElse(null);
 
         return new AuctionStateResponse(currentRound, teams.myTeam(), teams.opponentTeam(), teams.myFormation(), teams.opponentFormation());
@@ -570,7 +571,7 @@ public class AuctionService {
             );
         });
 
-        session.moveToMatchStartPending(Instant.now().plus(MATCH_START_COUNTDOWN_SECONDS, ChronoUnit.SECONDS));
+        session.moveToMatchStartPending(Instant.now().plus(2, ChronoUnit.SECONDS));
         sessionStore.saveIfVersionMatch(session, vBefore);
         sseEmitterRegistry.broadcast(
             sessionId, "match_start_pending",
@@ -627,7 +628,27 @@ public class AuctionService {
             card.getId(), card.getName(), card.getPosition().name(), card.getRating(),
             round.getHighestBidCents(), round.getHighestBidderId(),
             round.getCurrentTurnUserId(), round.getReadyUserOneId(), round.getReadyUserTwoId(),
-            round.getEndsAt(), round.getStatus().name()
+            round.getEndsAt(), round.getStatus().name(),
+            true
+        );
+    }
+
+    private AuctionRoundResponse toResponseWithContext(ActiveRound round, Card card,
+                                                       ActiveSession session, Map<UUID, Card> cardMap) {
+        boolean opponentCanBid = true;
+        if (round.getCurrentTurnUserId() != null) {
+            UUID opponentUserId = otherPlayerUserId(session, round.getCurrentTurnUserId());
+            ActivePlayer opponent = session.findPlayerByUserId(opponentUserId).orElse(null);
+            long minimumBid = round.getHighestBidCents() == 0 ? STARTING_BID : round.getHighestBidCents() + MIN_INCREMENT;
+            opponentCanBid = opponent != null && canPlayerBidRound(opponent, card, minimumBid, cardMap);
+        }
+        return new AuctionRoundResponse(
+            round.getId(), session.getId(),
+            card.getId(), card.getName(), card.getPosition().name(), card.getRating(),
+            round.getHighestBidCents(), round.getHighestBidderId(),
+            round.getCurrentTurnUserId(), round.getReadyUserOneId(), round.getReadyUserTwoId(),
+            round.getEndsAt(), round.getStatus().name(),
+            opponentCanBid
         );
     }
 

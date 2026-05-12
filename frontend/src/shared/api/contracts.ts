@@ -65,6 +65,7 @@ export interface AuctionRoundResponse {
   readyUserTwoId: string | null;
   endsAt: string;
   status: string;
+  opponentCanBid: boolean;
 }
 
 export interface AuctionTeamCardResponse {
