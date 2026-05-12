@@ -268,13 +268,23 @@ public class AuctionService {
         normalizeTurnForRound(round, session, cardMap);
         sessionStore.saveIfVersionMatch(session, vBefore);
 
-        AuctionRoundResponse response = toResponseWithContext(round, roundCard, session, cardMap);
-        sseEmitterRegistry.broadcast(
-            sessionId, "bid_placed",
-            Map.of("round", response, "userId", userId, "amountCents", request.amountCents())
-        );
+        boolean settled = round.getStatus() != RoundStatus.OPEN;
+        if (!settled) {
+            AuctionRoundResponse response = toResponseWithContext(round, roundCard, session, cardMap);
+            sseEmitterRegistry.broadcast(
+                sessionId, "bid_placed",
+                Map.of("round", response, "userId", userId, "amountCents", request.amountCents())
+            );
+            meterRegistry.counter("auction.bid.placed").increment();
+            return response;
+        }
+
         meterRegistry.counter("auction.bid.placed").increment();
-        return response;
+        maybeFinalizeSession(session, cardMap);
+        maybeStartNextRound(session);
+        return session.findOpenRound()
+            .map(r -> toResponseWithContext(r, cardMap.get(r.getCardId()), session, cardMap))
+            .orElse(toResponse(round, roundCard, sessionId));
     }
 
     public AuctionRoundResponse readyNext(UUID sessionId, UUID userId, UUID roundId) {
@@ -583,8 +593,6 @@ public class AuctionService {
             session.getId(), "round_ended",
             Map.of("round", toResponse(round, roundCard, session.getId()), "result", "PASSED", "reason", "no_eligible_turn_bidder")
         );
-        maybeFinalizeSession(session, cardMap);
-        maybeStartNextRound(session);
     }
 
     /** Settles a round as SOLD inline (called from normalizeTurnForRound when no counter-bid is possible). */
@@ -607,8 +615,6 @@ public class AuctionService {
                 Map.of("round", toResponse(round, roundCard, session.getId()), "result", "SOLD", "winnerUserId", winner.getUserId()));
             meterRegistry.counter("auction.round.closed", "result", "SOLD").increment();
         }
-        maybeFinalizeSession(session, cardMap);
-        maybeStartNextRound(session);
     }
 
     private void maybeFinalizeSession(ActiveSession session, Map<UUID, Card> cardMap) {
