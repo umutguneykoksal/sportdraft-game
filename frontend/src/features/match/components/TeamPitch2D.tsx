@@ -11,6 +11,9 @@ interface TeamPitch2DProps {
   homeTeamId: string | null;
   currentMinute: number;
   isPlaying: boolean;
+  homeScore: number;
+  awayScore: number;
+  timeline: MatchEvent[];
   seed?: number;
 }
 
@@ -27,15 +30,21 @@ export function TeamPitch2D({
   homeTeamId,
   currentMinute,
   isPlaying,
+  homeScore,
+  awayScore,
+  timeline,
   seed = 12345,
 }: TeamPitch2DProps) {
-  // Use the football simulation engine
+  // Use the football simulation engine synchronized with backend timeline
   const simState = useFootballSimulation(
     homeFormation,
     awayFormation,
     homeCards,
     awayCards,
     isPlaying,
+    currentMinute,
+    timeline,
+    homeTeamId,
     seed
   );
 
@@ -223,9 +232,9 @@ export function TeamPitch2D({
       <div className="absolute top-2 left-1/2 -translate-x-1/2 z-30">
         <div className="bg-black/60 px-3 py-1 rounded-full flex items-center gap-2">
           <div className="w-2 h-2 rounded-full" style={{ backgroundColor: HOME_COLOR }} />
-          <span className="text-white font-bold text-sm">{simState.homeScore}</span>
+          <span className="text-white font-bold text-sm">{homeScore}</span>
           <span className="text-white/50 text-xs">-</span>
-          <span className="text-white font-bold text-sm">{simState.awayScore}</span>
+          <span className="text-white font-bold text-sm">{awayScore}</span>
           <div className="w-2 h-2 rounded-full" style={{ backgroundColor: AWAY_COLOR }} />
         </div>
       </div>

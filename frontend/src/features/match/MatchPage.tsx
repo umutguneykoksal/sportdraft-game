@@ -239,6 +239,9 @@ export function MatchPage() {
                     homeTeamId={homeTeamId}
                     currentMinute={playback.currentMinute}
                     isPlaying={playback.isPlaying}
+                    homeScore={playback.homeScore}
+                    awayScore={playback.awayScore}
+                    timeline={timeline}
                   />
                 </div>
 
