@@ -40,7 +40,9 @@ class SessionOrchestratorTest {
             Formation.FOUR_FOUR_TWO,
             Instant.now(),
             1,
-            true
+            true,
+            1L,
+            0L
         );
         when(lobbyService.getSnapshot(sessionId, userId)).thenReturn(snap);
 

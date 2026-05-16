@@ -1,22 +1,18 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
-  ApiError,
   AuctionRoundResponse,
-  AuctionStateResponse,
   AuctionTeamCardResponse,
   confirmMatchStart,
   getAuctionState,
-  getSessionSnapshot,
   passRound,
   pingSession,
   placeBid,
-  SessionSnapshotResponse,
   startRound,
 } from "../../shared/api";
 import { ROUND_STATUS_LABELS } from "../../shared/api/contracts";
-import { clearActiveSessionId, setActiveSessionId } from "../../shared/session";
-import { useSessionStream } from "../../shared/sse";
+import { setActiveSessionId } from "../../shared/session";
+import { useSessionSync } from "../../shared/realtime/useSessionSync";
 import { TeamPitch } from "../../shared/components/TeamPitch";
 import { FORMATION_LABELS } from "../../shared/formations";
 import type { Formation, Position } from "../../shared/api/contracts";
@@ -36,186 +32,66 @@ export function AuctionPage() {
   const navigate = useNavigate();
   const myUserId = localStorage.getItem("sessionToken");
 
-  const [round, setRound] = useState<AuctionRoundResponse | null>(null);
   const [amount, setAmount] = useState<string>("1");
-  const [error, setError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [myTeam, setMyTeam] = useState<AuctionTeamCardResponse[]>([]);
-  const [opponentTeam, setOpponentTeam] = useState<AuctionTeamCardResponse[]>([]);
-  const [myFormation, setMyFormation] = useState<Formation>("FOUR_FOUR_TWO");
-  const [opponentFormation, setOpponentFormation] = useState<Formation>("FOUR_FOUR_TWO");
   const [secondsLeft, setSecondsLeft] = useState<number>(0);
-  const [sessionSnap, setSessionSnap] = useState<SessionSnapshotResponse | null>(null);
   const [matchStartSecondsLeft, setMatchStartSecondsLeft] = useState<number>(0);
   const previousRoundIdRef = useRef<string | null>(null);
   const serverClockOffsetMsRef = useRef<number>(0);
   const roundTotalSecondsRef = useRef<number>(20);
-  const syncSeqRef = useRef(0);
-  const prevConnectedRef = useRef(false);
   const [turnIsOpen, setTurnIsOpen] = useState(false);
+
+  // Central sync: replaces effects 1–4 (initial load, poll, reconnect, event handler)
+  const { snapshot: sessionSnap, auctionState, round, setRound, isConnected, lastEvent, error: syncError } =
+    useSessionSync(sessionId ?? null);
+
+  const myTeam = auctionState ? mapCards(auctionState.myTeam) : [];
+  const opponentTeam = auctionState ? mapCards(auctionState.opponentTeam) : [];
+  const myFormation: Formation = (auctionState?.myFormation as Formation) ?? "FOUR_FOUR_TWO";
+  const opponentFormation: Formation = (auctionState?.opponentFormation as Formation) ?? "FOUR_FOUR_TWO";
+  const error = actionError ?? syncError;
+
   const isMyTurn = !!myUserId && !!round && round.currentTurnUserId === myUserId;
   const canBid = isMyTurn || turnIsOpen;
   const mySquadFull = myTeam.length >= 11;
   const auctionPhaseActive = sessionSnap?.status === "AUCTIONING";
-  const streamSessionId = sessionId && sessionSnap?.joined ? sessionId : null;
-  const { events, isConnected } = useSessionStream(streamSessionId);
-
 
   // Budget: starting 100 minus spent
   const spent = myTeam.reduce((sum, c) => sum + c.amountCents, 0);
   const budget = 100 - spent;
 
-  // ---- Shared helpers ----
-
-  const applyAuctionState = (
-    snapshot: SessionSnapshotResponse,
-    auctionState: AuctionStateResponse,
-  ) => {
-    setSessionSnap(snapshot);
-    setRound(auctionState.currentRound);
-    setMyTeam(mapCards(auctionState.myTeam));
-    setOpponentTeam(mapCards(auctionState.opponentTeam));
-    if (auctionState.myFormation) setMyFormation(auctionState.myFormation as Formation);
-    if (auctionState.opponentFormation) setOpponentFormation(auctionState.opponentFormation);
-  };
-
-  const isActivePage = (status: string) =>
-    status === "AUCTIONING" || status === "MATCH_START_PENDING"
-    || status === "FINALIZING" || status === "AWAITING_RESULT";
-
   // ---- Effects ----
 
-  // 1. Initial load (runs once on mount)
+  // 0. Register session ID for local persistence
   useEffect(() => {
-    if (!sessionId) return;
-    setActiveSessionId(sessionId);
-    let cancelled = false;
-    (async () => {
-      const seq = ++syncSeqRef.current;
-      try {
-        const snapshot = await getSessionSnapshot(sessionId);
-        if (cancelled || seq !== syncSeqRef.current) return;
-        if (snapshot.status === "FINISHED") { navigate(`/match/${sessionId}`); return; }
-        if (!isActivePage(snapshot.status)) { navigate("/lobby"); return; }
-        const auctionState = await getAuctionState(sessionId);
-        if (cancelled || seq !== syncSeqRef.current) return;
-        applyAuctionState(snapshot, auctionState);
-      } catch (e) {
-        if (!cancelled && e instanceof ApiError && (e.status === 401 || e.status === 404)) {
-          clearActiveSessionId(); navigate("/lobby"); return;
-        }
-        if (!cancelled) setError("Connection issue while loading auction state. Retrying...");
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [sessionId, navigate]);
+    if (sessionId) setActiveSessionId(sessionId);
+  }, [sessionId]);
 
-  // 2. Safety-net poll (SSE connected → 30s, disconnected → 3s; initial load handled above)
+  // Navigation: redirect when session transitions to irrelevant phase
   useEffect(() => {
-    if (!sessionId) return;
-    if (isConnected && sessionSnap && sessionSnap.status !== "AUCTIONING") return;
-    let cancelled = false;
-    const poll = async () => {
-      const seq = ++syncSeqRef.current;
-      try {
-        const [snapshot, auctionState] = await Promise.all([
-          getSessionSnapshot(sessionId),
-          getAuctionState(sessionId),
-        ]);
-        if (cancelled || seq !== syncSeqRef.current) return;
-        if (snapshot.status === "FINISHED") { navigate(`/match/${sessionId}`); return; }
-        if (!isActivePage(snapshot.status)) return;
-        applyAuctionState(snapshot, auctionState);
-      } catch { /* transient */ }
-    };
-    const intervalMs = isConnected ? 30000 : 3000;
-    const id = window.setInterval(poll, intervalMs);
-    return () => { cancelled = true; window.clearInterval(id); };
-  }, [sessionId, sessionSnap?.status, navigate, isConnected]);
+    if (!sessionSnap) return;
+    if (sessionSnap.status === "FINISHED") { navigate(`/match/${sessionId}`); return; }
+    const isActivePage = (s: string) =>
+      s === "AUCTIONING" || s === "MATCH_START_PENDING" || s === "FINALIZING" || s === "AWAITING_RESULT";
+    if (!isActivePage(sessionSnap.status)) navigate("/lobby");
+  }, [sessionSnap?.status, navigate, sessionId]);
 
-  // 3. SSE reconnection catch-up (skips the initial connect, only fires on re-connect)
+  // Navigation: match_completed push event
   useEffect(() => {
-    const wasConnected = prevConnectedRef.current;
-    prevConnectedRef.current = isConnected;
-    if (!sessionId || !isConnected || !wasConnected) return;
-    (async () => {
-      const seq = ++syncSeqRef.current;
-      try {
-        const snapshot = await getSessionSnapshot(sessionId);
-        if (seq !== syncSeqRef.current) return;
-        if (snapshot.status === "FINISHED") { navigate(`/match/${sessionId}`); return; }
-        if (!isActivePage(snapshot.status)) { navigate("/lobby"); return; }
-        setSessionSnap(snapshot);
-        if (snapshot.status === "AUCTIONING") {
-          const auctionState = await getAuctionState(sessionId);
-          if (seq !== syncSeqRef.current) return;
-          applyAuctionState(snapshot, auctionState);
-        }
-      } catch { /* ignore */ }
-    })();
-  }, [isConnected, navigate, sessionId]);
-
-  // 4. SSE event handler (real-time state updates driven by server push)
-  useEffect(() => {
-    const latest = events.at(-1);
-    if (!latest) return;
-    const payload = latest.payload as {
-      round?: AuctionRoundResponse;
-      sessionId?: string;
-      result?: string;
-      winnerUserId?: string;
-    };
-
-    // Auction round events → update round from payload
-    if (
-      (latest.eventType === "round_started" || latest.eventType === "bid_placed"
-        || latest.eventType === "round_ended" || latest.eventType === "round_ready"
-        || latest.eventType === "turn_passed")
-      && payload.round
-    ) {
-      const serverEventTime = Date.parse(latest.occurredAt);
-      if (!Number.isNaN(serverEventTime)) serverClockOffsetMsRef.current = serverEventTime - Date.now();
-      setRound(payload.round);
+    if (lastEvent?.eventType === "match_completed" && sessionId) {
+      navigate(`/match/${sessionId}`);
     }
+  }, [lastEvent, navigate, sessionId]);
 
-    // Round ended → refresh full state (teams, next round)
-    if (latest.eventType === "round_ended" && sessionId) {
-      (async () => {
-        const seq = ++syncSeqRef.current;
-        try {
-          const snapshot = await getSessionSnapshot(sessionId);
-          if (seq !== syncSeqRef.current) return;
-          setSessionSnap(snapshot);
-          if (snapshot.status === "AUCTIONING") {
-            const auctionState = await getAuctionState(sessionId);
-            if (seq !== syncSeqRef.current) return;
-            applyAuctionState(snapshot, auctionState);
-          }
-        } catch { /* ignore */ }
-      })();
+  // Server clock offset: sync from event timestamps
+  useEffect(() => {
+    if (!lastEvent) return;
+    const serverEventTime = Date.parse(lastEvent.occurredAt);
+    if (!Number.isNaN(serverEventTime)) {
+      serverClockOffsetMsRef.current = serverEventTime - Date.now();
     }
-
-    // Session phase transitions → refresh snapshot + auction state
-    if (
-      (latest.eventType === "match_start_pending" || latest.eventType === "match_start_ready"
-        || latest.eventType === "session_finalizing") && sessionId
-    ) {
-      const serverEventTime = Date.parse(latest.occurredAt);
-      if (!Number.isNaN(serverEventTime)) serverClockOffsetMsRef.current = serverEventTime - Date.now();
-      (async () => {
-        try {
-          const [snap, auctionState] = await Promise.all([
-            getSessionSnapshot(sessionId),
-            getAuctionState(sessionId),
-          ]);
-          applyAuctionState(snap, auctionState);
-        } catch { /* ignore */ }
-      })();
-    }
-
-    // Match completed → navigate to result page
-    if (latest.eventType === "match_completed" && sessionId) navigate(`/match/${sessionId}`);
-  }, [events, myUserId, navigate, sessionId]);
+  }, [lastEvent]);
 
   // 5. Bid amount auto-adjust on round change
   useEffect(() => {
@@ -319,20 +195,20 @@ export function AuctionPage() {
 
   const handleTake = async () => {
     if (!round) return;
-    setLoading(true); setError(null);
+    setLoading(true); setActionError(null);
     try { setRound(await placeBid(sessionId, round.roundId, 1)); }
-    catch (e) { setError(e instanceof Error ? e.message : "Failed to take card"); }
+    catch (e) { setActionError(e instanceof Error ? e.message : "Failed to take card"); }
     finally { setLoading(false); }
   };
 
   const handleBid = async () => {
-    if (!round) { setError("Start a round first"); return; }
-    if (myTeam.length >= 11) { setError("Your squad is full"); return; }
-    if (!canBid) { setError("It is not your turn"); return; }
+    if (!round) { setActionError("Start a round first"); return; }
+    if (myTeam.length >= 11) { setActionError("Your squad is full"); return; }
+    if (!canBid) { setActionError("It is not your turn"); return; }
     const amountCents = Number(amount);
-    if (!Number.isFinite(amountCents) || amountCents <= 0) { setError("Amount must be a positive number"); return; }
-    if (amountCents > budget) { setError(`Insufficient budget. Maximum bid: ${budget} cr`); return; }
-    setLoading(true); setError(null);
+    if (!Number.isFinite(amountCents) || amountCents <= 0) { setActionError("Amount must be a positive number"); return; }
+    if (amountCents > budget) { setActionError(`Insufficient budget. Maximum bid: ${budget} cr`); return; }
+    setLoading(true); setActionError(null);
     try { setRound(await placeBid(sessionId, round.roundId, amountCents)); }
     catch (e) {
       const msg = e instanceof Error ? e.message : "Failed to place bid";
@@ -340,28 +216,27 @@ export function AuctionPage() {
         try {
           const state = await getAuctionState(sessionId);
           if (state.currentRound) setRound(state.currentRound);
-        } catch { /* SSE will sync state */ }
+        } catch { /* push event will sync */ }
       } else {
-        setError(msg);
+        setActionError(msg);
       }
     }
     finally { setLoading(false); }
   };
 
-
   const handlePassRound = async () => {
     if (!round) return;
-    setLoading(true); setError(null);
+    setLoading(true); setActionError(null);
     try { setRound(await passRound(sessionId, round.roundId)); }
-    catch (e) { setError(e instanceof Error ? e.message : "Failed to pass round"); }
+    catch (e) { setActionError(e instanceof Error ? e.message : "Failed to pass round"); }
     finally { setLoading(false); }
   };
 
   const handleConfirmMatchStart = async () => {
     if (!sessionId) return;
-    setLoading(true); setError(null);
-    try { setSessionSnap(await confirmMatchStart(sessionId)); }
-    catch (e) { setError(e instanceof Error ? e.message : "Failed to confirm match start"); }
+    setLoading(true); setActionError(null);
+    try { await confirmMatchStart(sessionId); }
+    catch (e) { setActionError(e instanceof Error ? e.message : "Failed to confirm match start"); }
     finally { setLoading(false); }
   };
 

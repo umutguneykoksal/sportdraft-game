@@ -14,6 +14,10 @@ public record SessionSnapshotResponse(
     Formation myFormation,
     Instant matchStartDeadlineAt,
     int matchStartReadyCount,
-    boolean matchStartConfirmedByMe
+    boolean matchStartConfirmedByMe,
+    /** Monoton Redis version of the session; clients use this to detect stale snapshots. */
+    long version,
+    /** Last event seq number at the time this snapshot was taken; clients use for gap detection. */
+    long lastSeq
 ) {
 }

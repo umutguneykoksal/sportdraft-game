@@ -49,6 +49,10 @@ export interface SessionSnapshotResponse {
   matchStartDeadlineAt: string | null;
   matchStartReadyCount: number;
   matchStartConfirmedByMe: boolean;
+  /** Session version for stale detection; optional for backward compat. */
+  version?: number;
+  /** Last event seq at snapshot time; use for gap detection on reconnect. */
+  lastSeq?: number;
 }
 
 export interface AuctionRoundResponse {
@@ -84,6 +88,8 @@ export interface AuctionStateResponse {
   opponentTeam: AuctionTeamCardResponse[];
   myFormation: Formation | null;
   opponentFormation: Formation | null;
+  /** Session version; optional for backward compat. */
+  version?: number;
 }
 
 export interface MatchResultResponse {

@@ -405,7 +405,14 @@ public class AuctionService {
             .map(r -> toResponseWithContext(r, cardMap.get(r.getCardId()), session, cardMap))
             .orElse(null);
 
-        return new AuctionStateResponse(currentRound, teams.myTeam(), teams.opponentTeam(), teams.myFormation(), teams.opponentFormation());
+        return new AuctionStateResponse(
+            currentRound,
+            teams.myTeam(),
+            teams.opponentTeam(),
+            teams.myFormation(),
+            teams.opponentFormation(),
+            session.getVersion()
+        );
     }
 
     /**

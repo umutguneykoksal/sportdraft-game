@@ -56,3 +56,19 @@ export async function pingSession(sessionId: string): Promise<void> {
     // Fire-and-forget: swallow errors silently
   }
 }
+
+export interface EventSyncResponse {
+  events: unknown[];
+  lastSeq: number;
+}
+
+/** Fetches events missed since afterSeq. Returns empty events if gap is beyond ring buffer. */
+export async function fetchEventsSince(sessionId: string, afterSeq: number): Promise<EventSyncResponse> {
+  const token = localStorage.getItem("sessionToken") ?? "";
+  const response = await fetch(
+    `${getApiBase()}/api/sessions/${sessionId}/events/sync?afterSeq=${afterSeq}&token=${encodeURIComponent(token)}`,
+    { method: "GET" }
+  );
+  if (!response.ok) throw new Error(`fetchEventsSince failed: ${response.status}`);
+  return response.json() as Promise<EventSyncResponse>;
+}

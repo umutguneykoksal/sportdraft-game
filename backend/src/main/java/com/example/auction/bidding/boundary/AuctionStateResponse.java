@@ -7,6 +7,8 @@ public record AuctionStateResponse(
     List<AuctionTeamCardResponse> myTeam,
     List<AuctionTeamCardResponse> opponentTeam,
     String myFormation,
-    String opponentFormation
+    String opponentFormation,
+    /** Session version at the time this state was read; clients use to detect stale data. */
+    long version
 ) {
 }

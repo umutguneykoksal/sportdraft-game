@@ -1,6 +1,7 @@
 package com.example.auction.lobby.control;
 
 import com.example.auction.bidding.control.CardCatalogService;
+import com.example.auction.common.realtime.SessionEventLog;
 import com.example.auction.common.sse.SseEmitterRegistry;
 import com.example.auction.lobby.boundary.LobbyRoomResponse;
 import com.example.auction.lobby.boundary.SessionSnapshotResponse;
@@ -29,12 +30,14 @@ public class LobbyService {
     private final ActiveSessionStore sessionStore;
     private final SseEmitterRegistry sseEmitterRegistry;
     private final CardCatalogService cardCatalog;
+    private final SessionEventLog eventLog;
 
     public LobbyService(ActiveSessionStore sessionStore, SseEmitterRegistry sseEmitterRegistry,
-                         CardCatalogService cardCatalog) {
+                         CardCatalogService cardCatalog, SessionEventLog eventLog) {
         this.sessionStore = sessionStore;
         this.sseEmitterRegistry = sseEmitterRegistry;
         this.cardCatalog = cardCatalog;
+        this.eventLog = eventLog;
     }
 
     public List<LobbyRoomResponse> listRooms() {
@@ -298,7 +301,9 @@ public class LobbyService {
             me != null && me.isFormationConfirmed() ? me.getFormation() : null,
             matchStartDeadlineAt,
             matchStartReadyCount,
-            matchStartConfirmedByMe
+            matchStartConfirmedByMe,
+            session.getVersion(),
+            eventLog.currentSeq(session.getId())
         );
     }
 }

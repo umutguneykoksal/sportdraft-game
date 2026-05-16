@@ -1,5 +1,6 @@
 package com.example.auction.session.control;
 
+import com.example.auction.common.realtime.SessionEventLog;
 import com.example.auction.common.sse.SseEmitterRegistry;
 import com.example.auction.session.entity.SessionStatus;
 import com.example.auction.session.redis.ActivePlayer;
@@ -32,17 +33,20 @@ public class SessionDisconnectCleanupScheduler {
     private final ActiveSessionStore sessionStore;
     private final SseEmitterRegistry sseEmitterRegistry;
     private final SessionArchiver sessionArchiver;
+    private final SessionEventLog eventLog;
     private final Duration disconnectTimeout;
 
     public SessionDisconnectCleanupScheduler(
         ActiveSessionStore sessionStore,
         SseEmitterRegistry sseEmitterRegistry,
         SessionArchiver sessionArchiver,
+        SessionEventLog eventLog,
         @Value("${app.session.disconnect-timeout-seconds:20}") long disconnectTimeoutSeconds
     ) {
         this.sessionStore = sessionStore;
         this.sseEmitterRegistry = sseEmitterRegistry;
         this.sessionArchiver = sessionArchiver;
+        this.eventLog = eventLog;
         this.disconnectTimeout = Duration.ofSeconds(disconnectTimeoutSeconds);
     }
 
@@ -73,6 +77,7 @@ public class SessionDisconnectCleanupScheduler {
                     try { sessionArchiver.archive(session); }
                     catch (Exception ex) { log.warn("Failed to archive draw session {}", sessionId, ex); }
                     sseEmitterRegistry.forgetSession(sessionId);
+                    eventLog.forget(sessionId);
                 }
             } catch (Exception e) {
                 log.warn("Error processing session {} in disconnect cleanup", sessionId, e);
@@ -116,6 +121,7 @@ public class SessionDisconnectCleanupScheduler {
             try { sessionArchiver.archive(session); }
             catch (Exception e) { log.warn("Failed to archive draw session {}", sessionId, e); }
             sseEmitterRegistry.forgetSession(sessionId);
+            eventLog.forget(sessionId);
             return true;
         }
 
@@ -150,6 +156,7 @@ public class SessionDisconnectCleanupScheduler {
         }
 
         sseEmitterRegistry.forgetSession(sessionId);
+        eventLog.forget(sessionId);
         return true;
     }
 

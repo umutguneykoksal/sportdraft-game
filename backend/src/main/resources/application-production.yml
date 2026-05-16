@@ -7,6 +7,7 @@ spring:
       url: ${REDIS_URL}
   mvc:
     async:
+      # -1 = never time out; SSE uses long-lived response streams.
       request-timeout: -1
 
 spring.task:
@@ -16,7 +17,9 @@ spring.task:
 
 app:
   session:
-    disconnect-timeout-seconds: ${APP_SESSION_DISCONNECT_TIMEOUT_SECONDS:60}
+    # 90 s gives reverse proxies (Railway, Nginx default 75 s) time to pass heartbeats
+    # before we declare a forfeit. Must be > proxy idle timeout (≥ 75 s).
+    disconnect-timeout-seconds: ${APP_SESSION_DISCONNECT_TIMEOUT_SECONDS:90}
 
 management:
   tracing:
@@ -25,5 +28,7 @@ management:
 logging:
   level:
     root: INFO
-    com.example.auction.common.sse: DEBUG
-    com.example.auction.session.control.SessionDisconnectCleanupScheduler: DEBUG
+    # Keep DEBUG for disconnect monitoring in prod; minimal overhead.
+    com.example.auction.common.sse: INFO
+    com.example.auction.common.realtime: INFO
+    com.example.auction.session.control.SessionDisconnectCleanupScheduler: INFO
