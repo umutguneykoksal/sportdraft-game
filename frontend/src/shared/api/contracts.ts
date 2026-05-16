@@ -99,6 +99,8 @@ export interface MatchResultResponse {
   opponentTeam: AuctionTeamCardResponse[];
   myFormation: Formation | null;
   opponentFormation: Formation | null;
+  myNickname: string | null;
+  opponentNickname: string | null;
 }
 
 export interface LobbyRoomResponse {

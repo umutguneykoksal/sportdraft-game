@@ -9,6 +9,8 @@ public record MatchResultResponse(
     List<AuctionTeamCardResponse> myTeam,
     List<AuctionTeamCardResponse> opponentTeam,
     String myFormation,
-    String opponentFormation
+    String opponentFormation,
+    String myNickname,
+    String opponentNickname
 ) {
 }

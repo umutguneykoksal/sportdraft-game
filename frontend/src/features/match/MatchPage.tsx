@@ -15,6 +15,7 @@ export function MatchPage() {
   const {
     ready, homeScore, awayScore,
     myTeam, opponentTeam, myFormation, opponentFormation,
+    myNickname, opponentNickname,
   } = useMatchFlow(sessionId);
 
   const [viewState, setViewState] = useState<ViewState>("loading");
@@ -85,6 +86,8 @@ export function MatchPage() {
             onComplete={handleCommentaryComplete}
             finalHomeScore={homeScore ?? 0}
             finalAwayScore={awayScore ?? 0}
+            myNickname={myNickname}
+            opponentNickname={opponentNickname}
           />
         </div>
       )}
@@ -97,14 +100,14 @@ export function MatchPage() {
             <div className="max-w-2xl mx-auto px-4 py-8 text-center">
               <div className="flex items-center justify-center gap-8">
                 <div className="text-center">
-                  <p className="text-sm text-slate-400 mb-1">You</p>
+                  <p className="text-sm text-slate-400 mb-1 truncate max-w-32">{myNickname}</p>
                   <p className={`text-7xl font-black ${isWin ? "text-accent-green" : isLoss ? "text-red-400" : "text-white"}`}>
                     {homeScore}
                   </p>
                 </div>
                 <div className="text-3xl font-bold text-slate-500">-</div>
                 <div className="text-center">
-                  <p className="text-sm text-slate-400 mb-1">Opponent</p>
+                  <p className="text-sm text-slate-400 mb-1 truncate max-w-32">{opponentNickname}</p>
                   <p className={`text-7xl font-black ${isLoss ? "text-accent-green" : isWin ? "text-red-400" : "text-white"}`}>
                     {awayScore}
                   </p>
@@ -174,7 +177,7 @@ export function MatchPage() {
                 isWin ? "border-accent-green/50" : "border-white/10"
               }`}>
                 <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between">
-                  <h3 className="font-bold text-white">Your Team</h3>
+                  <h3 className="font-bold text-white truncate max-w-40">{myNickname}</h3>
                   <span className="text-sm text-slate-400">{FORMATION_LABELS[myFormation]}</span>
                 </div>
                 <div className="p-2">
@@ -207,7 +210,7 @@ export function MatchPage() {
                 isLoss ? "border-accent-green/50" : "border-white/10"
               }`}>
                 <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between">
-                  <h3 className="font-bold text-white">Opponent</h3>
+                  <h3 className="font-bold text-white truncate max-w-40">{opponentNickname}</h3>
                   <span className="text-sm text-slate-400">{FORMATION_LABELS[opponentFormation]}</span>
                 </div>
                 <div className="p-2">

@@ -138,11 +138,16 @@ public class SessionController {
                 boolean isHome = !sorted.isEmpty() && sorted.get(0).getUserId().equals(userId);
                 int myScore = isHome ? session.getHomeScore() : session.getAwayScore();
                 int oppScore = isHome ? session.getAwayScore() : session.getHomeScore();
+                String homeNick = sorted.size() > 0 ? sorted.get(0).getNickname() : "Home";
+                String awayNick = sorted.size() > 1 ? sorted.get(1).getNickname() : "Away";
+                String myNickname = isHome ? homeNick : awayNick;
+                String oppNickname = isHome ? awayNick : homeNick;
                 AuctionService.TeamSnapshot teams = auctionService.buildTeamSnapshot(session, userId);
                 return ResponseEntity.ok(new MatchResultResponse(
                     myScore, oppScore,
                     teams.myTeam(), teams.opponentTeam(),
-                    teams.myFormation(), teams.opponentFormation()
+                    teams.myFormation(), teams.opponentFormation(),
+                    myNickname, oppNickname
                 ));
             }
         }
@@ -160,11 +165,17 @@ public class SessionController {
 
         try {
             ActiveSession archived = redisObjectMapper.readValue(h.getReplayData(), ActiveSession.class);
+            List<ActivePlayer> sorted = archived.playersSortedById();
+            String homeNick = sorted.size() > 0 ? sorted.get(0).getNickname() : "Home";
+            String awayNick = sorted.size() > 1 ? sorted.get(1).getNickname() : "Away";
+            String myNickname = isHome ? homeNick : awayNick;
+            String oppNickname = isHome ? awayNick : homeNick;
             AuctionService.TeamSnapshot teams = auctionService.buildTeamSnapshot(archived, userId);
             return ResponseEntity.ok(new MatchResultResponse(
                 myScore, oppScore,
                 teams.myTeam(), teams.opponentTeam(),
-                teams.myFormation(), teams.opponentFormation()
+                teams.myFormation(), teams.opponentFormation(),
+                myNickname, oppNickname
             ));
         } catch (Exception e) {
             log.warn("Failed to deserialize replay_data for session {}, returning scores only", h.getSessionId(), e);
@@ -172,7 +183,8 @@ public class SessionController {
                 myScore, oppScore,
                 List.of(), List.of(),
                 isHome ? h.getHomeFormation() : h.getAwayFormation(),
-                isHome ? h.getAwayFormation() : h.getHomeFormation()
+                isHome ? h.getAwayFormation() : h.getHomeFormation(),
+                null, null
             ));
         }
     }

@@ -101,26 +101,34 @@ public class MatchSimulator {
             addGoalSequence(events, rng, minute, awayTeamId, awayRoster, homeRoster, false);
         }
 
-        // Add some missed shots / saved shots
-        int extraShots = 3 + rng.nextInt(5); // 3-7 extra shots per match
-        for (int i = 0; i < extraShots; i++) {
+        // Add missed shots / saved shots - ensure both teams have some
+        int homeShotsExtra = 2 + rng.nextInt(4); // 2-5 extra shots for home
+        int awayShotsExtra = 2 + rng.nextInt(4); // 2-5 extra shots for away
+        
+        for (int i = 0; i < homeShotsExtra; i++) {
             int minute = 1 + rng.nextInt(89);
-            if (minute == 45) minute = 44; // Avoid half-time
-            boolean isHome = rng.nextBoolean();
-            List<SessionFinalizedEvent.RatedCard> attackers = isHome ? homeRoster : awayRoster;
-            UUID teamId = isHome ? homeTeamId : awayTeamId;
-            addMissedShot(events, rng, minute, teamId, attackers);
+            if (minute == 45) minute = 44;
+            addMissedShot(events, rng, minute, homeTeamId, homeRoster);
+        }
+        for (int i = 0; i < awayShotsExtra; i++) {
+            int minute = 1 + rng.nextInt(89);
+            if (minute == 45) minute = 44;
+            addMissedShot(events, rng, minute, awayTeamId, awayRoster);
         }
 
-        // Add some fouls
-        int fouls = 2 + rng.nextInt(4); // 2-5 fouls per match
-        for (int i = 0; i < fouls; i++) {
+        // Add fouls - ensure both teams commit some
+        int homeFouls = 1 + rng.nextInt(3); // 1-3 fouls for home
+        int awayFouls = 1 + rng.nextInt(3); // 1-3 fouls for away
+        
+        for (int i = 0; i < homeFouls; i++) {
             int minute = 5 + rng.nextInt(80);
             if (minute == 45) minute = 46;
-            boolean isHome = rng.nextBoolean();
-            List<SessionFinalizedEvent.RatedCard> foulers = isHome ? homeRoster : awayRoster;
-            UUID teamId = isHome ? homeTeamId : awayTeamId;
-            addFoul(events, rng, minute, teamId, foulers);
+            addFoul(events, rng, minute, homeTeamId, homeRoster);
+        }
+        for (int i = 0; i < awayFouls; i++) {
+            int minute = 5 + rng.nextInt(80);
+            if (minute == 45) minute = 46;
+            addFoul(events, rng, minute, awayTeamId, awayRoster);
         }
 
         // Half-time
