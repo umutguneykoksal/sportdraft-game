@@ -11,7 +11,7 @@ import {
   startRound,
 } from "../../shared/api";
 import { ROUND_STATUS_LABELS } from "../../shared/api/contracts";
-import { setActiveSessionId } from "../../shared/session";
+import { clearActiveSessionId, setActiveSessionId } from "../../shared/session";
 import { useSessionSync } from "../../shared/realtime/useSessionSync";
 import { TeamPitch } from "../../shared/components/TeamPitch";
 import { FORMATION_LABELS } from "../../shared/formations";
@@ -43,7 +43,7 @@ export function AuctionPage() {
   const [turnIsOpen, setTurnIsOpen] = useState(false);
 
   // Central sync: replaces effects 1–4 (initial load, poll, reconnect, event handler)
-  const { snapshot: sessionSnap, auctionState, round, setRound, isConnected, lastEvent, error: syncError } =
+  const { snapshot: sessionSnap, auctionState, round, setRound, isConnected, lastEvent, error: syncError, sessionNotFound } =
     useSessionSync(sessionId ?? null);
 
   const myTeam = auctionState ? mapCards(auctionState.myTeam) : [];
@@ -63,10 +63,19 @@ export function AuctionPage() {
 
   // ---- Effects ----
 
-  // 0. Register session ID for local persistence
+  // 0. Persist session only after server confirms we are still in it
   useEffect(() => {
-    if (sessionId) setActiveSessionId(sessionId);
-  }, [sessionId]);
+    if (sessionSnap?.joined && sessionId) {
+      setActiveSessionId(sessionId);
+    }
+  }, [sessionSnap?.joined, sessionId]);
+
+  // Stale localStorage or bookmarked URL: session gone from Redis → lobby
+  useEffect(() => {
+    if (!sessionNotFound) return;
+    clearActiveSessionId();
+    navigate("/lobby", { replace: true });
+  }, [sessionNotFound, navigate]);
 
   // Navigation: redirect when session transitions to irrelevant phase
   useEffect(() => {

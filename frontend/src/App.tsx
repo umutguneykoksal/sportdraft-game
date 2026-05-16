@@ -3,11 +3,11 @@ import { LobbyPage } from "./features/lobby/LobbyPage";
 import { AuctionPage } from "./features/auction/AuctionPage";
 import { MatchPage } from "./features/match/MatchPage";
 import { SpectatePage } from "./features/spectate/SpectatePage";
-import { getActiveSessionId } from "./shared/session";
 
 export function App() {
-  const activeSessionId = getActiveSessionId();
-  const defaultRoute = activeSessionId ? `/auction/${activeSessionId}` : "/lobby";
+  // Always land on lobby first; useLobbyFlow validates activeSessionId against the server
+  // and only navigates to /auction when the session still exists in Redis.
+  const defaultRoute = "/lobby";
   return (
     <Routes>
       <Route path="/" element={<Navigate to={defaultRoute} replace />} />
