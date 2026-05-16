@@ -12,6 +12,7 @@ import com.example.auction.session.redis.ActiveSession;
 import com.example.auction.session.redis.ActiveSessionStore;
 import com.example.auction.simulation.boundary.MatchResultResponse;
 import com.example.auction.simulation.control.MatchResultRecoveryService;
+import com.example.auction.simulation.entity.MatchEvent;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.validation.Valid;
 import java.util.List;
@@ -184,6 +185,51 @@ public class SessionController {
         UUID userId = extractUserId(authorization);
         sseEmitterRegistry.recordPlayerPing(sessionId, userId);
         return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * Returns the match event timeline for 2D replay visualization.
+     */
+    @GetMapping("/{sessionId}/match-timeline")
+    public ResponseEntity<List<MatchEvent>> getMatchTimeline(
+        @PathVariable UUID sessionId,
+        @RequestHeader("Authorization") String authorization
+    ) {
+        UUID userId = extractUserId(authorization);
+
+        // Try active Redis session first
+        ActiveSession session = sessionStore.findById(sessionId).orElse(null);
+        if (session != null) {
+            if (!session.hasPlayerWithUserId(userId)) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Player not found in session");
+            }
+            List<MatchEvent> timeline = session.getMatchTimeline();
+            if (timeline != null && !timeline.isEmpty()) {
+                return ResponseEntity.ok(timeline);
+            }
+        }
+
+        // Fallback to archived match_history
+        return matchHistoryRepository.findBySessionId(sessionId)
+            .map(h -> extractTimelineFromArchive(h, userId))
+            .orElse(ResponseEntity.notFound().build());
+    }
+
+    private ResponseEntity<List<MatchEvent>> extractTimelineFromArchive(MatchHistory h, UUID userId) {
+        if (!h.getHomeUserId().equals(userId) && !h.getAwayUserId().equals(userId)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Player not found in session");
+        }
+        try {
+            ActiveSession archived = redisObjectMapper.readValue(h.getReplayData(), ActiveSession.class);
+            List<MatchEvent> timeline = archived.getMatchTimeline();
+            if (timeline != null && !timeline.isEmpty()) {
+                return ResponseEntity.ok(timeline);
+            }
+            return ResponseEntity.ok(List.of());
+        } catch (Exception e) {
+            log.warn("Failed to deserialize replay_data for timeline, session {}", h.getSessionId(), e);
+            return ResponseEntity.ok(List.of());
+        }
     }
 
     @DeleteMapping("/{sessionId}")

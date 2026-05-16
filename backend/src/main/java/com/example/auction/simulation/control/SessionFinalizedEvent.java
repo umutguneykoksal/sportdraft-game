@@ -14,7 +14,9 @@ public record SessionFinalizedEvent(
     Formation homeFormation,
     Formation awayFormation,
     List<RatedCard> homeRoster,
-    List<RatedCard> awayRoster
+    List<RatedCard> awayRoster,
+    UUID homePlayerId,
+    UUID awayPlayerId
 ) {
-    public record RatedCard(UUID id, Position position, int rating) {}
+    public record RatedCard(UUID id, Position position, int rating, String name) {}
 }

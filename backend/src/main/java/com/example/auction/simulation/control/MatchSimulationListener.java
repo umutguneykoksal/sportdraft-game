@@ -2,6 +2,7 @@ package com.example.auction.simulation.control;
 
 import com.example.auction.common.events.ProcessedEvent;
 import com.example.auction.common.events.ProcessedEventRepository;
+import com.example.auction.simulation.entity.SimulationResult;
 import java.time.Instant;
 import java.util.UUID;
 import org.springframework.context.ApplicationEventPublisher;
@@ -43,12 +44,14 @@ public class MatchSimulationListener {
             return;
         }
 
-        MatchSimulator.Score score = matchSimulator.simulate(
+        SimulationResult result = matchSimulator.simulateWithTimeline(
             event.seed(),
             event.homeFormation(),
             event.awayFormation(),
             event.homeRoster(),
-            event.awayRoster()
+            event.awayRoster(),
+            event.homePlayerId(),
+            event.awayPlayerId()
         );
 
         publisher.publishEvent(
@@ -56,9 +59,10 @@ public class MatchSimulationListener {
                 UUID.randomUUID(),
                 Instant.now(),
                 event.sessionId(),
-                score.homeGoals(),
-                score.awayGoals(),
-                event.seed()
+                result.homeGoals(),
+                result.awayGoals(),
+                event.seed(),
+                result.timeline()
             )
         );
     }

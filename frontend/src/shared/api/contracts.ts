@@ -124,3 +124,22 @@ export interface SpectateStateResponse {
   homeScore: number;
   awayScore: number;
 }
+
+// Match Timeline for 2D replay
+export type MatchEventType =
+  | "KICK_OFF"
+  | "SHOT_SAVED"
+  | "SHOT_MISSED"
+  | "GOAL"
+  | "FOUL"
+  | "HALF_TIME"
+  | "FULL_TIME";
+
+export interface MatchEvent {
+  minute: number;
+  type: MatchEventType;
+  teamId: string | null;
+  playerId: string | null;
+  playerName: string | null;
+  detail: string;
+}

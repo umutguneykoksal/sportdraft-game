@@ -35,6 +35,9 @@ public class MatchCompletedListener {
             long vBefore = session.getVersion();
             session.setHomeScore(event.homeScore());
             session.setAwayScore(event.awayScore());
+            if (event.timeline() != null) {
+                session.setMatchTimeline(event.timeline());
+            }
             session.moveToFinished();
             sessionStore.saveIfVersionMatch(session, vBefore);
         });

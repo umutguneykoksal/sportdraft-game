@@ -2,15 +2,59 @@ package com.example.auction.simulation.control;
 
 import com.example.auction.bidding.entity.Position;
 import com.example.auction.session.entity.Formation;
+import com.example.auction.simulation.entity.MatchEvent;
+import com.example.auction.simulation.entity.MatchEventType;
+import com.example.auction.simulation.entity.SimulationResult;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
+import java.util.UUID;
 import org.springframework.stereotype.Component;
 
 @Component
 public class MatchSimulator {
 
+    /**
+     * Simulates a match and returns full result with timeline.
+     */
+    public SimulationResult simulateWithTimeline(
+        long seed,
+        Formation homeFormation,
+        Formation awayFormation,
+        List<SessionFinalizedEvent.RatedCard> homeRoster,
+        List<SessionFinalizedEvent.RatedCard> awayRoster,
+        UUID homeTeamId,
+        UUID awayTeamId
+    ) {
+        Random rng = new Random(seed);
+
+        double homeAttack = attackScore(homeFormation, homeRoster);
+        double awayAttack = attackScore(awayFormation, awayRoster);
+        double homeDefense = defenseScore(homeFormation, homeRoster);
+        double awayDefense = defenseScore(awayFormation, awayRoster);
+
+        double homeLambda = clamp(1.4 * (homeAttack / Math.max(awayDefense, 1.0)), 0.2, 4.5);
+        double awayLambda = clamp(1.4 * (awayAttack / Math.max(homeDefense, 1.0)), 0.2, 4.5);
+
+        int homeGoals = poissonSample(homeLambda, rng);
+        int awayGoals = poissonSample(awayLambda, rng);
+
+        List<MatchEvent> timeline = generateTimeline(
+            rng, homeGoals, awayGoals,
+            homeRoster, awayRoster,
+            homeTeamId, awayTeamId
+        );
+
+        return new SimulationResult(homeGoals, awayGoals, timeline);
+    }
+
+    /**
+     * Legacy method for backward compatibility - returns only score.
+     */
     public Score simulate(
         long seed,
         Formation homeFormation,
@@ -31,6 +75,176 @@ public class MatchSimulator {
         int homeGoals = poissonSample(homeLambda, rng);
         int awayGoals = poissonSample(awayLambda, rng);
         return new Score(homeGoals, awayGoals);
+    }
+
+    private List<MatchEvent> generateTimeline(
+        Random rng,
+        int homeGoals, int awayGoals,
+        List<SessionFinalizedEvent.RatedCard> homeRoster,
+        List<SessionFinalizedEvent.RatedCard> awayRoster,
+        UUID homeTeamId, UUID awayTeamId
+    ) {
+        List<MatchEvent> events = new ArrayList<>();
+
+        // Kick-off
+        events.add(MatchEvent.generic(0, MatchEventType.KICK_OFF, "Match begins"));
+
+        // Generate goal minutes (distributed across 90 minutes, avoiding half-time)
+        List<Integer> homeGoalMinutes = generateGoalMinutes(rng, homeGoals);
+        List<Integer> awayGoalMinutes = generateGoalMinutes(rng, awayGoals);
+
+        // Add goals with preceding shots
+        for (int minute : homeGoalMinutes) {
+            addGoalSequence(events, rng, minute, homeTeamId, homeRoster, awayRoster, true);
+        }
+        for (int minute : awayGoalMinutes) {
+            addGoalSequence(events, rng, minute, awayTeamId, awayRoster, homeRoster, false);
+        }
+
+        // Add some missed shots / saved shots
+        int extraShots = 3 + rng.nextInt(5); // 3-7 extra shots per match
+        for (int i = 0; i < extraShots; i++) {
+            int minute = 1 + rng.nextInt(89);
+            if (minute == 45) minute = 44; // Avoid half-time
+            boolean isHome = rng.nextBoolean();
+            List<SessionFinalizedEvent.RatedCard> attackers = isHome ? homeRoster : awayRoster;
+            UUID teamId = isHome ? homeTeamId : awayTeamId;
+            addMissedShot(events, rng, minute, teamId, attackers);
+        }
+
+        // Add some fouls
+        int fouls = 2 + rng.nextInt(4); // 2-5 fouls per match
+        for (int i = 0; i < fouls; i++) {
+            int minute = 5 + rng.nextInt(80);
+            if (minute == 45) minute = 46;
+            boolean isHome = rng.nextBoolean();
+            List<SessionFinalizedEvent.RatedCard> foulers = isHome ? homeRoster : awayRoster;
+            UUID teamId = isHome ? homeTeamId : awayTeamId;
+            addFoul(events, rng, minute, teamId, foulers);
+        }
+
+        // Half-time
+        events.add(MatchEvent.generic(45, MatchEventType.HALF_TIME, "Half-time"));
+
+        // Full-time
+        events.add(MatchEvent.generic(90, MatchEventType.FULL_TIME, 
+            "Full-time: " + homeGoals + " - " + awayGoals));
+
+        // Sort by minute
+        events.sort(Comparator.comparingInt(MatchEvent::minute));
+
+        return events;
+    }
+
+    private List<Integer> generateGoalMinutes(Random rng, int goals) {
+        List<Integer> minutes = new ArrayList<>();
+        for (int i = 0; i < goals; i++) {
+            int minute;
+            do {
+                minute = 1 + rng.nextInt(89); // 1-89
+            } while (minute == 45 || minutes.contains(minute)); // Avoid half-time and duplicates
+            minutes.add(minute);
+        }
+        Collections.sort(minutes);
+        return minutes;
+    }
+
+    private void addGoalSequence(
+        List<MatchEvent> events, Random rng, int minute,
+        UUID teamId, List<SessionFinalizedEvent.RatedCard> attackers,
+        List<SessionFinalizedEvent.RatedCard> defenders, boolean isHome
+    ) {
+        // Pick a scorer (prefer forwards/midfielders)
+        SessionFinalizedEvent.RatedCard scorer = pickAttacker(rng, attackers);
+        
+        // 40% chance of a saved shot before the goal (same minute - 1)
+        if (minute > 1 && rng.nextDouble() < 0.4) {
+            SessionFinalizedEvent.RatedCard shooter = pickAttacker(rng, attackers);
+            SessionFinalizedEvent.RatedCard keeper = pickKeeper(defenders);
+            int shotMinute = minute - 1;
+            if (shotMinute == 45) shotMinute = 44;
+            events.add(MatchEvent.forPlayer(
+                shotMinute, MatchEventType.SHOT_SAVED, teamId,
+                shooter.id(), getPlayerName(shooter),
+                "Shot saved by " + getPlayerName(keeper)
+            ));
+        }
+
+        // The goal
+        String[] goalDetails = {
+            "Goal! Great finish",
+            "Goal! Powerful shot",
+            "Goal! Header from close range",
+            "Goal! Clinical strike",
+            "Goal! Unstoppable shot"
+        };
+        events.add(MatchEvent.forPlayer(
+            minute, MatchEventType.GOAL, teamId,
+            scorer.id(), getPlayerName(scorer),
+            goalDetails[rng.nextInt(goalDetails.length)]
+        ));
+    }
+
+    private void addMissedShot(
+        List<MatchEvent> events, Random rng, int minute,
+        UUID teamId, List<SessionFinalizedEvent.RatedCard> attackers
+    ) {
+        SessionFinalizedEvent.RatedCard shooter = pickAttacker(rng, attackers);
+        boolean saved = rng.nextBoolean();
+        
+        if (saved) {
+            String[] details = {"Shot saved", "Good save", "Diving save", "Comfortable save"};
+            events.add(MatchEvent.forPlayer(
+                minute, MatchEventType.SHOT_SAVED, teamId,
+                shooter.id(), getPlayerName(shooter),
+                details[rng.nextInt(details.length)]
+            ));
+        } else {
+            String[] details = {"Shot wide", "Shot over the bar", "Effort goes wide", "Missed the target"};
+            events.add(MatchEvent.forPlayer(
+                minute, MatchEventType.SHOT_MISSED, teamId,
+                shooter.id(), getPlayerName(shooter),
+                details[rng.nextInt(details.length)]
+            ));
+        }
+    }
+
+    private void addFoul(
+        List<MatchEvent> events, Random rng, int minute,
+        UUID teamId, List<SessionFinalizedEvent.RatedCard> players
+    ) {
+        SessionFinalizedEvent.RatedCard fouler = players.get(rng.nextInt(players.size()));
+        String[] details = {"Foul committed", "Late challenge", "Tactical foul", "Clumsy tackle"};
+        events.add(MatchEvent.forPlayer(
+            minute, MatchEventType.FOUL, teamId,
+            fouler.id(), getPlayerName(fouler),
+            details[rng.nextInt(details.length)]
+        ));
+    }
+
+    private SessionFinalizedEvent.RatedCard pickAttacker(Random rng, List<SessionFinalizedEvent.RatedCard> roster) {
+        // Prefer FWD, CAM, CM for goals/shots
+        List<SessionFinalizedEvent.RatedCard> attackers = roster.stream()
+            .filter(c -> c.position() == Position.FWD || c.position() == Position.CAM || c.position() == Position.CM)
+            .toList();
+        if (attackers.isEmpty()) {
+            return roster.get(rng.nextInt(roster.size()));
+        }
+        return attackers.get(rng.nextInt(attackers.size()));
+    }
+
+    private SessionFinalizedEvent.RatedCard pickKeeper(List<SessionFinalizedEvent.RatedCard> roster) {
+        return roster.stream()
+            .filter(c -> c.position() == Position.GK)
+            .findFirst()
+            .orElse(roster.get(0));
+    }
+
+    private String getPlayerName(SessionFinalizedEvent.RatedCard card) {
+        if (card.name() != null && !card.name().isBlank()) {
+            return card.name();
+        }
+        return card.position().name() + " (" + card.rating() + ")";
     }
 
     private static final Map<Position, Double> ATTACK_WEIGHT = Map.of(

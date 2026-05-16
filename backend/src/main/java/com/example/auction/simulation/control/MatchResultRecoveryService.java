@@ -6,6 +6,7 @@ import com.example.auction.session.entity.SessionStatus;
 import com.example.auction.session.redis.ActivePlayer;
 import com.example.auction.session.redis.ActiveSession;
 import com.example.auction.session.redis.ActiveSessionStore;
+import com.example.auction.simulation.entity.SimulationResult;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -56,23 +57,31 @@ public class MatchResultRecoveryService {
         ActivePlayer away = sorted.get(1);
         long seed = session.getMatchSeed() == null ? sessionId.getMostSignificantBits() : session.getMatchSeed();
 
-        MatchSimulator.Score score = matchSimulator.simulate(
+        List<SessionFinalizedEvent.RatedCard> homeRoster = home.getCardIds().stream()
+            .map(cardMap::get)
+            .map(c -> new SessionFinalizedEvent.RatedCard(c.getId(), c.getPosition(), c.getRating(), c.getName()))
+            .toList();
+        List<SessionFinalizedEvent.RatedCard> awayRoster = away.getCardIds().stream()
+            .map(cardMap::get)
+            .map(c -> new SessionFinalizedEvent.RatedCard(c.getId(), c.getPosition(), c.getRating(), c.getName()))
+            .toList();
+
+        SimulationResult result = matchSimulator.simulateWithTimeline(
             seed,
             home.getFormation(), away.getFormation(),
-            home.getCardIds().stream().map(cardMap::get)
-                .map(c -> new SessionFinalizedEvent.RatedCard(c.getId(), c.getPosition(), c.getRating())).toList(),
-            away.getCardIds().stream().map(cardMap::get)
-                .map(c -> new SessionFinalizedEvent.RatedCard(c.getId(), c.getPosition(), c.getRating())).toList()
+            homeRoster, awayRoster,
+            home.getUserId(), away.getUserId()
         );
 
         long vBefore = session.getVersion();
-        session.setHomeScore(score.homeGoals());
-        session.setAwayScore(score.awayGoals());
+        session.setHomeScore(result.homeGoals());
+        session.setAwayScore(result.awayGoals());
         session.moveToFinished();
         sessionStore.saveIfVersionMatch(session, vBefore);
 
         publisher.publishEvent(new MatchCompletedEvent(
-            UUID.randomUUID(), Instant.now(), sessionId, score.homeGoals(), score.awayGoals(), seed
+            UUID.randomUUID(), Instant.now(), sessionId, 
+            result.homeGoals(), result.awayGoals(), seed, result.timeline()
         ));
         return true;
     }

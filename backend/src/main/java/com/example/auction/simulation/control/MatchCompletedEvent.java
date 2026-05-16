@@ -1,6 +1,8 @@
 package com.example.auction.simulation.control;
 
+import com.example.auction.simulation.entity.MatchEvent;
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 public record MatchCompletedEvent(
@@ -9,6 +11,7 @@ public record MatchCompletedEvent(
     UUID sessionId,
     int homeScore,
     int awayScore,
-    long seed
+    long seed,
+    List<MatchEvent> timeline
 ) {
 }

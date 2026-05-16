@@ -2,6 +2,7 @@ package com.example.auction.session.redis;
 
 import com.example.auction.bidding.entity.RoundStatus;
 import com.example.auction.session.entity.SessionStatus;
+import com.example.auction.simulation.entity.MatchEvent;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -32,6 +33,7 @@ public class ActiveSession {
     private List<ActiveRound> rounds = new ArrayList<>();
     private List<UUID> cardPool = new ArrayList<>();
     private int cardPoolIndex;
+    private List<MatchEvent> matchTimeline = new ArrayList<>();
 
     public ActiveSession() {
     }
@@ -207,4 +209,6 @@ public class ActiveSession {
     public void setCardPool(List<UUID> cardPool) { this.cardPool = cardPool; }
     public int getCardPoolIndex() { return cardPoolIndex; }
     public void setCardPoolIndex(int cardPoolIndex) { this.cardPoolIndex = cardPoolIndex; }
+    public List<MatchEvent> getMatchTimeline() { return matchTimeline; }
+    public void setMatchTimeline(List<MatchEvent> matchTimeline) { this.matchTimeline = matchTimeline; }
 }

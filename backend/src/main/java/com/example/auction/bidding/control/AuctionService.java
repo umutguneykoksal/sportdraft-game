@@ -776,11 +776,11 @@ public class AuctionService {
 
         List<SessionFinalizedEvent.RatedCard> homeRoster = home.getCardIds().stream()
             .map(cardMap::get)
-            .map(c -> new SessionFinalizedEvent.RatedCard(c.getId(), c.getPosition(), c.getRating()))
+            .map(c -> new SessionFinalizedEvent.RatedCard(c.getId(), c.getPosition(), c.getRating(), c.getName()))
             .toList();
         List<SessionFinalizedEvent.RatedCard> awayRoster = away.getCardIds().stream()
             .map(cardMap::get)
-            .map(c -> new SessionFinalizedEvent.RatedCard(c.getId(), c.getPosition(), c.getRating()))
+            .map(c -> new SessionFinalizedEvent.RatedCard(c.getId(), c.getPosition(), c.getRating(), c.getName()))
             .toList();
 
         session.moveToAwaitingResult();
@@ -788,7 +788,8 @@ public class AuctionService {
         publisher.publishEvent(new SessionFinalizedEvent(
             UUID.randomUUID(), Instant.now(), session.getId(),
             session.getMatchSeed() == null ? session.getId().getMostSignificantBits() : session.getMatchSeed(),
-            home.getFormation(), away.getFormation(), homeRoster, awayRoster
+            home.getFormation(), away.getFormation(), homeRoster, awayRoster,
+            home.getUserId(), away.getUserId()
         ));
     }
 
