@@ -42,9 +42,11 @@ public class AuctionService {
     private static final long STARTING_BID = 1L;
     private static final int ROSTER_SIZE = 11;
     private static final long MATCH_START_COUNTDOWN_SECONDS = 20L;
-    private static final long MAX_ANTI_SNIPE_SECONDS = 30L;
-    private static final long ANTI_SNIPE_EXTENSION_SECONDS = 5L;
+    private static final long ANTI_SNIPE_WINDOW_SECONDS = 10L;  // Bid in last 10 seconds triggers extension
+    private static final long ANTI_SNIPE_EXTENSION_SECONDS = 10L;  // Extends by 10 seconds (no max limit)
     private static final long ROUND_DURATION_SECONDS = 20L;
+    /** Grace period for network latency - bids arriving within this window after endsAt are still accepted. */
+    private static final long BID_GRACE_PERIOD_MS = 1500L;
     private static final long TURN_OPEN_AFTER_SECONDS = 10L;
 
     private final ActiveSessionStore sessionStore;
@@ -206,7 +208,8 @@ public class AuctionService {
         if (round.getStatus() != RoundStatus.OPEN) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Round is not open");
         }
-        if (Instant.now().isAfter(round.getEndsAt())) {
+        Instant graceDeadline = round.getEndsAt().plusMillis(BID_GRACE_PERIOD_MS);
+        if (Instant.now().isAfter(graceDeadline)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Round has already ended");
         }
 
@@ -252,10 +255,9 @@ public class AuctionService {
         }
 
         Instant newEndsAt = round.getEndsAt();
-        if (Instant.now().isAfter(round.getEndsAt().minus(ANTI_SNIPE_EXTENSION_SECONDS, ChronoUnit.SECONDS))) {
-            Instant capped = round.getStartsAt().plus(ROUND_DURATION_SECONDS + MAX_ANTI_SNIPE_SECONDS, ChronoUnit.SECONDS);
-            Instant proposed = round.getEndsAt().plus(ANTI_SNIPE_EXTENSION_SECONDS, ChronoUnit.SECONDS);
-            newEndsAt = proposed.isAfter(capped) ? capped : proposed;
+        if (Instant.now().isAfter(round.getEndsAt().minus(ANTI_SNIPE_WINDOW_SECONDS, ChronoUnit.SECONDS))) {
+            // Bid in last 10 seconds → extend by 10 seconds (no maximum limit)
+            newEndsAt = round.getEndsAt().plus(ANTI_SNIPE_EXTENSION_SECONDS, ChronoUnit.SECONDS);
         }
 
         UUID nextTurn = otherPlayerUserId(session, userId);
@@ -276,6 +278,8 @@ public class AuctionService {
             return response;
         }
 
+        // Round was settled inline (opponent couldn't bid) - broadcast AFTER save
+        broadcastSettledRound(round, session, cardMap);
         meterRegistry.counter("auction.bid.placed").increment();
         maybeFinalizeSession(session, cardMap);
         maybeStartNextRound(session);
@@ -672,7 +676,10 @@ public class AuctionService {
         );
     }
 
-    /** Settles a round as SOLD inline (called from normalizeTurnForRound when no counter-bid is possible). */
+    /** 
+     * Settles a round as SOLD inline (called from normalizeTurnForRound when no counter-bid is possible).
+     * NOTE: Does NOT broadcast - caller must save session first then call broadcastSettledRound().
+     */
     private void settleRoundInline(ActiveRound round, ActiveSession session, Map<UUID, Card> cardMap) {
         Card roundCard = cardMap.get(round.getCardId());
         ActivePlayer winner = session.getPlayers().stream()
@@ -682,14 +689,32 @@ public class AuctionService {
         if (winner == null || winner.isRosterFull()
                 || openSlotsForPosition(winner, roundCard.getPosition(), cardMap) <= 0) {
             round.markPassed();
-            sseEmitterRegistry.broadcast(session.getId(), "round_ended",
-                Map.of("round", toResponse(round, roundCard, session.getId()), "result", "PASSED", "reason", "winner_cannot_take"));
         } else {
             winner.spendBudget(round.getHighestBidCents());
             winner.addCard(roundCard.getId());
             round.markSold();
-            sseEmitterRegistry.broadcast(session.getId(), "round_ended",
-                Map.of("round", toResponse(round, roundCard, session.getId()), "result", "SOLD", "winnerUserId", winner.getUserId()));
+        }
+    }
+    
+    /** Broadcasts round_ended event for a settled round. Call AFTER session is saved to Redis. */
+    private void broadcastSettledRound(ActiveRound round, ActiveSession session, Map<UUID, Card> cardMap) {
+        if (round.getStatus() == RoundStatus.OPEN) return;
+        
+        Card roundCard = cardMap.get(round.getCardId());
+        UUID sessionId = session.getId();
+        
+        if (round.getStatus() == RoundStatus.PASSED) {
+            String reason = round.getHighestBidderId() != null ? "winner_cannot_take" : "both_passed";
+            sseEmitterRegistry.broadcast(sessionId, "round_ended",
+                Map.of("round", toResponse(round, roundCard, sessionId), "result", "PASSED", "reason", reason));
+        } else if (round.getStatus() == RoundStatus.SOLD) {
+            ActivePlayer winner = session.getPlayers().stream()
+                .filter(p -> p.getId().equals(round.getHighestBidderId()))
+                .findFirst().orElse(null);
+            if (winner != null) {
+                sseEmitterRegistry.broadcast(sessionId, "round_ended",
+                    Map.of("round", toResponse(round, roundCard, sessionId), "result", "SOLD", "winnerUserId", winner.getUserId()));
+            }
             meterRegistry.counter("auction.round.closed", "result", "SOLD").increment();
         }
     }

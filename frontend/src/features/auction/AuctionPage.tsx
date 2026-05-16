@@ -37,7 +37,9 @@ export function AuctionPage() {
   const [loading, setLoading] = useState(false);
   const [secondsLeft, setSecondsLeft] = useState<number>(0);
   const [matchStartSecondsLeft, setMatchStartSecondsLeft] = useState<number>(0);
+  const [timeExtended, setTimeExtended] = useState(false);
   const previousRoundIdRef = useRef<string | null>(null);
+  const previousSecondsLeftRef = useRef<number>(0);
   const serverClockOffsetMsRef = useRef<number>(0);
   const roundTotalSecondsRef = useRef<number>(20);
   const [turnIsOpen, setTurnIsOpen] = useState(false);
@@ -126,13 +128,29 @@ export function AuctionPage() {
       return Math.max(0, Math.ceil((new Date(round.endsAt).getTime() - adjustedNow) / 1000));
     };
     const initial = computeSecondsLeft();
-    if (previousRoundIdRef.current !== round.roundId) {
+    const wasExpired = previousSecondsLeftRef.current <= 0;
+    const sameRound = previousRoundIdRef.current === round.roundId;
+    
+    // Detect anti-snipe time extension (was 0, now > 0, same round)
+    if (sameRound && wasExpired && initial > 0) {
+      setTimeExtended(true);
+      setTimeout(() => setTimeExtended(false), 2000); // Show for 2 seconds
+    }
+    
+    if (!sameRound) {
       roundTotalSecondsRef.current = initial;
+      setTimeExtended(false);
     } else if (initial > roundTotalSecondsRef.current) {
       roundTotalSecondsRef.current = initial;
     }
+    
     setSecondsLeft(initial);
-    const timer = setInterval(() => setSecondsLeft(computeSecondsLeft()), 250);
+    previousSecondsLeftRef.current = initial;
+    const timer = setInterval(() => {
+      const secs = computeSecondsLeft();
+      setSecondsLeft(secs);
+      previousSecondsLeftRef.current = secs;
+    }, 250);
     return () => clearInterval(timer);
   }, [round]);
 
@@ -385,17 +403,38 @@ export function AuctionPage() {
                 <div className="mb-4">
                   <div className="flex justify-between text-xs text-slate-400 mb-1">
                     <span>Time Left</span>
-                    <span className={`font-bold transition-colors duration-300 ${secondsLeft <= 5 ? "text-red-400" : "text-white"}`}>
-                      {secondsLeft}s
+                    <span className={`font-bold transition-colors duration-300 ${
+                      timeExtended ? "text-accent-green" :
+                      secondsLeft <= 0 ? "text-amber-400 animate-pulse" : 
+                      secondsLeft <= 5 ? "text-red-400" : "text-white"
+                    }`}>
+                      {timeExtended ? `+${secondsLeft}s Extended!` : secondsLeft <= 0 ? "Time's up!" : `${secondsLeft}s`}
                     </span>
                   </div>
                   <div className="w-full h-2 bg-surface-elevated rounded-full overflow-hidden">
                     <div
-                      className={`h-full rounded-full transition-all duration-300 ${timerColor}`}
-                      style={{ width: `${timerPercent}%` }}
+                      className={`h-full rounded-full transition-all duration-300 ${
+                        timeExtended ? "bg-accent-green" :
+                        secondsLeft <= 0 ? "bg-amber-500" : timerColor
+                      }`}
+                      style={{ width: `${secondsLeft <= 0 ? 100 : timerPercent}%` }}
                     />
                   </div>
                 </div>
+
+                {/* Time extended notification */}
+                {timeExtended && (
+                  <div className="bg-green-900/30 border border-green-500/30 rounded-lg px-3 py-2 mb-4 text-center animate-pulse">
+                    <p className="text-accent-green text-sm font-medium">Bid extended the round! Keep bidding!</p>
+                  </div>
+                )}
+
+                {/* Time's up overlay - still allows last-second bids due to grace period */}
+                {secondsLeft <= 0 && !timeExtended && (
+                  <div className="bg-amber-900/30 border border-amber-500/30 rounded-lg px-3 py-2 mb-4 text-center animate-pulse">
+                    <p className="text-amber-400 text-sm font-medium">Finalizing round... (last chance to bid!)</p>
+                  </div>
+                )}
 
                 {/* Current Bid */}
                 <div className="bg-surface-elevated rounded-lg p-3 mb-4 text-center transition-all duration-300">
