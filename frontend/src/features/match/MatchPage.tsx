@@ -238,6 +238,7 @@ export function MatchPage() {
                     currentEvent={playback.currentEvent}
                     homeTeamId={homeTeamId}
                     currentMinute={playback.currentMinute}
+                    isPlaying={playback.isPlaying}
                   />
                 </div>
 

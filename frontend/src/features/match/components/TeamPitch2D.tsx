@@ -1,6 +1,6 @@
 import { useMemo } from "react";
-import type { Formation, AuctionTeamCardResponse, Position, MatchEvent } from "../../../shared/api/contracts";
-import { FORMATION_DOTS } from "../../../shared/formations";
+import type { Formation, AuctionTeamCardResponse, MatchEvent } from "../../../shared/api/contracts";
+import { useFootballSimulation, PlayerPosition } from "../hooks/useFootballSimulation";
 
 interface TeamPitch2DProps {
   homeFormation: Formation;
@@ -10,92 +10,13 @@ interface TeamPitch2DProps {
   currentEvent: MatchEvent | null;
   homeTeamId: string | null;
   currentMinute: number;
+  isPlaying: boolean;
+  seed?: number;
 }
 
-interface SlotData {
-  x: number;
-  y: number;
-  pos: Position;
-  card: AuctionTeamCardResponse | null;
-  isHome: boolean;
-  isActive: boolean;
-}
-
-const HOME_COLOR = "#3b82f6"; // Blue
-const AWAY_COLOR = "#ef4444"; // Red
-const BALL_SIZE = 12;
-
-function buildSlots(
-  formation: Formation,
-  cards: AuctionTeamCardResponse[],
-  isHome: boolean,
-  activePlayerId: string | null
-): SlotData[] {
-  const dots = FORMATION_DOTS[formation];
-  const pool: Record<Position, AuctionTeamCardResponse[]> = {
-    GK: [],
-    DEF: [],
-    CDM: [],
-    CM: [],
-    CAM: [],
-    FWD: [],
-  };
-  for (const c of cards) {
-    pool[c.position as Position]?.push(c);
-  }
-
-  return dots.map((dot) => {
-    const card = pool[dot.pos]?.shift() ?? null;
-    // Flip Y for away team (they play on opposite half)
-    const yPos = isHome ? dot.y : 100 - dot.y;
-    return {
-      x: dot.x,
-      y: yPos,
-      pos: dot.pos,
-      card,
-      isHome,
-      isActive: card?.cardId === activePlayerId,
-    };
-  });
-}
-
-function getBallPosition(
-  currentEvent: MatchEvent | null,
-  homeTeamId: string | null,
-  currentMinute: number
-): { x: number; y: number } {
-  // Default: center
-  if (!currentEvent) {
-    // Ball moves based on minute (simple animation)
-    const phase = (currentMinute % 10) / 10;
-    return {
-      x: 30 + phase * 40,
-      y: 40 + Math.sin(phase * Math.PI * 2) * 15,
-    };
-  }
-
-  const isHomeTeam = currentEvent.teamId === homeTeamId;
-
-  switch (currentEvent.type) {
-    case "KICK_OFF":
-      return { x: 50, y: 50 };
-    case "HALF_TIME":
-    case "FULL_TIME":
-      return { x: 50, y: 50 };
-    case "GOAL":
-      // Ball in the goal area
-      return isHomeTeam ? { x: 50, y: 8 } : { x: 50, y: 92 };
-    case "SHOT_SAVED":
-    case "SHOT_MISSED":
-      // Ball near goal
-      return isHomeTeam ? { x: 50, y: 15 } : { x: 50, y: 85 };
-    case "FOUL":
-      // Random position on attacking half
-      return isHomeTeam ? { x: 50, y: 35 } : { x: 50, y: 65 };
-    default:
-      return { x: 50, y: 50 };
-  }
-}
+const HOME_COLOR = "#3b82f6";
+const AWAY_COLOR = "#ef4444";
+const BALL_SIZE = 14;
 
 export function TeamPitch2D({
   homeFormation,
@@ -105,24 +26,26 @@ export function TeamPitch2D({
   currentEvent,
   homeTeamId,
   currentMinute,
+  isPlaying,
+  seed = 12345,
 }: TeamPitch2DProps) {
-  const activePlayerId = currentEvent?.playerId ?? null;
-
-  const homeSlots = useMemo(
-    () => buildSlots(homeFormation, homeCards, true, activePlayerId),
-    [homeFormation, homeCards, activePlayerId]
+  // Use the football simulation engine
+  const simState = useFootballSimulation(
+    homeFormation,
+    awayFormation,
+    homeCards,
+    awayCards,
+    isPlaying,
+    seed
   );
-
-  const awaySlots = useMemo(
-    () => buildSlots(awayFormation, awayCards, false, activePlayerId),
-    [awayFormation, awayCards, activePlayerId]
-  );
-
-  const allSlots = [...homeSlots, ...awaySlots];
-  const ballPos = getBallPosition(currentEvent, homeTeamId, currentMinute);
 
   const isGoal = currentEvent?.type === "GOAL";
   const isShot = currentEvent?.type === "SHOT_SAVED" || currentEvent?.type === "SHOT_MISSED";
+
+  // Find player with ball for highlighting
+  const playerWithBall = useMemo(() => {
+    return simState.players.find(p => p.hasBall);
+  }, [simState.players]);
 
   return (
     <div
@@ -149,10 +72,7 @@ export function TeamPitch2D({
       {/* Goal celebration effect */}
       {isGoal && (
         <>
-          {/* Flash overlay */}
           <div className="absolute inset-0 animate-pulse bg-yellow-400/30 pointer-events-none" />
-          
-          {/* Confetti-like particles */}
           <div className="absolute inset-0 pointer-events-none overflow-hidden">
             {[...Array(12)].map((_, i) => (
               <div
@@ -168,8 +88,6 @@ export function TeamPitch2D({
               />
             ))}
           </div>
-          
-          {/* Goal text burst */}
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
             <div className="text-6xl font-black text-yellow-400 animate-ping opacity-50">
               GOAL!
@@ -178,12 +96,25 @@ export function TeamPitch2D({
         </>
       )}
 
-      {/* Shot line animation */}
+      {/* Pass/Shot line */}
+      {simState.passLine && (
+        <svg className="absolute inset-0 w-full h-full pointer-events-none z-5">
+          <line
+            x1={`${simState.passLine.fromX}%`}
+            y1={`${simState.passLine.fromY}%`}
+            x2={`${simState.passLine.toX}%`}
+            y2={`${simState.passLine.toY}%`}
+            stroke="rgba(255,255,255,0.5)"
+            strokeWidth="2"
+            strokeDasharray="4,4"
+          />
+        </svg>
+      )}
       {isShot && currentEvent && (
         <svg className="absolute inset-0 w-full h-full pointer-events-none">
           <line
-            x1={`${ballPos.x}%`}
-            y1={`${ballPos.y}%`}
+            x1={`${simState.ballX}%`}
+            y1={`${simState.ballY}%`}
             x2="50%"
             y2={currentEvent.teamId === homeTeamId ? "5%" : "95%"}
             stroke="rgba(255,255,255,0.6)"
@@ -194,77 +125,55 @@ export function TeamPitch2D({
         </svg>
       )}
 
-      {/* Player slots */}
-      {allSlots.map((slot, i) => {
-        const filled = !!slot.card;
-        const teamColor = slot.isHome ? HOME_COLOR : AWAY_COLOR;
-        const bg = filled ? teamColor : "rgba(255,255,255,0.15)";
-        const borderColor = slot.isActive
-          ? "#fbbf24"
-          : filled
-            ? teamColor
-            : "rgba(255,255,255,0.3)";
+      {/* Players */}
+      {simState.players.map((player) => {
+        const teamColor = player.isHome ? HOME_COLOR : AWAY_COLOR;
+        const isActive = player.hasBall || player.id === currentEvent?.playerId;
+        const borderColor = isActive ? "#fbbf24" : teamColor;
 
         return (
           <div
-            key={i}
-            className={`absolute flex flex-col items-center pointer-events-none transition-all duration-300 ${
-              slot.isActive ? "scale-125 z-10" : ""
+            key={player.id}
+            className={`absolute flex flex-col items-center pointer-events-none ${
+              isActive ? "z-10" : ""
             }`}
             style={{
-              left: `${slot.x}%`,
-              top: `${slot.y}%`,
-              transform: "translate(-50%, -50%)",
+              left: `${player.x}%`,
+              top: `${player.y}%`,
+              transform: `translate(-50%, -50%) ${isActive ? "scale(1.15)" : "scale(1)"}`,
+              transition: "left 0.1s linear, top 0.1s linear, transform 0.15s ease-out",
             }}
           >
-            {/* Rating badge */}
-            {filled && (
-              <span
-                style={{
-                  fontSize: "clamp(6px, 2.2cqw, 10px)",
-                  lineHeight: 1,
-                  marginBottom: "clamp(1px, 0.3cqw, 2px)",
-                  padding: "0 clamp(2px, 0.5cqw, 3px)",
-                  borderRadius: "clamp(1px, 0.3cqw, 2px)",
-                  color: "#fff",
-                  backgroundColor: "rgba(0,0,0,0.7)",
-                  fontWeight: 900,
-                }}
-              >
-                {slot.card!.rating}
-              </span>
-            )}
-
             {/* Player circle */}
             <div
-              className={`transition-all duration-300 ${slot.isActive ? "ring-2 ring-yellow-400 ring-offset-1" : ""}`}
               style={{
-                width: "clamp(14px, 6cqw, 28px)",
-                height: "clamp(14px, 6cqw, 28px)",
+                width: "clamp(12px, 5cqw, 24px)",
+                height: "clamp(12px, 5cqw, 24px)",
                 borderRadius: "50%",
-                backgroundColor: bg,
+                backgroundColor: teamColor,
                 border: `clamp(1.5px, 0.4cqw, 2px) solid ${borderColor}`,
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                boxShadow: slot.isActive
-                  ? "0 0 10px rgba(251, 191, 36, 0.6)"
+                boxShadow: isActive
+                  ? "0 0 12px rgba(251, 191, 36, 0.8)"
                   : "0 1px 2px rgba(0,0,0,0.3)",
+                transition: "box-shadow 0.15s ease-out",
               }}
             >
               <span
                 style={{
-                  fontSize: "clamp(5px, 1.8cqw, 9px)",
+                  fontSize: "clamp(5px, 1.6cqw, 8px)",
                   fontWeight: 700,
-                  color: filled ? "#fff" : "rgba(255,255,255,0.4)",
+                  color: "#fff",
                 }}
               >
-                {(filled ? slot.card!.position : slot.pos).slice(0, 2)}
+                {player.position.slice(0, 2)}
               </span>
             </div>
 
-            {/* Player name */}
-            {filled && (
+            {/* Player name (only show for active player) */}
+            {isActive && (
               <span
                 style={{
                   fontSize: "clamp(5px, 1.8cqw, 9px)",
@@ -273,7 +182,7 @@ export function TeamPitch2D({
                   padding: "clamp(1px, 0.15cqw, 2px) clamp(2px, 0.4cqw, 3px)",
                   borderRadius: "clamp(1px, 0.2cqw, 2px)",
                   color: "#fff",
-                  backgroundColor: "rgba(0,0,0,0.7)",
+                  backgroundColor: "rgba(0,0,0,0.8)",
                   fontWeight: 600,
                   maxWidth: "clamp(40px, 15cqw, 70px)",
                   overflow: "hidden",
@@ -282,7 +191,7 @@ export function TeamPitch2D({
                   textAlign: "center",
                 }}
               >
-                {slot.card!.cardName}
+                {player.name}
               </span>
             )}
           </div>
@@ -291,19 +200,18 @@ export function TeamPitch2D({
 
       {/* Ball */}
       <div
-        className="absolute transition-all duration-500 ease-out pointer-events-none z-20"
+        className="absolute pointer-events-none z-20"
         style={{
-          left: `${ballPos.x}%`,
-          top: `${ballPos.y}%`,
+          left: `${simState.ballX}%`,
+          top: `${simState.ballY}%`,
           transform: "translate(-50%, -50%)",
           width: BALL_SIZE,
           height: BALL_SIZE,
+          transition: "left 0.1s linear, top 0.1s linear",
         }}
       >
         <div
-          className={`w-full h-full rounded-full bg-white shadow-lg ${
-            isGoal ? "animate-bounce" : ""
-          }`}
+          className={`w-full h-full rounded-full ${isGoal ? "animate-bounce" : ""}`}
           style={{
             background: "radial-gradient(circle at 30% 30%, #fff 0%, #e5e5e5 50%, #ccc 100%)",
             boxShadow: "0 2px 4px rgba(0,0,0,0.4), inset 0 1px 2px rgba(255,255,255,0.8)",
@@ -311,9 +219,20 @@ export function TeamPitch2D({
         />
       </div>
 
+      {/* Score display */}
+      <div className="absolute top-2 left-1/2 -translate-x-1/2 z-30">
+        <div className="bg-black/60 px-3 py-1 rounded-full flex items-center gap-2">
+          <div className="w-2 h-2 rounded-full" style={{ backgroundColor: HOME_COLOR }} />
+          <span className="text-white font-bold text-sm">{simState.homeScore}</span>
+          <span className="text-white/50 text-xs">-</span>
+          <span className="text-white font-bold text-sm">{simState.awayScore}</span>
+          <div className="w-2 h-2 rounded-full" style={{ backgroundColor: AWAY_COLOR }} />
+        </div>
+      </div>
+
       {/* Event popup */}
       {currentEvent && (
-        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 animate-bounce">
+        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-30 animate-bounce">
           <div
             className={`px-3 py-1.5 rounded-lg text-white font-bold text-sm shadow-lg ${
               isGoal
@@ -336,6 +255,15 @@ export function TeamPitch2D({
             {currentEvent.playerName && (
               <span className="ml-1 font-normal">- {currentEvent.playerName}</span>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Last action log */}
+      {simState.lastAction && isPlaying && (
+        <div className="absolute bottom-12 left-2 right-2 z-20">
+          <div className="bg-black/50 px-2 py-1 rounded text-white/80 text-xs truncate">
+            {simState.lastAction}
           </div>
         </div>
       )}
