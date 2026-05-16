@@ -50,13 +50,7 @@ public class MatchCompletedListener {
             )
         );
 
-        // Archive to PostgreSQL and clean up Redis (after SSE broadcast)
-        sessionStore.findById(event.sessionId()).ifPresent(session -> {
-            try {
-                sessionArchiver.archive(session);
-            } catch (Exception e) {
-                log.warn("Failed to archive session {} immediately, will be retried", event.sessionId(), e);
-            }
-        });
+        // Archival is handled by SessionDisconnectCleanupScheduler after a grace period
+        // to allow clients time to poll the final state before the session is removed from Redis.
     }
 }

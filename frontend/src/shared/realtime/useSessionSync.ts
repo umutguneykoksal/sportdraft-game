@@ -14,6 +14,7 @@ export interface SessionSyncState {
   lastEvent: RealtimeEnvelope | null;
   error: string | null;
   sessionNotFound: boolean;
+  matchCompleted: boolean;
 }
 
 /**
@@ -41,6 +42,7 @@ export function useSessionSync(sessionId: string | null, spectator = false): Ses
   const [lastEvent, setLastEvent] = useState<RealtimeEnvelope | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [sessionNotFound, setSessionNotFound] = useState(false);
+  const [matchCompleted, setMatchCompleted] = useState(false);
 
   const { events, isConnected } = useRealtimeSession(sessionId, spectator);
 
@@ -57,6 +59,7 @@ export function useSessionSync(sessionId: string | null, spectator = false): Ses
     setLastEvent(null);
     setError(null);
     setSessionNotFound(false);
+    setMatchCompleted(false);
     fetchingRef.current = false;
     pendingRefreshRef.current = false;
     lastEventIdxRef.current = -1;
@@ -110,17 +113,18 @@ export function useSessionSync(sessionId: string | null, spectator = false): Ses
   }, [sessionId, refresh]);
 
   // Regular polling - the backbone of reliability
+  // Stop polling when session ends or match completes (session will be archived soon)
   useEffect(() => {
-    if (!sessionId || sessionNotFound) return;
+    if (!sessionId || sessionNotFound || matchCompleted) return;
     
     const interval = isConnected ? POLL_INTERVAL_MS : POLL_INTERVAL_DISCONNECTED_MS;
     const id = window.setInterval(() => refresh(sessionId), interval);
     return () => window.clearInterval(id);
-  }, [sessionId, isConnected, sessionNotFound, refresh]);
+  }, [sessionId, isConnected, sessionNotFound, matchCompleted, refresh]);
 
   // Push event handler - triggers immediate refresh, doesn't patch
   useEffect(() => {
-    if (!sessionId || events.length === 0 || sessionNotFound) return;
+    if (!sessionId || events.length === 0 || sessionNotFound || matchCompleted) return;
 
     // Process new events since last check
     for (let i = lastEventIdxRef.current + 1; i < events.length; i++) {
@@ -131,13 +135,20 @@ export function useSessionSync(sessionId: string | null, spectator = false): Ses
 
       setLastEvent(env);
 
+      // Match completed - signal to navigate to match result page, stop further polling
+      if (env.eventType === "match_completed") {
+        setMatchCompleted(true);
+        lastEventIdxRef.current = events.length - 1;
+        return; // Don't refresh, let navigation happen
+      }
+
       // Push arrived → immediate refresh (don't wait for poll interval)
       refresh(sessionId);
       break; // One refresh per batch is enough
     }
     
     lastEventIdxRef.current = events.length - 1;
-  }, [events, sessionId, sessionNotFound, refresh]);
+  }, [events, sessionId, sessionNotFound, matchCompleted, refresh]);
 
   // Reconnect → immediate refresh
   const prevConnectedRef = useRef(false);
@@ -145,13 +156,13 @@ export function useSessionSync(sessionId: string | null, spectator = false): Ses
     const wasConnected = prevConnectedRef.current;
     prevConnectedRef.current = isConnected;
     
-    if (!sessionId || sessionNotFound) return;
+    if (!sessionId || sessionNotFound || matchCompleted) return;
     
     // Just connected (was disconnected)
     if (isConnected && !wasConnected) {
       refresh(sessionId);
     }
-  }, [isConnected, sessionId, sessionNotFound, refresh]);
+  }, [isConnected, sessionId, sessionNotFound, matchCompleted, refresh]);
 
   return { 
     snapshot, 
@@ -161,6 +172,7 @@ export function useSessionSync(sessionId: string | null, spectator = false): Ses
     isConnected, 
     lastEvent, 
     error, 
-    sessionNotFound 
+    sessionNotFound,
+    matchCompleted
   };
 }

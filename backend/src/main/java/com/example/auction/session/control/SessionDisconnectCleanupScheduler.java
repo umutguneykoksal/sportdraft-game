@@ -7,10 +7,12 @@ import com.example.auction.session.redis.ActivePlayer;
 import com.example.auction.session.redis.ActiveSession;
 import com.example.auction.session.redis.ActiveSessionStore;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -29,12 +31,17 @@ public class SessionDisconnectCleanupScheduler {
         SessionStatus.FORMATION_SELECT,
         SessionStatus.COUNTDOWN
     );
+    /** Grace period before archiving FINISHED sessions to let clients poll final state. */
+    private static final Duration FINISHED_ARCHIVE_GRACE_PERIOD = Duration.ofMinutes(2);
 
     private final ActiveSessionStore sessionStore;
     private final SseEmitterRegistry sseEmitterRegistry;
     private final SessionArchiver sessionArchiver;
     private final SessionEventLog eventLog;
     private final Duration disconnectTimeout;
+    
+    /** Tracks when we first observed a session as FINISHED. */
+    private final ConcurrentHashMap<UUID, Instant> finishedObservedAt = new ConcurrentHashMap<>();
 
     public SessionDisconnectCleanupScheduler(
         ActiveSessionStore sessionStore,
@@ -160,15 +167,40 @@ public class SessionDisconnectCleanupScheduler {
         return true;
     }
 
-    /** Retry archival for FINISHED sessions that are still stuck in Redis. */
+    /** 
+     * Archive FINISHED sessions after the grace period expires.
+     * This allows clients time to poll the final match result before the session is removed from Redis.
+     */
     @Scheduled(fixedDelay = 10_000)
     public void archiveFinishedSessions() {
+        Instant now = Instant.now();
+        
         for (ActiveSession session : sessionStore.findByStatus(SessionStatus.FINISHED)) {
+            UUID sessionId = session.getId();
+            
+            // Track when we first saw this session as FINISHED
+            Instant firstObserved = finishedObservedAt.computeIfAbsent(sessionId, k -> now);
+            
+            // Check if grace period has elapsed
+            Duration elapsed = Duration.between(firstObserved, now);
+            if (elapsed.compareTo(FINISHED_ARCHIVE_GRACE_PERIOD) < 0) {
+                log.debug("Session {} FINISHED but grace period not elapsed yet ({}s / {}s)",
+                    sessionId, elapsed.toSeconds(), FINISHED_ARCHIVE_GRACE_PERIOD.toSeconds());
+                continue;
+            }
+            
             try {
                 sessionArchiver.archive(session);
+                finishedObservedAt.remove(sessionId);
+                sseEmitterRegistry.forgetSession(sessionId);
+                eventLog.forget(sessionId);
+                log.info("Archived FINISHED session {} after grace period", sessionId);
             } catch (Exception e) {
-                log.warn("Archival retry failed for session {}", session.getId(), e);
+                log.warn("Archival failed for session {}", sessionId, e);
             }
         }
+        
+        // Cleanup stale entries (sessions that were removed outside this scheduler)
+        finishedObservedAt.keySet().removeIf(id -> !sessionStore.exists(id));
     }
 }

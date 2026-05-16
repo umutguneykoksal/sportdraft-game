@@ -2,6 +2,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { useMatchFlow } from "./hooks/useMatchFlow";
 import { TeamPitch } from "../../shared/components/TeamPitch";
 import { FORMATION_LABELS } from "../../shared/formations";
+import { clearActiveSessionId } from "../../shared/session";
 
 export function MatchPage() {
   const { sessionId } = useParams<{ sessionId: string }>();
@@ -140,7 +141,10 @@ export function MatchPage() {
         {/* Back to Lobby */}
         <div className="text-center mt-8">
           <button
-            onClick={() => navigate("/lobby")}
+            onClick={() => {
+              clearActiveSessionId();
+              navigate("/lobby");
+            }}
             className="bg-accent hover:bg-blue-600 text-white font-bold py-3 px-8 rounded-xl text-lg transition-colors"
           >
             Back to Lobby

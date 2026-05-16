@@ -43,7 +43,7 @@ export function AuctionPage() {
   const [turnIsOpen, setTurnIsOpen] = useState(false);
 
   // Central sync: replaces effects 1–4 (initial load, poll, reconnect, event handler)
-  const { snapshot: sessionSnap, auctionState, round, setRound, isConnected, lastEvent, error: syncError, sessionNotFound } =
+  const { snapshot: sessionSnap, auctionState, round, setRound, isConnected, lastEvent, error: syncError, sessionNotFound, matchCompleted } =
     useSessionSync(sessionId ?? null);
 
   const myTeam = auctionState ? mapCards(auctionState.myTeam) : [];
@@ -89,12 +89,12 @@ export function AuctionPage() {
     if (!isActivePage(sessionSnap.status)) navigate("/lobby");
   }, [sessionSnap?.status, navigate, sessionId]);
 
-  // Navigation: match_completed push event
+  // Navigation: match_completed push event or matchCompleted state
   useEffect(() => {
-    if (lastEvent?.eventType === "match_completed" && sessionId) {
+    if ((matchCompleted || lastEvent?.eventType === "match_completed") && sessionId) {
       navigate(`/match/${sessionId}`);
     }
-  }, [lastEvent, navigate, sessionId]);
+  }, [matchCompleted, lastEvent, navigate, sessionId]);
 
   // Server clock offset: sync from event timestamps
   useEffect(() => {
