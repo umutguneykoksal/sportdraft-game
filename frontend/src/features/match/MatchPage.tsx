@@ -15,7 +15,8 @@ export function MatchPage() {
   const {
     ready, homeScore, awayScore,
     myTeam, opponentTeam, myFormation, opponentFormation,
-    myNickname, opponentNickname,
+    myNickname, opponentNickname, myTeamId,
+    myShots, opponentShots, myFouls, opponentFouls,
   } = useMatchFlow(sessionId);
 
   const [viewState, setViewState] = useState<ViewState>("loading");
@@ -40,8 +41,8 @@ export function MatchPage() {
     }
   }, [ready, sessionId, timeline.length, timelineLoading]);
 
-  // For now, use sessionId as homeTeamId placeholder
-  const homeTeamId = sessionId ?? null;
+  // Use actual team ID from backend for timeline event matching
+  const homeTeamId = myTeamId;
 
   const isWin = ready && homeScore !== null && awayScore !== null && homeScore > awayScore;
   const isLoss = ready && homeScore !== null && awayScore !== null && homeScore < awayScore;
@@ -127,41 +128,33 @@ export function MatchPage() {
           </div>
 
           {/* Match Stats Summary */}
-          {timeline.length > 0 && (
+          {(myShots > 0 || opponentShots > 0 || myFouls > 0 || opponentFouls > 0) && (
             <div className="max-w-2xl mx-auto px-4 py-4">
               <div className="bg-surface-card rounded-xl border border-white/10 p-4">
                 <h3 className="font-bold text-white mb-3 text-center">Match Statistics</h3>
                 <div className="grid grid-cols-3 gap-4 text-center">
                   <div>
-                    <p className="text-2xl font-bold text-blue-400">
-                      {timeline.filter(e => (e.type === "GOAL" || e.type === "SHOT_SAVED" || e.type === "SHOT_MISSED") && e.teamId === homeTeamId).length}
-                    </p>
+                    <p className="text-2xl font-bold text-blue-400">{myShots}</p>
                     <p className="text-xs text-slate-400">Shots</p>
                   </div>
                   <div>
                     <p className="text-sm text-slate-500">vs</p>
                   </div>
                   <div>
-                    <p className="text-2xl font-bold text-red-400">
-                      {timeline.filter(e => (e.type === "GOAL" || e.type === "SHOT_SAVED" || e.type === "SHOT_MISSED") && e.teamId !== homeTeamId).length}
-                    </p>
+                    <p className="text-2xl font-bold text-red-400">{opponentShots}</p>
                     <p className="text-xs text-slate-400">Shots</p>
                   </div>
                 </div>
                 <div className="grid grid-cols-3 gap-4 text-center mt-3">
                   <div>
-                    <p className="text-2xl font-bold text-blue-400">
-                      {timeline.filter(e => e.type === "FOUL" && e.teamId === homeTeamId).length}
-                    </p>
+                    <p className="text-2xl font-bold text-blue-400">{myFouls}</p>
                     <p className="text-xs text-slate-400">Fouls</p>
                   </div>
                   <div>
                     <p className="text-sm text-slate-500">vs</p>
                   </div>
                   <div>
-                    <p className="text-2xl font-bold text-red-400">
-                      {timeline.filter(e => e.type === "FOUL" && e.teamId !== homeTeamId).length}
-                    </p>
+                    <p className="text-2xl font-bold text-red-400">{opponentFouls}</p>
                     <p className="text-xs text-slate-400">Fouls</p>
                   </div>
                 </div>

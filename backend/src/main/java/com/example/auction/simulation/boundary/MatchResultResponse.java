@@ -11,6 +11,11 @@ public record MatchResultResponse(
     String myFormation,
     String opponentFormation,
     String myNickname,
-    String opponentNickname
+    String opponentNickname,
+    String myTeamId,
+    int myShots,
+    int opponentShots,
+    int myFouls,
+    int opponentFouls
 ) {
 }

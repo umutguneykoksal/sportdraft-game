@@ -101,6 +101,11 @@ export interface MatchResultResponse {
   opponentFormation: Formation | null;
   myNickname: string | null;
   opponentNickname: string | null;
+  myTeamId: string | null;
+  myShots: number;
+  opponentShots: number;
+  myFouls: number;
+  opponentFouls: number;
 }
 
 export interface LobbyRoomResponse {

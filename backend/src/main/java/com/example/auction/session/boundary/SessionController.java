@@ -13,10 +13,12 @@ import com.example.auction.session.redis.ActiveSessionStore;
 import com.example.auction.simulation.boundary.MatchResultResponse;
 import com.example.auction.simulation.control.MatchResultRecoveryService;
 import com.example.auction.simulation.entity.MatchEvent;
+import com.example.auction.simulation.entity.MatchEventType;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.validation.Valid;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -143,11 +145,18 @@ public class SessionController {
                 String myNickname = isHome ? homeNick : awayNick;
                 String oppNickname = isHome ? awayNick : homeNick;
                 AuctionService.TeamSnapshot teams = auctionService.buildTeamSnapshot(session, userId);
+                
+                // Calculate stats from timeline
+                List<MatchEvent> timeline = session.getMatchTimeline();
+                int[] stats = calculateStats(timeline, userId);
+                
                 return ResponseEntity.ok(new MatchResultResponse(
                     myScore, oppScore,
                     teams.myTeam(), teams.opponentTeam(),
                     teams.myFormation(), teams.opponentFormation(),
-                    myNickname, oppNickname
+                    myNickname, oppNickname,
+                    userId.toString(),
+                    stats[0], stats[1], stats[2], stats[3]
                 ));
             }
         }
@@ -156,6 +165,31 @@ public class SessionController {
         return matchHistoryRepository.findBySessionId(sessionId)
             .map(h -> buildResultFromArchive(h, userId))
             .orElse(ResponseEntity.notFound().build());
+    }
+    
+    private int[] calculateStats(List<MatchEvent> timeline, UUID userId) {
+        if (timeline == null || timeline.isEmpty()) {
+            return new int[]{0, 0, 0, 0};
+        }
+        
+        Set<MatchEventType> shotTypes = Set.of(
+            MatchEventType.GOAL, MatchEventType.SHOT_SAVED, MatchEventType.SHOT_MISSED
+        );
+        
+        int myShots = 0, oppShots = 0, myFouls = 0, oppFouls = 0;
+        
+        for (MatchEvent e : timeline) {
+            boolean isMine = userId.equals(e.teamId());
+            
+            if (shotTypes.contains(e.type())) {
+                if (isMine) myShots++; else oppShots++;
+            }
+            if (e.type() == MatchEventType.FOUL) {
+                if (isMine) myFouls++; else oppFouls++;
+            }
+        }
+        
+        return new int[]{myShots, oppShots, myFouls, oppFouls};
     }
 
     private ResponseEntity<MatchResultResponse> buildResultFromArchive(MatchHistory h, UUID userId) {
@@ -171,11 +205,17 @@ public class SessionController {
             String myNickname = isHome ? homeNick : awayNick;
             String oppNickname = isHome ? awayNick : homeNick;
             AuctionService.TeamSnapshot teams = auctionService.buildTeamSnapshot(archived, userId);
+            
+            List<MatchEvent> timeline = archived.getMatchTimeline();
+            int[] stats = calculateStats(timeline, userId);
+            
             return ResponseEntity.ok(new MatchResultResponse(
                 myScore, oppScore,
                 teams.myTeam(), teams.opponentTeam(),
                 teams.myFormation(), teams.opponentFormation(),
-                myNickname, oppNickname
+                myNickname, oppNickname,
+                userId.toString(),
+                stats[0], stats[1], stats[2], stats[3]
             ));
         } catch (Exception e) {
             log.warn("Failed to deserialize replay_data for session {}, returning scores only", h.getSessionId(), e);
@@ -184,7 +224,9 @@ public class SessionController {
                 List.of(), List.of(),
                 isHome ? h.getHomeFormation() : h.getAwayFormation(),
                 isHome ? h.getAwayFormation() : h.getHomeFormation(),
-                null, null
+                null, null,
+                userId.toString(),
+                0, 0, 0, 0
             ));
         }
     }

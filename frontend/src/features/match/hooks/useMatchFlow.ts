@@ -49,5 +49,10 @@ export function useMatchFlow(sessionId: string | undefined) {
     opponentFormation: (result?.opponentFormation ?? "FOUR_FOUR_TWO") as Formation,
     myNickname: result?.myNickname ?? "You",
     opponentNickname: result?.opponentNickname ?? "Opponent",
+    myTeamId: result?.myTeamId ?? null,
+    myShots: result?.myShots ?? 0,
+    opponentShots: result?.opponentShots ?? 0,
+    myFouls: result?.myFouls ?? 0,
+    opponentFouls: result?.opponentFouls ?? 0,
   };
 }
