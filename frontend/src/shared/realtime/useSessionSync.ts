@@ -44,10 +44,9 @@ export function useSessionSync(sessionId: string | null, spectator = false): Ses
 
   const { events, isConnected } = useRealtimeSession(sessionId, spectator);
 
-  // Track server version to avoid redundant state updates
-  const lastVersionRef = useRef<number>(0);
-  const lastRoundIdRef = useRef<string | null>(null);
+  // Refs for fetch coordination
   const fetchingRef = useRef(false);
+  const pendingRefreshRef = useRef(false);
   const lastEventIdxRef = useRef(-1);
 
   // Reset on session change
@@ -58,15 +57,21 @@ export function useSessionSync(sessionId: string | null, spectator = false): Ses
     setLastEvent(null);
     setError(null);
     setSessionNotFound(false);
-    lastVersionRef.current = 0;
-    lastRoundIdRef.current = null;
+    fetchingRef.current = false;
+    pendingRefreshRef.current = false;
     lastEventIdxRef.current = -1;
   }, [sessionId]);
 
   // Core refresh function - always fetches full state from server
-  const refresh = useCallback(async (sid: string, force = false) => {
-    if (fetchingRef.current && !force) return;
+  const refresh = useCallback(async (sid: string) => {
+    // Don't skip if already fetching - queue the intent instead
+    if (fetchingRef.current) {
+      // Mark that another refresh is needed after current one completes
+      pendingRefreshRef.current = true;
+      return;
+    }
     fetchingRef.current = true;
+    pendingRefreshRef.current = false;
 
     try {
       const [snap, state] = await Promise.all([
@@ -74,21 +79,7 @@ export function useSessionSync(sessionId: string | null, spectator = false): Ses
         getAuctionState(sid),
       ]);
 
-      // Skip update if version unchanged (optimization, not correctness)
-      const serverVersion = snap.version ?? 0;
-      const roundId = state.currentRound?.roundId ?? null;
-      
-      if (!force && serverVersion > 0 && serverVersion === lastVersionRef.current) {
-        // Version same but round might have changed (bid_placed etc)
-        if (roundId === lastRoundIdRef.current) {
-          fetchingRef.current = false;
-          return;
-        }
-      }
-
-      lastVersionRef.current = serverVersion;
-      lastRoundIdRef.current = roundId;
-
+      // Always update state - no version check that could skip updates
       setSnapshot(snap);
       setAuctionState(state);
       setRound(state.currentRound);
@@ -103,13 +94,19 @@ export function useSessionSync(sessionId: string | null, spectator = false): Ses
       }
     } finally {
       fetchingRef.current = false;
+      
+      // If another refresh was requested while we were fetching, do it now
+      if (pendingRefreshRef.current) {
+        pendingRefreshRef.current = false;
+        refresh(sid);
+      }
     }
   }, []);
 
   // Initial load
   useEffect(() => {
     if (!sessionId) return;
-    refresh(sessionId, true);
+    refresh(sessionId);
   }, [sessionId, refresh]);
 
   // Regular polling - the backbone of reliability
@@ -152,7 +149,7 @@ export function useSessionSync(sessionId: string | null, spectator = false): Ses
     
     // Just connected (was disconnected)
     if (isConnected && !wasConnected) {
-      refresh(sessionId, true);
+      refresh(sessionId);
     }
   }, [isConnected, sessionId, sessionNotFound, refresh]);
 

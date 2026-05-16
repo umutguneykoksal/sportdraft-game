@@ -61,6 +61,9 @@ export function AuctionPage() {
   const spent = myTeam.reduce((sum, c) => sum + c.amountCents, 0);
   const budget = 100 - spent;
 
+  // Minimum bid to win: current bid + 1 (or 1 if no bids yet)
+  const minimumBid = round ? Math.max(1, round.highestBidCents + 1) : 1;
+
   // ---- Effects ----
 
   // 0. Persist session only after server confirms we are still in it
@@ -204,8 +207,13 @@ export function AuctionPage() {
 
   const handleTake = async () => {
     if (!round) return;
+    const takeAmount = Math.max(1, round.highestBidCents + 1);
+    if (takeAmount > budget) {
+      setActionError(`Insufficient budget. Need ${takeAmount} cr but only have ${budget} cr`);
+      return;
+    }
     setLoading(true); setActionError(null);
-    try { setRound(await placeBid(sessionId, round.roundId, 1)); }
+    try { setRound(await placeBid(sessionId, round.roundId, takeAmount)); }
     catch (e) { setActionError(e instanceof Error ? e.message : "Failed to take card"); }
     finally { setLoading(false); }
   };
@@ -413,10 +421,10 @@ export function AuctionPage() {
                     </div>
                     <button
                       onClick={handleTake}
-                      disabled={loading || mySquadFull}
+                      disabled={loading || mySquadFull || minimumBid > budget}
                       className="w-full bg-accent-green hover:bg-green-600 disabled:opacity-40 text-white font-bold py-3 rounded-lg transition-colors text-lg"
                     >
-                      Take for 1 cr
+                      Take for {minimumBid} cr
                     </button>
                     <button
                       onClick={handlePassRound}
