@@ -32,6 +32,8 @@ public record AuctionRoundResponse(
     /** Whether the requesting player may take the card at minimum bid (solo eligible turn). */
     boolean viewerCanTake,
     /** Whether the requesting player may pass / end turn on this round. */
-    boolean viewerCanPass
+    boolean viewerCanPass,
+    /** Whether the card fits an open slot on the viewer's formation (ignores whose turn it is). */
+    boolean viewerCanFillCard
 ) {
 }

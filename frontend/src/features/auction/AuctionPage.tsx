@@ -70,6 +70,36 @@ export function AuctionPage() {
   const showTakePanel = round?.viewerCanTake === true;
   const couldBid = round?.viewerCanBid === true;
   const canPass = round?.viewerCanPass === true;
+  const canFillCard = round?.viewerCanFillCard === true;
+  const iAmHighestBidder = !!myUserId && round?.highestBidderUserId === myUserId;
+  const opponentHasBid = (round?.highestBidCents ?? 0) > 0;
+  const waitingOnOpponent = roundIsOpen && !isMyTurn && !turnIsOpen;
+  const showNoSlotBanner =
+    roundIsOpen && !canFillCard && !showTakePanel && (isMyTurn || turnIsOpen || canPass);
+
+  const turnStatusMessage = (): string => {
+    if (mySquadFull) return "Squad full (11/11)";
+    if (controlsLocked) return loading ? "Submitting…" : "Settling round…";
+    if (inTimerGrace) return couldBid ? "Time's up — bids locked" : "Time's up — resolving turn…";
+    if (waitingOnOpponent) {
+      if (iAmHighestBidder && opponentHasBid) {
+        return `You're leading at ${round!.highestBidCents} cr — opponent's turn`;
+      }
+      if (iAmHighestBidder) return "Waiting for opponent to bid";
+      if (!canFillCard) return "No slot for this card — watching";
+      return "Waiting for opponent…";
+    }
+    if (!canFillCard && canPass) return "No slot for this card — pass to skip";
+    if (!canFillCard) return "No slot for this card — watching";
+    if (turnIsOpen) return "Bidding open to both players!";
+    if (isMyTurn) {
+      if (opponentHasBid && !iAmHighestBidder) {
+        return `Opponent leads at ${round!.highestBidCents} cr — your turn to bid`;
+      }
+      return "Your turn to bid!";
+    }
+    return "Waiting for opponent…";
+  };
   const isResolvingRound = !!round && resolvingRoundId === round.roundId;
   // Lock only during our HTTP call, or when server broadcasts round_resolving (e.g. opponent passed).
   const controlsLocked = loading || isResolvingRound;
@@ -569,10 +599,17 @@ export function AuctionPage() {
                         </p>
                       </div>
                     )}
-                    {roundIsOpen && !couldBid && !showTakePanel && !canPass && (
+                    {showNoSlotBanner && (
                       <div className="bg-slate-800/80 border border-slate-500/30 rounded-lg px-3 py-2 text-center">
                         <p className="text-slate-300 text-sm font-medium">
                           No open slot for this card in your formation
+                        </p>
+                      </div>
+                    )}
+                    {waitingOnOpponent && canFillCard && iAmHighestBidder && opponentHasBid && (
+                      <div className="bg-accent/10 border border-accent/30 rounded-lg px-3 py-2 text-center">
+                        <p className="text-accent text-sm font-medium">
+                          You lead at {round.highestBidCents} cr — waiting for opponent
                         </p>
                       </div>
                     )}
@@ -686,25 +723,7 @@ export function AuctionPage() {
                           ? "bg-accent/10 text-accent"
                           : "bg-surface-elevated text-slate-400"
                 }`}>
-                  {mySquadFull
-                    ? "Squad full (11/11)"
-                    : controlsLocked
-                      ? loading
-                        ? "Submitting…"
-                        : "Settling round…"
-                      : inTimerGrace
-                      ? couldBid
-                          ? "Time's up — bids locked"
-                          : "Time's up — resolving turn…"
-                      : !couldBid && canPass
-                        ? "No slot for this card — pass to skip"
-                      : !couldBid && !canPass
-                        ? "No slot for this card — waiting"
-                      : turnIsOpen
-                        ? "Bidding open to both players!"
-                        : isMyTurn
-                          ? "Your turn to bid!"
-                          : "Waiting for opponent..."}
+                  {turnStatusMessage()}
                 </div>
               </div>
             )}

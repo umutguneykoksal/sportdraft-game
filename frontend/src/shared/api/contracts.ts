@@ -81,6 +81,7 @@ export interface AuctionRoundResponse {
   viewerCanBid: boolean;
   viewerCanTake: boolean;
   viewerCanPass: boolean;
+  viewerCanFillCard: boolean;
 }
 
 export interface AuctionTeamCardResponse {

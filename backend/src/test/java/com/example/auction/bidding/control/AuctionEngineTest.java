@@ -47,6 +47,7 @@ class AuctionEngineTest {
             true,
             true,
             false,
+            true,
             true
         );
         when(auctionService.startRound(sessionId)).thenReturn(round);

@@ -807,7 +807,7 @@ public class AuctionService {
     }
 
     private AuctionRoundResponse toResponse(ActiveRound round, Card card, UUID sessionId) {
-        return buildRoundResponse(round, card, sessionId, null, true, false, false, false);
+        return buildRoundResponse(round, card, sessionId, null, true, false, false, false, false);
     }
 
     private AuctionRoundResponse toResponseWithContext(ActiveRound round, Card card,
@@ -825,16 +825,17 @@ public class AuctionService {
         boolean viewerCanBid = computeViewerCanBid(round, session, viewerUserId, card, cardMap);
         boolean viewerCanTake = computeViewerCanTake(round, session, viewerUserId, card, cardMap);
         boolean viewerCanPass = computeViewerCanPass(round, viewerUserId);
+        boolean viewerCanFillCard = computeViewerCanFillCard(session, viewerUserId, card, cardMap);
         return buildRoundResponse(
             round, card, session.getId(), resolveHighestBidderUserId(round, session), opponentCanBid,
-            viewerCanBid, viewerCanTake, viewerCanPass
+            viewerCanBid, viewerCanTake, viewerCanPass, viewerCanFillCard
         );
     }
 
     private AuctionRoundResponse buildRoundResponse(
         ActiveRound round, Card card, UUID sessionId,
         UUID highestBidderUserId, boolean opponentCanBid,
-        boolean viewerCanBid, boolean viewerCanTake, boolean viewerCanPass
+        boolean viewerCanBid, boolean viewerCanTake, boolean viewerCanPass, boolean viewerCanFillCard
     ) {
         PlayerAttributes attrs = card.getAttributes();
         Instant turnOpenAt = computeTurnOpenAt(round);
@@ -845,8 +846,20 @@ public class AuctionService {
             round.getHighestBidCents(), round.getHighestBidderId(), highestBidderUserId,
             round.getCurrentTurnUserId(), round.getReadyUserOneId(), round.getReadyUserTwoId(),
             round.getEndsAt(), turnOpenAt, round.getStatus().name(),
-            opponentCanBid, viewerCanBid, viewerCanTake, viewerCanPass
+            opponentCanBid, viewerCanBid, viewerCanTake, viewerCanPass, viewerCanFillCard
         );
+    }
+
+    private boolean computeViewerCanFillCard(ActiveSession session, UUID viewerUserId,
+                                             Card card, Map<UUID, Card> cardMap) {
+        if (viewerUserId == null) {
+            return false;
+        }
+        ActivePlayer viewer = session.findPlayerByUserId(viewerUserId).orElse(null);
+        if (viewer == null || viewer.isRosterFull()) {
+            return false;
+        }
+        return RosterSlotAssignment.canFillCard(viewer, card, cardMap);
     }
 
     private long minimumBidForRound(ActiveRound round) {
