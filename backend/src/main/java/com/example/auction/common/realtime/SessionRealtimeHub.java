@@ -74,6 +74,13 @@ public class SessionRealtimeHub {
         disconnectedAtBySession.remove(sessionId);
     }
 
+    /** Open WebSocket sessions registered for a game session (used to close duplicate player tabs). */
+    public List<WebSocketSession> getOpenWsSessions(UUID sessionId) {
+        return wsBySession.getOrDefault(sessionId, List.of()).stream()
+            .filter(WebSocketSession::isOpen)
+            .toList();
+    }
+
     private void publishSse(UUID sessionId, Map<String, Object> envelope) {
         List<SseEmitter> emitters = sseBySession.getOrDefault(sessionId, List.of());
         for (SseEmitter emitter : emitters) {

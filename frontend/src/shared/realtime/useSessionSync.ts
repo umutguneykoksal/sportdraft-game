@@ -3,6 +3,13 @@ import { AuctionRoundResponse, AuctionStateResponse, SessionSnapshotResponse } f
 import { getAuctionState, getSessionSnapshot } from "../api";
 import { fetchEventsSince } from "../api/sessionClient";
 import { ApiError } from "../api/errors";
+import {
+  decideReplayAction,
+  mergeRoundFromRest,
+  pickSharedFields,
+  processEventBatch,
+  RefreshKind,
+} from "./eventDispatch";
 import { RealtimeEnvelope } from "./types";
 import { useRealtimeSession } from "./useRealtimeSession";
 
@@ -16,63 +23,14 @@ export interface SessionSyncState {
   error: string | null;
   sessionNotFound: boolean;
   matchCompleted: boolean;
-  /** @deprecated Always false — kept for interface compat while callers migrate. */
   isRefreshing: boolean;
 }
 
-/**
- * Event-driven sync strategy:
- *
- *  bid_placed / turn_passed  → patch round in memory (0 REST calls)
- *  round_ended / round_started → refreshState (getAuctionState only)
- *  match_start_pending / session_finalizing → refreshFull (snapshot + state)
- *
- *  All events in a batch are processed (no early break) so simultaneous
- *  events like bid_placed + round_ended are both handled correctly.
- *
- *  Gap detection: if SSE seq jumps (e.g. after reconnect), we call the
- *  /events/sync ring-buffer endpoint to replay missed events. If the buffer
- *  is exhausted we fall back to refreshFull.
- *
- *  Poll: 30s when SSE is live (safety net), 2s when disconnected (fast recovery).
- *
- *  Visibility: on tab-focus, if >10s since last event → refreshState; if SSE
- *              disconnected → force reconnect.
- *  Heartbeat: if no heartbeat for 45s → force SSE reconnect (silent proxy drop).
- */
-
-/** Safety-net poll when SSE is live and no round is active (budget/formation changes are rare). */
-const POLL_INTERVAL_IDLE_MS         = 30_000;
-/**
- * Safety-net poll while a round is OPEN and SSE is live.
- * Catches single-event drops (e.g. proxy silently discarded one bid_placed frame)
- * so the stale client recovers within ~5s instead of 30s.
- */
-const POLL_INTERVAL_ROUND_OPEN_MS   =  5_000;
-const POLL_INTERVAL_DISCONNECTED_MS =  2_000;
+const POLL_INTERVAL_IDLE_MS = 30_000;
+const POLL_INTERVAL_ROUND_OPEN_MS = 5_000;
+const POLL_INTERVAL_DISCONNECTED_MS = 2_000;
 const VISIBILITY_REFRESH_THRESHOLD_MS = 10_000;
 const HEARTBEAT_TIMEOUT_MS = 45_000;
-
-/** Fields from the SSE round payload that can be safely merged into local round state. */
-const SHARED_ROUND_FIELDS: ReadonlyArray<keyof AuctionRoundResponse> = [
-  "highestBidCents",
-  "highestBidderUserId",
-  "currentTurnUserId",
-  "endsAt",
-  "turnOpenAt",
-  "passedPlayerIds",
-  "status",
-  "opponentCanBid",
-];
-
-function pickSharedFields(src: AuctionRoundResponse): Partial<AuctionRoundResponse> {
-  const srcAny = src as unknown as Record<string, unknown>;
-  const out: Record<string, unknown> = {};
-  for (const k of SHARED_ROUND_FIELDS) {
-    if (k in src) out[k] = srcAny[k];
-  }
-  return out as Partial<AuctionRoundResponse>;
-}
 
 export function useSessionSync(sessionId: string | null, spectator = false): SessionSyncState {
   const [snapshot, setSnapshot] = useState<SessionSnapshotResponse | null>(null);
@@ -82,26 +40,28 @@ export function useSessionSync(sessionId: string | null, spectator = false): Ses
   const [error, setError] = useState<string | null>(null);
   const [sessionNotFound, setSessionNotFound] = useState(false);
   const [matchCompleted, setMatchCompleted] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [reconnectKey, setReconnectKey] = useState(0);
 
   const { events, isConnected } = useRealtimeSession(sessionId, spectator, reconnectKey);
 
   const fetchingRef = useRef(false);
-  const pendingRefreshRef = useRef(false);
+  const pendingRefreshRef = useRef<RefreshKind>("none");
+  const fetchGenRef = useRef(0);
   const lastEventIdxRef = useRef(-1);
-
-  // Seq tracking: last processed server sequence number (0 = never received one)
   const lastServerSeqRef = useRef(0);
-
-  // Timestamps for visibility + heartbeat detection
   const lastEventTimeRef = useRef(Date.now());
   const lastHeartbeatRef = useRef(Date.now());
+  const roundRef = useRef<AuctionRoundResponse | null>(null);
+
+  useEffect(() => {
+    roundRef.current = round;
+  }, [round]);
 
   const forceReconnect = useCallback(() => {
     setReconnectKey((k) => k + 1);
   }, []);
 
-  // Reset on session change
   useEffect(() => {
     setSnapshot(null);
     setAuctionState(null);
@@ -110,30 +70,49 @@ export function useSessionSync(sessionId: string | null, spectator = false): Ses
     setError(null);
     setSessionNotFound(false);
     setMatchCompleted(false);
+    setIsRefreshing(false);
     fetchingRef.current = false;
-    pendingRefreshRef.current = false;
+    pendingRefreshRef.current = "none";
+    fetchGenRef.current = 0;
     lastEventIdxRef.current = -1;
     lastServerSeqRef.current = 0;
     lastEventTimeRef.current = Date.now();
     lastHeartbeatRef.current = Date.now();
   }, [sessionId]);
 
-  // ─── Fetch helpers ────────────────────────────────────────────────────────
+  const applyRoundSafe = useCallback((incoming: AuctionRoundResponse | null) => {
+    setRound((current) => mergeRoundFromRest(current, incoming));
+  }, []);
 
-  const refreshState = useCallback(async (sid: string) => {
+  const runRefresh = useCallback(async (sid: string, kind: RefreshKind) => {
+    if (kind === "none") return;
     if (fetchingRef.current) {
-      pendingRefreshRef.current = true;
+      pendingRefreshRef.current =
+        pendingRefreshRef.current === "full" || kind === "full" ? "full" : kind;
       return;
     }
+
     fetchingRef.current = true;
-    pendingRefreshRef.current = false;
+    setIsRefreshing(true);
+    const gen = ++fetchGenRef.current;
+
     try {
-      const state = await getAuctionState(sid);
-      setAuctionState(state);
-      setRound(state.currentRound);
+      if (kind === "full") {
+        const [snap, state] = await Promise.all([getSessionSnapshot(sid), getAuctionState(sid)]);
+        if (gen !== fetchGenRef.current) return;
+        setSnapshot(snap);
+        setAuctionState(state);
+        applyRoundSafe(state.currentRound);
+      } else {
+        const state = await getAuctionState(sid);
+        if (gen !== fetchGenRef.current) return;
+        setAuctionState(state);
+        applyRoundSafe(state.currentRound);
+      }
       setError(null);
       setSessionNotFound(false);
     } catch (e) {
+      if (gen !== fetchGenRef.current) return;
       if (e instanceof ApiError && (e.status === 404 || e.status === 401)) {
         setSessionNotFound(true);
         setError(null);
@@ -142,53 +121,68 @@ export function useSessionSync(sessionId: string | null, spectator = false): Ses
       }
     } finally {
       fetchingRef.current = false;
-      if (pendingRefreshRef.current) {
-        pendingRefreshRef.current = false;
+      setIsRefreshing(false);
+      const pending = pendingRefreshRef.current;
+      pendingRefreshRef.current = "none";
+      if (pending !== "none") {
+        runRefresh(sid, pending);
+      }
+    }
+  }, [applyRoundSafe]);
+
+  const refreshState = useCallback((sid: string) => runRefresh(sid, "state"), [runRefresh]);
+  const refreshFull = useCallback((sid: string) => runRefresh(sid, "full"), [runRefresh]);
+
+  const dispatchEvents = useCallback(
+    (envs: RealtimeEnvelope[], sid: string) => {
+      for (const env of envs) {
+        if (env.eventType === "heartbeat" || (env.seq ?? 0) === 0) {
+          lastHeartbeatRef.current = Date.now();
+        } else {
+          lastEventTimeRef.current = Date.now();
+          lastHeartbeatRef.current = Date.now();
+          setLastEvent(env);
+        }
+      }
+
+      const actionable = envs.filter(
+        (e) => e.eventType !== "heartbeat" && (e.seq ?? 0) !== 0
+      );
+      if (actionable.length === 0) return;
+
+      const { result, lastSeq } = processEventBatch(actionable, lastServerSeqRef.current, {
+        patchRound: (incoming, merge) => {
+          setRound((prev) => {
+            if (prev && prev.roundId !== incoming.roundId) return prev;
+            return merge && prev
+              ? mergeRoundFromRest(prev, { ...prev, ...pickSharedFields(incoming) })
+              : incoming;
+          });
+        },
+        clearRound: () => setRound(null),
+        setRound: (r) => setRound(r),
+        onMatchCompleted: () => setMatchCompleted(true),
+      });
+
+      if (lastSeq > lastServerSeqRef.current) {
+        lastServerSeqRef.current = lastSeq;
+      }
+
+      if (result.matchCompleted) return;
+
+      if (result.refreshKind === "full") {
+        refreshFull(sid);
+      } else if (result.refreshKind === "state") {
         refreshState(sid);
       }
-    }
-  }, []);
-
-  const refreshFull = useCallback(async (sid: string) => {
-    if (fetchingRef.current) {
-      pendingRefreshRef.current = true;
-      return;
-    }
-    fetchingRef.current = true;
-    pendingRefreshRef.current = false;
-    try {
-      const [snap, state] = await Promise.all([getSessionSnapshot(sid), getAuctionState(sid)]);
-      setSnapshot(snap);
-      setAuctionState(state);
-      setRound(state.currentRound);
-      setError(null);
-      setSessionNotFound(false);
-    } catch (e) {
-      if (e instanceof ApiError && (e.status === 404 || e.status === 401)) {
-        setSessionNotFound(true);
-        setError(null);
-      } else {
-        setError(e instanceof Error ? e.message : "Sync failed");
-      }
-    } finally {
-      fetchingRef.current = false;
-      if (pendingRefreshRef.current) {
-        pendingRefreshRef.current = false;
-        refreshFull(sid);
-      }
-    }
-  }, []);
-
-  // ─── Initial load ─────────────────────────────────────────────────────────
+    },
+    [refreshFull, refreshState]
+  );
 
   useEffect(() => {
     if (!sessionId) return;
     refreshFull(sessionId);
   }, [sessionId, refreshFull]);
-
-  // ─── Background poll (safety net / disconnected recovery) ─────────────────
-  // Interval shrinks to 5s while a round is OPEN so a silently dropped bid_placed
-  // event is caught quickly (worst-case 5s lag instead of 30s).
 
   const roundIsOpen = round?.status === "OPEN";
 
@@ -203,8 +197,6 @@ export function useSessionSync(sessionId: string | null, spectator = false): Ses
     return () => window.clearInterval(id);
   }, [sessionId, isConnected, roundIsOpen, sessionNotFound, matchCompleted, refreshState]);
 
-  // ─── Reconnect → replay missed events from ring buffer ───────────────────
-
   const prevConnectedRef = useRef(false);
   useEffect(() => {
     const was = prevConnectedRef.current;
@@ -213,125 +205,22 @@ export function useSessionSync(sessionId: string | null, spectator = false): Ses
 
     if (isConnected && !was) {
       const lastSeq = lastServerSeqRef.current;
-      if (lastSeq === 0) {
-        // First connect — initial load handles this
-        return;
-      }
-      // Try to replay missed events from the ring buffer
-      fetchEventsSince(sessionId, lastSeq)
+      if (lastSeq === 0) return;
+
+      fetchEventsSince(sessionId, lastSeq, spectator)
         .then(({ events: missed, lastSeq: serverLastSeq }) => {
-          if (missed.length === 0) {
-            // Buffer exhausted or no missed events — full refresh to be safe
+          const action = decideReplayAction(lastSeq, serverLastSeq, missed.length);
+          if (action === "none") return;
+          if (action === "full") {
             refreshFull(sessionId);
             return;
           }
-          // Replay missed events using the same dispatch logic
           dispatchEvents(missed as RealtimeEnvelope[], sessionId);
-          lastServerSeqRef.current = serverLastSeq;
+          lastServerSeqRef.current = Math.max(lastServerSeqRef.current, serverLastSeq);
         })
-        .catch(() => {
-          // Sync endpoint failed → full refresh fallback
-          refreshFull(sessionId);
-        });
+        .catch(() => refreshFull(sessionId));
     }
-  }, [isConnected, sessionId, sessionNotFound, matchCompleted, refreshFull]);
-
-  // ─── Event dispatcher (shared between live SSE and sync replay) ───────────
-
-  const dispatchEvents = useCallback(
-    (envs: RealtimeEnvelope[], sid: string) => {
-      let needsStateRefresh = false;
-      let needsFullRefresh = false;
-
-      for (const env of envs) {
-        if (env.eventType === "heartbeat" || (env.seq ?? 0) === 0) {
-          lastHeartbeatRef.current = Date.now();
-          continue;
-        }
-
-        lastEventTimeRef.current = Date.now();
-        lastHeartbeatRef.current = Date.now();
-        setLastEvent(env);
-
-        const seq = env.seq ?? 0;
-
-        if (env.eventType === "match_completed") {
-          setMatchCompleted(true);
-          return; // stop processing; navigation will happen
-        }
-
-        switch (env.eventType) {
-          case "bid_placed":
-          case "turn_passed": {
-            // Patch round in memory — 0 REST calls.
-            // If seq jumped we may have missed state-changing events → also do a refresh.
-            if (seq > 0 && lastServerSeqRef.current > 0 && seq > lastServerSeqRef.current + 1) {
-              needsStateRefresh = true;
-            }
-            const payload = env.payload as { round?: AuctionRoundResponse };
-            if (payload?.round) {
-              const incoming = payload.round;
-              setRound((prev) => {
-                // Ignore stale events that belong to an already-replaced round
-                if (prev && prev.roundId !== incoming.roundId) return prev;
-                return prev
-                  ? { ...prev, ...pickSharedFields(incoming) }
-                  : incoming;
-              });
-            }
-            break;
-          }
-
-          case "round_ended": {
-            // SOLD → team/budget changed → refresh auctionState.
-            // PASSED → no team changes → just clear the round; round_started carries the next one.
-            const endedPayload = env.payload as { result?: string };
-            if (endedPayload?.result === "SOLD") {
-              needsStateRefresh = true;
-            } else {
-              setRound(null); // clear immediately; round_started will set the next round
-            }
-            break;
-          }
-
-          case "round_started": {
-            // Payload carries the full new round — apply directly, 0 REST calls.
-            // Avoids the race condition where refreshState races with startRound's Redis save.
-            const startedPayload = env.payload as { round?: AuctionRoundResponse };
-            if (startedPayload?.round) {
-              setRound(startedPayload.round);
-            } else {
-              needsStateRefresh = true; // fallback
-            }
-            break;
-          }
-
-          case "match_start_pending":
-          case "session_finalizing":
-            needsFullRefresh = true;
-            break;
-
-          default:
-            needsStateRefresh = true;
-            break;
-        }
-
-        if (seq > 0) {
-          lastServerSeqRef.current = Math.max(lastServerSeqRef.current, seq);
-        }
-      }
-
-      // Batch the REST calls: one full refresh beats one state refresh
-      if (needsFullRefresh) {
-        refreshFull(sid);
-      } else if (needsStateRefresh) {
-        refreshState(sid);
-      }
-    },
-    [refreshFull, refreshState]
-  );
-
-  // ─── Live SSE event handler ───────────────────────────────────────────────
+  }, [isConnected, sessionId, sessionNotFound, matchCompleted, spectator, refreshFull, dispatchEvents]);
 
   useEffect(() => {
     if (!sessionId || events.length === 0 || sessionNotFound || matchCompleted) return;
@@ -341,12 +230,9 @@ export function useSessionSync(sessionId: string | null, spectator = false): Ses
       newEvents.push(events[i]);
     }
     lastEventIdxRef.current = events.length - 1;
-
     if (newEvents.length === 0) return;
     dispatchEvents(newEvents, sessionId);
   }, [events, sessionId, sessionNotFound, matchCompleted, dispatchEvents]);
-
-  // ─── Visibility change detection ─────────────────────────────────────────
 
   useEffect(() => {
     if (!sessionId || sessionNotFound || matchCompleted) return;
@@ -365,8 +251,6 @@ export function useSessionSync(sessionId: string | null, spectator = false): Ses
     document.addEventListener("visibilitychange", handleVisibility);
     return () => document.removeEventListener("visibilitychange", handleVisibility);
   }, [sessionId, isConnected, sessionNotFound, matchCompleted, refreshState, forceReconnect]);
-
-  // ─── Heartbeat timeout → force reconnect on silent disconnect ─────────────
 
   useEffect(() => {
     if (!sessionId || sessionNotFound || matchCompleted || !isConnected) return;
@@ -390,6 +274,6 @@ export function useSessionSync(sessionId: string | null, spectator = false): Ses
     error,
     sessionNotFound,
     matchCompleted,
-    isRefreshing: false,
+    isRefreshing,
   };
 }

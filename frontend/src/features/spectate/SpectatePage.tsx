@@ -1,20 +1,16 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import type {
-  AuctionRoundResponse,
   AuctionTeamCardResponse,
-  SpectateStateResponse,
   Formation,
-  Position,
 } from "../../shared/api/contracts";
 import { ROUND_STATUS_LABELS } from "../../shared/api/contracts";
-import { getSpectateState } from "../../shared/api/lobbyClient";
-import { useSpectateStream } from "../../shared/sse";
 import { TeamPitch } from "../../shared/components/TeamPitch";
 import { PositionBadgeRow } from "../../shared/components/PositionBadgeRow";
 import { PlayerAttributeBars } from "../../shared/components/PlayerAttributeBars";
 import { FORMATION_LABELS } from "../../shared/formations";
 import { openEligibleHighlights } from "../../shared/positions";
+import { useSpectateSync } from "../../shared/realtime/useSpectateSync";
 
 function mapCards(raw: AuctionTeamCardResponse[]): AuctionTeamCardResponse[] {
   return raw.map((c) => ({
@@ -39,123 +35,45 @@ export function SpectatePage() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
 
-  const [state, setState] = useState<SpectateStateResponse | null>(null);
-  const [round, setRound] = useState<AuctionRoundResponse | null>(null);
+  const { state, round, lastEvent, isConnected, loadFailed } = useSpectateSync(sessionId ?? null);
+
   const [homeTeam, setHomeTeam] = useState<AuctionTeamCardResponse[]>([]);
   const [awayTeam, setAwayTeam] = useState<AuctionTeamCardResponse[]>([]);
   const [homeFormation, setHomeFormation] = useState<Formation>("FOUR_FOUR_TWO");
   const [awayFormation, setAwayFormation] = useState<Formation>("FOUR_FOUR_TWO");
   const [secondsLeft, setSecondsLeft] = useState(0);
   const serverClockOffsetMsRef = useRef(0);
-  const roundTotalSecondsRef = useRef(15);
-  const prevConnectedRef = useRef(false);
+  const roundTotalSecondsRef = useRef(30);
   const wasEverConnectedRef = useRef(false);
-  const syncSeqRef = useRef(0);
 
-  const { events, isConnected } = useSpectateStream(sessionId ?? null);
   if (isConnected) wasEverConnectedRef.current = true;
   const showReconnecting = wasEverConnectedRef.current && !isConnected;
 
-  const applyState = (s: SpectateStateResponse) => {
-    setState(s);
-    setRound(s.currentRound);
-    setHomeTeam(mapCards(s.homeTeam));
-    setAwayTeam(mapCards(s.awayTeam));
-    if (s.homeFormation) setHomeFormation(s.homeFormation as Formation);
-    if (s.awayFormation) setAwayFormation(s.awayFormation as Formation);
-  };
-
-  // 1. Initial load
   useEffect(() => {
-    if (!sessionId) return;
-    let cancelled = false;
-    (async () => {
-      const seq = ++syncSeqRef.current;
-      try {
-        const s = await getSpectateState(sessionId);
-        if (cancelled || seq !== syncSeqRef.current) return;
-        applyState(s);
-      } catch {
-        if (!cancelled) navigate("/lobby");
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [sessionId, navigate]);
+    if (!state) return;
+    setHomeTeam(mapCards(state.homeTeam));
+    setAwayTeam(mapCards(state.awayTeam));
+    if (state.homeFormation) setHomeFormation(state.homeFormation as Formation);
+    if (state.awayFormation) setAwayFormation(state.awayFormation as Formation);
+  }, [state]);
 
-  // 2. Poll fallback
   useEffect(() => {
-    if (!sessionId) return;
-    let cancelled = false;
-    const intervalMs = isConnected ? 30000 : 3000;
-    const poll = async () => {
-      const seq = ++syncSeqRef.current;
-      try {
-        const s = await getSpectateState(sessionId);
-        if (cancelled || seq !== syncSeqRef.current) return;
-        applyState(s);
-      } catch { /* transient */ }
-    };
-    const id = window.setInterval(poll, intervalMs);
-    return () => { cancelled = true; window.clearInterval(id); };
-  }, [sessionId, isConnected]);
-
-  // 3. SSE reconnection catch-up
-  useEffect(() => {
-    const wasConnected = prevConnectedRef.current;
-    prevConnectedRef.current = isConnected;
-    if (!sessionId || !isConnected || !wasConnected) return;
-    (async () => {
-      const seq = ++syncSeqRef.current;
-      try {
-        const s = await getSpectateState(sessionId);
-        if (seq !== syncSeqRef.current) return;
-        applyState(s);
-      } catch { /* ignore */ }
-    })();
-  }, [isConnected, sessionId]);
-
-  // 4. SSE event handler
-  useEffect(() => {
-    const latest = events.at(-1);
-    if (!latest || !sessionId) return;
-    const payload = latest.payload as { round?: AuctionRoundResponse };
-
-    if (
-      (latest.eventType === "round_started" || latest.eventType === "bid_placed"
-        || latest.eventType === "round_ended" || latest.eventType === "round_ready"
-        || latest.eventType === "turn_passed")
-      && payload.round
-    ) {
-      const serverEventTime = Date.parse(latest.occurredAt);
-      if (!Number.isNaN(serverEventTime)) serverClockOffsetMsRef.current = serverEventTime - Date.now();
-      setRound(payload.round);
+    if (!lastEvent) return;
+    const serverEventTime = Date.parse(lastEvent.occurredAt);
+    if (!Number.isNaN(serverEventTime)) {
+      serverClockOffsetMsRef.current = serverEventTime - Date.now();
     }
+  }, [lastEvent]);
 
-    if (latest.eventType === "round_ended" || latest.eventType === "match_start_pending"
-      || latest.eventType === "match_start_ready" || latest.eventType === "session_finalizing") {
-      (async () => {
-        const seq = ++syncSeqRef.current;
-        try {
-          const s = await getSpectateState(sessionId);
-          if (seq !== syncSeqRef.current) return;
-          applyState(s);
-        } catch { /* ignore */ }
-      })();
-    }
-
-    if (latest.eventType === "match_completed") {
-      (async () => {
-        try {
-          const s = await getSpectateState(sessionId);
-          applyState(s);
-        } catch { /* ignore */ }
-      })();
-    }
-  }, [events, sessionId]);
-
-  // 5. Round countdown
   useEffect(() => {
-    if (!round) { setSecondsLeft(0); return; }
+    if (loadFailed) navigate("/lobby");
+  }, [loadFailed, navigate]);
+
+  useEffect(() => {
+    if (!round) {
+      setSecondsLeft(0);
+      return;
+    }
     const computeSecondsLeft = () => {
       const adjustedNow = Date.now() + serverClockOffsetMsRef.current;
       return Math.max(0, Math.ceil((new Date(round.endsAt).getTime() - adjustedNow) / 1000));
@@ -168,15 +86,18 @@ export function SpectatePage() {
   }, [round]);
 
   if (!sessionId) return <div className="p-8 text-white">Session ID missing</div>;
-  if (!state) return (
-    <div className="min-h-screen bg-surface flex items-center justify-center">
-      <p className="text-slate-400 animate-pulse text-lg">Loading spectate view...</p>
-    </div>
-  );
+  if (!state) {
+    return (
+      <div className="min-h-screen bg-surface flex items-center justify-center">
+        <p className="text-slate-400 animate-pulse text-lg">Loading spectate view...</p>
+      </div>
+    );
+  }
 
-  const timerPercent = round && roundTotalSecondsRef.current > 0
-    ? Math.min(100, (secondsLeft / roundTotalSecondsRef.current) * 100)
-    : 0;
+  const timerPercent =
+    round && roundTotalSecondsRef.current > 0
+      ? Math.min(100, (secondsLeft / roundTotalSecondsRef.current) * 100)
+      : 0;
   const timerColor = secondsLeft <= 5 ? "bg-red-500" : secondsLeft <= 10 ? "bg-amber-500" : "bg-accent";
 
   const isAuctioning = state.status === "AUCTIONING";
@@ -186,7 +107,6 @@ export function SpectatePage() {
 
   return (
     <div className="min-h-screen bg-surface">
-      {/* Top Bar */}
       <div className="bg-surface-card border-b border-white/10 px-4 py-3">
         <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
@@ -218,7 +138,6 @@ export function SpectatePage() {
         </div>
       </div>
 
-      {/* Match result banner */}
       {isFinished && (
         <div className="bg-surface-card border-b border-white/10 px-4 py-6 text-center">
           <p className="text-2xl font-extrabold text-white">
@@ -228,7 +147,6 @@ export function SpectatePage() {
         </div>
       )}
 
-      {/* Simulating */}
       {(state.status === "AWAITING_RESULT" || state.status === "FINALIZING") && (
         <div className="bg-surface-card border-b border-white/10 px-4 py-6 text-center">
           <div className="animate-pulse">
@@ -238,11 +156,8 @@ export function SpectatePage() {
         </div>
       )}
 
-      {/* Main 3-Column Layout */}
       <div className="max-w-7xl mx-auto px-4 py-6">
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_340px_1fr] gap-6">
-
-          {/* LEFT: Home Team */}
           <div className="bg-surface-card rounded-xl border border-white/10 overflow-hidden">
             <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between">
               <h3 className="font-bold text-white">{state.homeNickname}</h3>
@@ -282,7 +197,6 @@ export function SpectatePage() {
             </div>
           </div>
 
-          {/* CENTER: Auction Panel (read-only) */}
           <div className="space-y-4">
             {round && isAuctioning && (
               <div key={round.roundId} className="bg-surface-card rounded-xl border border-white/10 p-4 animate-fade-in">
@@ -306,7 +220,6 @@ export function SpectatePage() {
                   )}
                 </div>
 
-                {/* Timer Bar */}
                 <div className="mb-4">
                   <div className="flex justify-between text-xs text-slate-400 mb-1">
                     <span>Time Left</span>
@@ -322,23 +235,19 @@ export function SpectatePage() {
                   </div>
                 </div>
 
-                {/* Current Bid */}
                 <div className="bg-surface-elevated rounded-lg p-3 mb-4 text-center transition-all duration-300">
                   <p className="text-xs text-slate-400">Highest Bid</p>
                   <p
                     key={round.highestBidCents}
                     className="text-2xl font-bold text-white animate-bid-pop"
                   >
-                    {round.highestBidCents > 0
-                      ? `${round.highestBidCents} cr`
-                      : "No bids"}
+                    {round.highestBidCents > 0 ? `${round.highestBidCents} cr` : "No bids"}
                   </p>
                   <p className="text-xs text-slate-400 mt-1 transition-opacity duration-300">
                     {ROUND_STATUS_LABELS[round.status] ?? round.status}
                   </p>
                 </div>
 
-                {/* Turn Indicator (spectator view) */}
                 <div className="text-center text-sm font-medium py-2 rounded-lg bg-surface-elevated text-slate-400">
                   {round.currentTurnUserId ? "Bidding in progress..." : "Waiting..."}
                 </div>
@@ -352,7 +261,6 @@ export function SpectatePage() {
             )}
           </div>
 
-          {/* RIGHT: Away Team */}
           <div className="bg-surface-card rounded-xl border border-white/10 overflow-hidden">
             <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between">
               <h3 className="font-bold text-white">{state.awayNickname}</h3>
@@ -391,7 +299,6 @@ export function SpectatePage() {
               )}
             </div>
           </div>
-
         </div>
       </div>
     </div>

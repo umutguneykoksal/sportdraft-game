@@ -2,6 +2,7 @@ package com.example.auction.common.sse;
 
 import com.example.auction.common.realtime.RealtimeConnectionTracker;
 import com.example.auction.common.realtime.RealtimeGateway;
+import com.example.auction.common.realtime.RealtimePresenceChecker;
 import com.example.auction.common.realtime.SessionRealtimeHub;
 import java.time.Duration;
 import java.time.Instant;
@@ -13,6 +14,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
@@ -37,15 +39,18 @@ public class SseEmitterRegistry {
     private final RealtimeGateway realtimeGateway;
     private final SessionRealtimeHub sessionRealtimeHub;
     private final RealtimeConnectionTracker connectionTracker;
+    private final RealtimePresenceChecker presenceChecker;
 
     public SseEmitterRegistry(
         RealtimeGateway realtimeGateway,
         SessionRealtimeHub sessionRealtimeHub,
-        RealtimeConnectionTracker connectionTracker
+        RealtimeConnectionTracker connectionTracker,
+        @Lazy RealtimePresenceChecker presenceChecker
     ) {
         this.realtimeGateway = realtimeGateway;
         this.sessionRealtimeHub = sessionRealtimeHub;
         this.connectionTracker = connectionTracker;
+        this.presenceChecker = presenceChecker;
     }
 
     public SseEmitter register(UUID sessionId) {
@@ -121,13 +126,15 @@ public class SseEmitterRegistry {
     }
 
     /**
-     * True if a player has an active SSE emitter OR a recent REST ping.
+     * True if a player has an active non-spectator connection (SSE, WS, or recent REST ping).
      * Used by forfeit detection to determine if a player is still present.
      */
     public boolean hasActivePlayerEmitter(UUID sessionId, UUID userId) {
-        if (connectionTracker.hasRecentPing(sessionId, userId)) {
-            return true;
-        }
+        return presenceChecker.isPlayerPresent(sessionId, userId);
+    }
+
+    /** True when a non-spectator player has an active SSE emitter for this session. */
+    public boolean hasNonSpectatorPlayerConnection(UUID sessionId, UUID userId) {
         return bySession.getOrDefault(sessionId, List.of()).stream()
             .filter(e -> !spectatorEmitters.contains(e))
             .anyMatch(e -> userId.equals(emitterToUserId.get(e)));
@@ -188,10 +195,7 @@ public class SseEmitterRegistry {
         emitters.remove(emitter);
 
         if (!wasSpectator && userId != null) {
-            boolean hasOtherPlayerEmitter = emitters.stream()
-                .filter(e -> !spectatorEmitters.contains(e))
-                .anyMatch(e -> userId.equals(emitterToUserId.get(e)));
-            if (!hasOtherPlayerEmitter) {
+            if (!presenceChecker.isPlayerPresent(sessionId, userId)) {
                 connectionTracker.onPlayerFullyDisconnected(sessionId, userId);
             }
         }

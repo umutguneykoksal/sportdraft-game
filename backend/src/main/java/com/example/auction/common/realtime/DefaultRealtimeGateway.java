@@ -2,6 +2,8 @@ package com.example.auction.common.realtime;
 
 import java.util.Map;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 /**
@@ -16,6 +18,7 @@ import org.springframework.stereotype.Component;
 @Component
 public class DefaultRealtimeGateway implements RealtimeGateway {
 
+    private static final Logger log = LoggerFactory.getLogger(DefaultRealtimeGateway.class);
     private static final String HEARTBEAT_EVENT = "heartbeat";
 
     private final SessionRealtimeHub sessionRealtimeHub;
@@ -44,7 +47,11 @@ public class DefaultRealtimeGateway implements RealtimeGateway {
         long seq = eventLog.nextSeq(sessionId);
         Map<String, Object> envelope = envelopeFactory.create(sessionId, eventType, payload, seq);
         // Append BEFORE publish: reconnecting client calling /sync?afterSeq will always find the event.
-        eventLog.append(sessionId, envelope);
+        if (!eventLog.append(sessionId, envelope)) {
+            log.error("Event log append failed for session={} eventType={} seq={} — skipping live publish",
+                sessionId, eventType, seq);
+            return;
+        }
         sessionRealtimeHub.publish(sessionId, envelope);
     }
 }

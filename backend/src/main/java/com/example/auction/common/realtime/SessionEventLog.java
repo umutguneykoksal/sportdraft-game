@@ -59,16 +59,20 @@ public class SessionEventLog {
     /**
      * Appends an event envelope to the ring buffer.
      * Must be called BEFORE publishing to the hub to prevent gap-on-reconnect.
+     *
+     * @return false when serialization or Redis write fails — caller must not publish live.
      */
-    public void append(UUID sessionId, Map<String, Object> envelope) {
+    public boolean append(UUID sessionId, Map<String, Object> envelope) {
         try {
             String json = objectMapper.writeValueAsString(envelope);
             String logKey = logKey(sessionId);
             redis.opsForList().leftPush(logKey, json);
             redis.opsForList().trim(logKey, 0, RING_SIZE - 1);
             redis.expire(logKey, LOG_TTL);
+            return true;
         } catch (JsonProcessingException e) {
             log.warn("Failed to append event to log for session={}: {}", sessionId, e.getMessage());
+            return false;
         }
     }
 

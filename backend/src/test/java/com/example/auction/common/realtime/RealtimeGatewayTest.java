@@ -2,6 +2,7 @@ package com.example.auction.common.realtime;
 
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -32,10 +33,25 @@ class RealtimeGatewayTest {
         when(eventLog.nextSeq(sessionId)).thenReturn(1L);
         when(realtimeEnvelopeFactory.create(eq(sessionId), eq("round_started"), eq(Map.of("x", 1)), anyLong()))
             .thenReturn(envelope);
+        when(eventLog.append(sessionId, envelope)).thenReturn(true);
 
         realtimeGateway.publish(sessionId, "round_started", Map.of("x", 1));
 
         verify(eventLog).append(sessionId, envelope);
         verify(sessionRealtimeHub).publish(sessionId, envelope);
+    }
+
+    @Test
+    void publishSkipsHubWhenAppendFails() {
+        UUID sessionId = UUID.randomUUID();
+        Map<String, Object> envelope = Map.of("eventType", "round_started", "seq", 2L);
+        when(eventLog.nextSeq(sessionId)).thenReturn(2L);
+        when(realtimeEnvelopeFactory.create(eq(sessionId), eq("round_started"), eq(Map.of("x", 1)), anyLong()))
+            .thenReturn(envelope);
+        when(eventLog.append(sessionId, envelope)).thenReturn(false);
+
+        realtimeGateway.publish(sessionId, "round_started", Map.of("x", 1));
+
+        verify(sessionRealtimeHub, never()).publish(sessionId, envelope);
     }
 }

@@ -63,10 +63,15 @@ export interface EventSyncResponse {
 }
 
 /** Fetches events missed since afterSeq. Returns empty events if gap is beyond ring buffer. */
-export async function fetchEventsSince(sessionId: string, afterSeq: number): Promise<EventSyncResponse> {
+export async function fetchEventsSince(
+  sessionId: string,
+  afterSeq: number,
+  spectator = false
+): Promise<EventSyncResponse> {
   const token = localStorage.getItem("sessionToken") ?? "";
+  const spectatorParam = spectator ? "&spectator=true" : "";
   const response = await fetch(
-    `${getApiBase()}/api/sessions/${sessionId}/events/sync?afterSeq=${afterSeq}&token=${encodeURIComponent(token)}`,
+    `${getApiBase()}/api/sessions/${sessionId}/events/sync?afterSeq=${afterSeq}&token=${encodeURIComponent(token)}${spectatorParam}`,
     { method: "GET" }
   );
   if (!response.ok) throw new Error(`fetchEventsSince failed: ${response.status}`);

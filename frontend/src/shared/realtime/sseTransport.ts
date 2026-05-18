@@ -17,7 +17,7 @@ export function createSseTransport(url: string, callbacks: SseCallbacks): Realti
       source.addEventListener("game", (evt: MessageEvent) => callbacks.onMessage(String(evt.data)));
       source.onerror = () => {
         callbacks.onError();
-        if (source?.readyState === EventSource.CLOSED) {
+        if (source && source.readyState !== EventSource.OPEN) {
           source.close();
           source = null;
           callbacks.onClose();

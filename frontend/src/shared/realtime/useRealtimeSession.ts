@@ -3,11 +3,18 @@ import { getApiBase } from "../api";
 import { createTransport } from "./transportFactory";
 import { RealtimeEnvelope } from "./types";
 
+const WS_FAILOVER_ATTEMPTS = 3;
+
 export function useRealtimeSession(sessionId: string | null, spectator = false, reconnectKey = 0) {
   const [events, setEvents] = useState<RealtimeEnvelope[]>([]);
   const [isConnected, setIsConnected] = useState(false);
   const reconnectTimerRef = useRef<number | null>(null);
   const attemptsRef = useRef(0);
+  const transportModeRef = useRef<"websocket" | "sse">(
+    (process.env.REACT_APP_REALTIME_TRANSPORT ?? "websocket").toLowerCase() === "sse"
+      ? "sse"
+      : "websocket"
+  );
 
   useEffect(() => {
     if (!sessionId) {
@@ -18,6 +25,12 @@ export function useRealtimeSession(sessionId: string | null, spectator = false, 
       return;
     }
 
+    const envPreferred =
+      (process.env.REACT_APP_REALTIME_TRANSPORT ?? "websocket").toLowerCase() === "sse"
+        ? "sse"
+        : "websocket";
+    transportModeRef.current = envPreferred;
+
     const base = getApiBase().replace(/\/$/, "");
     const wsBase = base.startsWith("https://")
       ? base.replace(/^https:\/\//, "wss://")
@@ -27,16 +40,15 @@ export function useRealtimeSession(sessionId: string | null, spectator = false, 
     const sseUrl = `${base}/api/sessions/${encodeURIComponent(sessionId)}/events?token=${encodeURIComponent(token)}${spectatorParam}`;
 
     let closed = false;
-    // Default to WebSocket — more reliable on reverse-proxy infra (Railway) than SSE.
-    // Set REACT_APP_REALTIME_TRANSPORT=sse to force SSE (e.g. for debugging).
-    const preferred =
-      (process.env.REACT_APP_REALTIME_TRANSPORT ?? "websocket").toLowerCase() === "sse" ? "sse" : "websocket";
 
     const connect = () => {
       if (reconnectTimerRef.current !== null) {
         window.clearTimeout(reconnectTimerRef.current);
         reconnectTimerRef.current = null;
       }
+
+      const preferred = transportModeRef.current;
+
       const transport = createTransport(preferred, wsUrl, sseUrl, {
         onOpen: () => {
           attemptsRef.current = 0;
@@ -46,6 +58,16 @@ export function useRealtimeSession(sessionId: string | null, spectator = false, 
           setIsConnected(false);
           if (!closed) {
             attemptsRef.current += 1;
+            if (
+              envPreferred === "websocket" &&
+              transportModeRef.current === "websocket" &&
+              attemptsRef.current >= WS_FAILOVER_ATTEMPTS
+            ) {
+              transportModeRef.current = "sse";
+              attemptsRef.current = 0;
+              reconnectTimerRef.current = window.setTimeout(connect, 500);
+              return;
+            }
             const delayMs = Math.min(5000, 1000 + attemptsRef.current * 500);
             reconnectTimerRef.current = window.setTimeout(connect, delayMs);
           }
@@ -78,7 +100,7 @@ export function useRealtimeSession(sessionId: string | null, spectator = false, 
       }
       disconnect?.();
     };
-  }, [sessionId, reconnectKey]);
+  }, [sessionId, spectator, reconnectKey]);
 
   return { events, isConnected };
 }

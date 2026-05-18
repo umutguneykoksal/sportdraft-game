@@ -1,14 +1,16 @@
 package com.example.auction.common.realtime;
 
+import java.io.IOException;
 import java.net.URI;
 import java.time.Duration;
-import java.io.IOException;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 import org.springframework.web.server.ResponseStatusException;
@@ -25,22 +27,24 @@ public class WebSocketSessionRegistry {
     private final RealtimeConnectionAuthorizer realtimeConnectionAuthorizer;
     private final RealtimeGateway realtimeGateway;
     private final RealtimeConnectionTracker connectionTracker;
+    private final RealtimePresenceChecker presenceChecker;
 
-    /** wsSession.getId() → game sessionId */
     private final Map<String, UUID> wsSessionToGameSession = new ConcurrentHashMap<>();
-    /** wsSession.getId() → userId (for player-level disconnect tracking) */
     private final Map<String, UUID> wsSessionToUserId = new ConcurrentHashMap<>();
+    private final Set<String> spectatorWsIds = ConcurrentHashMap.newKeySet();
 
     public WebSocketSessionRegistry(
         SessionRealtimeHub sessionRealtimeHub,
         RealtimeConnectionAuthorizer realtimeConnectionAuthorizer,
         RealtimeGateway realtimeGateway,
-        RealtimeConnectionTracker connectionTracker
+        RealtimeConnectionTracker connectionTracker,
+        @Lazy RealtimePresenceChecker presenceChecker
     ) {
         this.sessionRealtimeHub = sessionRealtimeHub;
         this.realtimeConnectionAuthorizer = realtimeConnectionAuthorizer;
         this.realtimeGateway = realtimeGateway;
         this.connectionTracker = connectionTracker;
+        this.presenceChecker = presenceChecker;
     }
 
     public UUID register(WebSocketSession session) {
@@ -52,35 +56,59 @@ public class WebSocketSessionRegistry {
         Map<String, String> params = UriComponentsBuilder.fromUri(uri).build().getQueryParams().toSingleValueMap();
         UUID sessionId = parseUuid(params.get("sessionId"), "Missing or invalid sessionId");
         UUID userId = parseUuid(params.get("token"), "Missing or invalid token");
+        boolean spectator = Boolean.parseBoolean(params.getOrDefault("spectator", "false"));
 
-        realtimeConnectionAuthorizer.assertSessionMembership(sessionId, userId);
+        if (!spectator) {
+            realtimeConnectionAuthorizer.assertSessionMembership(sessionId, userId);
+            closeExistingPlayerWs(sessionId, userId, session.getId());
+        }
+
         sessionRealtimeHub.registerWs(sessionId, session);
         wsSessionToGameSession.put(session.getId(), sessionId);
         wsSessionToUserId.put(session.getId(), userId);
-        connectionTracker.onPlayerConnected(sessionId, userId);
-        log.debug("WS registered: session={} userId={}", sessionId, userId);
+        if (spectator) {
+            spectatorWsIds.add(session.getId());
+            log.debug("WS spectator registered: session={}", sessionId);
+        } else {
+            connectionTracker.onPlayerConnected(sessionId, userId);
+            log.debug("WS registered: session={} userId={}", sessionId, userId);
+        }
         return sessionId;
     }
 
     public void remove(UUID sessionId, WebSocketSession session) {
-        UUID resolvedSessionId = sessionId == null ? wsSessionToGameSession.remove(session.getId()) : sessionId;
+        UUID resolvedSessionId = wsSessionToGameSession.remove(session.getId());
         if (resolvedSessionId == null) {
-            wsSessionToGameSession.remove(session.getId());
-        } else {
-            wsSessionToGameSession.remove(session.getId());
+            resolvedSessionId = sessionId;
         }
         UUID userId = wsSessionToUserId.remove(session.getId());
+        boolean wasSpectator = spectatorWsIds.remove(session.getId());
         sessionRealtimeHub.removeWs(resolvedSessionId, session);
 
-        // Start forfeit timer if this player has no remaining WS connections for this session
-        if (userId != null && resolvedSessionId != null) {
-            boolean hasOtherWs = wsSessionToUserId.entrySet().stream()
-                .anyMatch(e -> userId.equals(e.getValue())
-                    && resolvedSessionId.equals(wsSessionToGameSession.get(e.getKey())));
-            if (!hasOtherWs) {
+        if (!wasSpectator && userId != null && resolvedSessionId != null) {
+            if (!presenceChecker.isPlayerPresent(resolvedSessionId, userId)) {
                 connectionTracker.onPlayerFullyDisconnected(resolvedSessionId, userId);
             }
         }
+    }
+
+    public boolean hasNonSpectatorPlayerConnection(UUID sessionId, UUID userId) {
+        return wsSessionToUserId.entrySet().stream()
+            .anyMatch(e -> userId.equals(e.getValue())
+                && sessionId.equals(wsSessionToGameSession.get(e.getKey()))
+                && !spectatorWsIds.contains(e.getKey()));
+    }
+
+    private void closeExistingPlayerWs(UUID sessionId, UUID userId, String exceptWsId) {
+        sessionRealtimeHub.getOpenWsSessions(sessionId).stream()
+            .filter(ws -> !ws.getId().equals(exceptWsId))
+            .filter(ws -> userId.equals(wsSessionToUserId.get(ws.getId())))
+            .filter(ws -> !spectatorWsIds.contains(ws.getId()))
+            .forEach(ws -> {
+                log.debug("WS replacing existing connection: session={} userId={} wsId={}",
+                    sessionId, userId, ws.getId());
+                closeSilently(ws, CloseStatus.GOING_AWAY);
+            });
     }
 
     public void broadcast(UUID sessionId, String eventType, Object payload) {

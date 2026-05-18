@@ -18,10 +18,5 @@ export function createTransport(
   if (preferred === "websocket") {
     return createWebSocketTransport(wsUrl, callbacks);
   }
-  return createSseTransport(sseUrl, {
-    onOpen: callbacks.onOpen,
-    onClose: callbacks.onClose,
-    onError: callbacks.onError,
-    onMessage: callbacks.onMessage,
-  });
+  return createSseTransport(sseUrl, callbacks);
 }

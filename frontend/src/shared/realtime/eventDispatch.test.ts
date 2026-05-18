@@ -1,0 +1,123 @@
+import {
+  decideReplayAction,
+  mergeRoundFromRest,
+  processEventBatch,
+} from "./eventDispatch";
+import { AuctionRoundResponse } from "../api/contracts";
+
+describe("mergeRoundFromRest", () => {
+  const baseRound = (overrides: Partial<AuctionRoundResponse> = {}): AuctionRoundResponse =>
+    ({
+      roundId: "r1",
+      cardId: "c1",
+      cardName: "Player",
+      position: "FWD",
+      status: "OPEN",
+      highestBidCents: 100,
+      endsAt: "2026-05-18T12:00:30.000Z",
+      ...overrides,
+    }) as AuctionRoundResponse;
+
+  it("returns incoming when current is null", () => {
+    const incoming = baseRound();
+    expect(mergeRoundFromRest(null, incoming)).toBe(incoming);
+  });
+
+  it("rejects stale lower bid from REST", () => {
+    const current = baseRound({ highestBidCents: 500 });
+    const incoming = baseRound({ highestBidCents: 200 });
+    expect(mergeRoundFromRest(current, incoming)).toBe(current);
+  });
+
+  it("rejects same bid with earlier endsAt", () => {
+    const current = baseRound({ highestBidCents: 300, endsAt: "2026-05-18T12:00:45.000Z" });
+    const incoming = baseRound({ highestBidCents: 300, endsAt: "2026-05-18T12:00:30.000Z" });
+    expect(mergeRoundFromRest(current, incoming)).toBe(current);
+  });
+});
+
+describe("decideReplayAction", () => {
+  it("returns full when server seq is behind client", () => {
+    expect(decideReplayAction(10, 5, 0)).toBe("full");
+  });
+
+  it("returns replay when missed events exist", () => {
+    expect(decideReplayAction(10, 12, 2)).toBe("replay");
+  });
+
+  it("returns full when server seq advanced with no replay buffer", () => {
+    expect(decideReplayAction(10, 15, 0)).toBe("full");
+  });
+
+  it("returns none when in sync", () => {
+    expect(decideReplayAction(10, 10, 0)).toBe("none");
+  });
+});
+
+describe("processEventBatch", () => {
+  const round = {
+    roundId: "r1",
+    highestBidCents: 200,
+    status: "OPEN",
+  } as AuctionRoundResponse;
+
+  it("patches bid_placed without full refresh", () => {
+    const patchRound = jest.fn();
+    const { result } = processEventBatch(
+      [{ eventType: "bid_placed", seq: 5, payload: { round }, occurredAt: new Date().toISOString() }],
+      4,
+      {
+        patchRound,
+        clearRound: jest.fn(),
+        setRound: jest.fn(),
+        onMatchCompleted: jest.fn(),
+      }
+    );
+    expect(patchRound).toHaveBeenCalledWith(round, true);
+    expect(result.refreshKind).toBe("none");
+  });
+
+  it("requests state refresh on SOLD round_ended for players", () => {
+    const { result } = processEventBatch(
+      [{ eventType: "round_ended", seq: 6, payload: { result: "SOLD" }, occurredAt: new Date().toISOString() }],
+      5,
+      {
+        patchRound: jest.fn(),
+        clearRound: jest.fn(),
+        setRound: jest.fn(),
+        onMatchCompleted: jest.fn(),
+      }
+    );
+    expect(result.refreshKind).toBe("state");
+  });
+
+  it("requests full refresh on SOLD round_ended for spectators", () => {
+    const { result } = processEventBatch(
+      [{ eventType: "round_ended", seq: 6, payload: { result: "SOLD" }, occurredAt: new Date().toISOString() }],
+      5,
+      {
+        patchRound: jest.fn(),
+        clearRound: jest.fn(),
+        setRound: jest.fn(),
+        onMatchCompleted: jest.fn(),
+      },
+      { spectate: true }
+    );
+    expect(result.refreshKind).toBe("full");
+  });
+
+  it("clears round on PASSED round_ended", () => {
+    const clearRound = jest.fn();
+    processEventBatch(
+      [{ eventType: "round_ended", seq: 6, payload: { result: "PASSED" }, occurredAt: new Date().toISOString() }],
+      5,
+      {
+        patchRound: jest.fn(),
+        clearRound,
+        setRound: jest.fn(),
+        onMatchCompleted: jest.fn(),
+      }
+    );
+    expect(clearRound).toHaveBeenCalled();
+  });
+});
