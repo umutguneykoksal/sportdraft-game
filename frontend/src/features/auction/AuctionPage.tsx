@@ -54,11 +54,9 @@ export function AuctionPage() {
   const [turnIsOpen, setTurnIsOpen] = useState(false);
 
   // Central sync: replaces effects 1–4 (initial load, poll, reconnect, event handler)
-  const { snapshot: sessionSnap, auctionState, round, setRound, isConnected, lastEvent, error: syncError, sessionNotFound, matchCompleted, isRefreshing } =
+  const { snapshot: sessionSnap, auctionState, round, setRound, isConnected, lastEvent, error: syncError, sessionNotFound, matchCompleted } =
     useSessionSync(sessionId ?? null);
   const [resolvingRoundId, setResolvingRoundId] = useState<string | null>(null);
-  const [actionPending, setActionPending] = useState(false);
-  const pendingRoundIdRef = useRef<string | null>(null);
 
   const myTeam = auctionState ? mapCards(auctionState.myTeam) : [];
   const opponentTeam = auctionState ? mapCards(auctionState.opponentTeam) : [];
@@ -70,7 +68,8 @@ export function AuctionPage() {
   const couldBid = isMyTurn || turnIsOpen;
   const roundIsOpen = round?.status === "OPEN";
   const isResolvingRound = !!round && resolvingRoundId === round.roundId;
-  const controlsLocked = loading || isRefreshing || isResolvingRound || actionPending;
+  // Lock only during our HTTP call, or when server broadcasts round_resolving (e.g. opponent passed).
+  const controlsLocked = loading || isResolvingRound;
   const biddingLockedByGrace = inGracePeriod && secondsLeft <= 0 && !controlsLocked;
   const canBid = couldBid && !biddingLockedByGrace && !controlsLocked;
   const inTimerGrace = inGracePeriod && secondsLeft <= 0 && !timeExtended;
@@ -134,46 +133,24 @@ export function AuctionPage() {
     }
     if (lastEvent.eventType === "round_ended" || lastEvent.eventType === "round_started") {
       setResolvingRoundId(null);
-      setActionPending(false);
-      pendingRoundIdRef.current = null;
     }
   }, [lastEvent]);
 
   useEffect(() => {
-    if (!round) {
+    if (!round || round.status !== "OPEN") {
       setResolvingRoundId(null);
-      setActionPending(false);
-      pendingRoundIdRef.current = null;
-      return;
     }
-    if (round.status !== "OPEN") {
-      setResolvingRoundId(null);
-      setActionPending(false);
-      pendingRoundIdRef.current = null;
-      return;
-    }
-    if (
-      actionPending
-      && pendingRoundIdRef.current
-      && pendingRoundIdRef.current !== round.roundId
-    ) {
-      setActionPending(false);
-      pendingRoundIdRef.current = null;
-    }
-  }, [round?.roundId, round?.status, actionPending]);
+  }, [round?.roundId, round?.status]);
 
   const beginRoundAction = () => {
-    if (round) {
-      pendingRoundIdRef.current = round.roundId;
-      setResolvingRoundId(round.roundId);
-    }
-    setActionPending(true);
     setLoading(true);
     setActionError(null);
   };
 
-  const endRoundActionLoading = () => {
+  const finishRoundAction = (updated: AuctionRoundResponse | null) => {
     setLoading(false);
+    setResolvingRoundId(null);
+    if (updated) setRound(updated);
   };
 
   // 5. Bid amount auto-adjust on round change
@@ -339,18 +316,11 @@ export function AuctionPage() {
     beginRoundAction();
     try {
       const updated = await placeBid(sessionId, round.roundId, takeAmount);
-      setRound(updated);
-      if (updated.status === "OPEN") {
-        setActionPending(false);
-        pendingRoundIdRef.current = null;
-        setResolvingRoundId(null);
-      }
+      finishRoundAction(updated);
     } catch (e) {
       setActionError(e instanceof Error ? e.message : "Failed to take card");
-      setActionPending(false);
-      pendingRoundIdRef.current = null;
-      setResolvingRoundId(null);
-    } finally { endRoundActionLoading(); }
+      finishRoundAction(null);
+    }
   };
 
   const handleBid = async () => {
@@ -363,26 +333,21 @@ export function AuctionPage() {
     beginRoundAction();
     try {
       const updated = await placeBid(sessionId, round.roundId, amountCents);
-      setRound(updated);
-      if (updated.status === "OPEN") {
-        setActionPending(false);
-        pendingRoundIdRef.current = null;
-        setResolvingRoundId(null);
-      }
+      finishRoundAction(updated);
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Failed to place bid";
       if (msg.includes("Concurrent update") || msg.includes("409")) {
         try {
           const state = await getAuctionState(sessionId);
-          if (state.currentRound) setRound(state.currentRound);
-        } catch { /* push event will sync */ }
+          finishRoundAction(state.currentRound);
+        } catch {
+          finishRoundAction(null);
+        }
       } else {
         setActionError(msg);
+        finishRoundAction(null);
       }
-      setActionPending(false);
-      pendingRoundIdRef.current = null;
-      setResolvingRoundId(null);
-    } finally { endRoundActionLoading(); }
+    }
   };
 
   const handlePassRound = async () => {
@@ -390,18 +355,11 @@ export function AuctionPage() {
     beginRoundAction();
     try {
       const updated = await passRound(sessionId, round.roundId);
-      setRound(updated);
-      if (updated.status === "OPEN") {
-        setActionPending(false);
-        pendingRoundIdRef.current = null;
-        setResolvingRoundId(null);
-      }
+      finishRoundAction(updated);
     } catch (e) {
       setActionError(e instanceof Error ? e.message : "Failed to pass round");
-      setActionPending(false);
-      pendingRoundIdRef.current = null;
-      setResolvingRoundId(null);
-    } finally { endRoundActionLoading(); }
+      finishRoundAction(null);
+    }
   };
 
   const handleConfirmMatchStart = async () => {
@@ -595,15 +553,22 @@ export function AuctionPage() {
                   </p>
                 </div>
 
-                {/* Bid Controls — hidden while submitting or resolving */}
-                {roundIsOpen && controlsLocked ? (
-                  <div className="py-6 text-center">
-                    <p className="text-amber-400 text-sm font-medium animate-pulse">
-                      {loading ? "Submitting…" : "Round resolving…"}
-                    </p>
-                  </div>
-                ) : roundIsOpen && canBid && round.opponentCanBid === false ? (
-                  <div className="space-y-3">
+                {/* Bid controls — visible but locked while submitting */}
+                {roundIsOpen && (
+                  <div
+                    className={`relative space-y-3 rounded-lg transition-opacity ${
+                      controlsLocked ? "pointer-events-none opacity-45" : ""
+                    }`}
+                  >
+                    {controlsLocked && (
+                      <div className="absolute inset-0 z-10 flex items-center justify-center rounded-lg bg-black/25">
+                        <p className="text-amber-400 text-sm font-semibold animate-pulse px-3 py-1 rounded bg-black/40">
+                          {loading ? "Submitting…" : "Settling round…"}
+                        </p>
+                      </div>
+                    )}
+                    {round.opponentCanBid === false ? (
+                      <>
                     <div className="bg-amber-900/20 border border-amber-500/30 rounded-lg px-3 py-2 text-center">
                       <p className="text-amber-400 text-sm font-medium">Opponent can't bid on this card</p>
                     </div>
@@ -621,18 +586,19 @@ export function AuctionPage() {
                     >
                       Pass
                     </button>
-                  </div>
-                ) : roundIsOpen ? (
-                  <div className="space-y-3">
-                    <div className="flex gap-2">
-                      <input
-                        value={amount}
+                      </>
+                    ) : (
+                      <>
+                        <div className="flex gap-2">
+                          <input
+                            value={amount}
                         onChange={(e) => setAmount(e.target.value)}
                         type="number"
                         min={1}
                         max={budget}
                         placeholder="Bid (cr)"
-                        disabled={controlsLocked || !canBid || mySquadFull}
+                        disabled={controlsLocked || mySquadFull || (!canBid && !controlsLocked)}
+                        readOnly={controlsLocked}
                         className="flex-1 bg-surface-elevated border border-white/10 rounded-lg px-3 py-2 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-accent disabled:opacity-40"
                       />
                       <button
@@ -641,7 +607,7 @@ export function AuctionPage() {
                           const safe = Number.isFinite(current) ? current : Math.max(1, (round?.highestBidCents ?? 0) + 1);
                           setAmount(String(Math.min(safe + 1, budget)));
                         }}
-                        disabled={controlsLocked || !canBid || mySquadFull}
+                        disabled={controlsLocked || mySquadFull || (!canBid && !controlsLocked)}
                         className="bg-surface-elevated border border-white/10 text-white px-3 py-2 rounded-lg hover:bg-white/10 disabled:opacity-40 transition-colors"
                       >
                         +1
@@ -652,7 +618,7 @@ export function AuctionPage() {
                           const safe = Number.isFinite(current) ? current : Math.max(1, (round?.highestBidCents ?? 0) + 1);
                           setAmount(String(Math.min(safe + 5, budget)));
                         }}
-                        disabled={controlsLocked || !canBid || mySquadFull}
+                        disabled={controlsLocked || mySquadFull || (!canBid && !controlsLocked)}
                         className="bg-surface-elevated border border-white/10 text-white px-3 py-2 rounded-lg hover:bg-white/10 disabled:opacity-40 transition-colors"
                       >
                         +5
@@ -661,7 +627,7 @@ export function AuctionPage() {
 
                     <button
                       onClick={handleBid}
-                      disabled={controlsLocked || !canBid || mySquadFull}
+                      disabled={controlsLocked || mySquadFull || (!canBid && !controlsLocked)}
                       className="w-full bg-accent hover:bg-blue-600 disabled:opacity-40 text-white font-bold py-3 rounded-lg transition-colors"
                     >
                       Place Bid
@@ -670,7 +636,7 @@ export function AuctionPage() {
                     {myUserId && round.highestBidderUserId === myUserId ? (
                       <button
                         onClick={handlePassRound}
-                        disabled={controlsLocked || !canBid}
+                        disabled={controlsLocked || (!canBid && !controlsLocked)}
                         className="w-full bg-slate-700/50 border border-slate-500/30 text-slate-300 hover:bg-slate-700/70 disabled:opacity-40 py-2 rounded-lg transition-colors text-sm font-medium"
                       >
                         End Turn
@@ -678,14 +644,16 @@ export function AuctionPage() {
                     ) : (
                       <button
                         onClick={handlePassRound}
-                        disabled={controlsLocked || !canBid}
+                        disabled={controlsLocked || (!canBid && !controlsLocked)}
                         className="w-full bg-red-900/30 border border-red-500/30 text-red-400 hover:bg-red-900/50 disabled:opacity-40 py-2 rounded-lg transition-colors text-sm font-medium"
                       >
                         Pass
                       </button>
                     )}
+                      </>
+                    )}
                   </div>
-                ) : null}
+                )}
 
                 {/* Turn Indicator */}
                 <div className={`mt-3 text-center text-sm font-medium py-2 rounded-lg transition-colors duration-300 ${
@@ -706,7 +674,7 @@ export function AuctionPage() {
                     : controlsLocked
                       ? loading
                         ? "Submitting…"
-                        : "Round resolving…"
+                        : "Settling round…"
                       : inTimerGrace
                       ? couldBid
                           ? "Time's up — bids locked"
