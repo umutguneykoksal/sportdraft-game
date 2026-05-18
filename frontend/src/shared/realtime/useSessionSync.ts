@@ -263,7 +263,8 @@ export function useSessionSync(sessionId: string | null, spectator = false): Ses
         switch (env.eventType) {
           case "bid_placed":
           case "turn_passed": {
-            // If seq jumped, we may have missed events → force a state refresh after patching
+            // Patch round in memory — 0 REST calls.
+            // If seq jumped we may have missed state-changing events → also do a refresh.
             if (seq > 0 && lastServerSeqRef.current > 0 && seq > lastServerSeqRef.current + 1) {
               needsStateRefresh = true;
             }
@@ -271,7 +272,7 @@ export function useSessionSync(sessionId: string | null, spectator = false): Ses
             if (payload?.round) {
               const incoming = payload.round;
               setRound((prev) => {
-                // Only patch if the event belongs to the current round — stale events are ignored
+                // Ignore stale events that belong to an already-replaced round
                 if (prev && prev.roundId !== incoming.roundId) return prev;
                 return prev
                   ? { ...prev, ...pickSharedFields(incoming) }
@@ -281,10 +282,29 @@ export function useSessionSync(sessionId: string | null, spectator = false): Ses
             break;
           }
 
-          case "round_ended":
-          case "round_started":
-            needsStateRefresh = true;
+          case "round_ended": {
+            // SOLD → team/budget changed → refresh auctionState.
+            // PASSED → no team changes → just clear the round; round_started carries the next one.
+            const endedPayload = env.payload as { result?: string };
+            if (endedPayload?.result === "SOLD") {
+              needsStateRefresh = true;
+            } else {
+              setRound(null); // clear immediately; round_started will set the next round
+            }
             break;
+          }
+
+          case "round_started": {
+            // Payload carries the full new round — apply directly, 0 REST calls.
+            // Avoids the race condition where refreshState races with startRound's Redis save.
+            const startedPayload = env.payload as { round?: AuctionRoundResponse };
+            if (startedPayload?.round) {
+              setRound(startedPayload.round);
+            } else {
+              needsStateRefresh = true; // fallback
+            }
+            break;
+          }
 
           case "match_start_pending":
           case "session_finalizing":

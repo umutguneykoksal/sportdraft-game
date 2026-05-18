@@ -182,7 +182,7 @@ public class AuctionService {
 
         sessionStore.saveIfVersionMatch(session, vBefore);
         Card roundCard = cardMap.get(createdRound.getCardId());
-        AuctionRoundResponse response = toResponse(createdRound, roundCard, sessionId);
+        AuctionRoundResponse response = toResponse(createdRound, roundCard, session, cardMap);
         sseEmitterRegistry.broadcast(sessionId, "round_started", Map.of("round", response));
         meterRegistry.counter("auction.round.started").increment();
         return response;
@@ -273,7 +273,7 @@ public class AuctionService {
             AuctionRoundResponse response = toResponseWithContext(round, roundCard, session, cardMap, userId);
             sseEmitterRegistry.broadcast(
                 sessionId, "bid_placed",
-                Map.of("round", toResponse(round, roundCard, sessionId), "userId", userId, "amountCents", request.amountCents())
+                Map.of("round", toResponse(round, roundCard, session, cardMap), "userId", userId, "amountCents", request.amountCents())
             );
             meterRegistry.counter("auction.bid.placed").increment();
             return response;
@@ -287,7 +287,7 @@ public class AuctionService {
         maybeStartNextRound(session);
         return session.findOpenRound()
             .map(r -> toResponseWithContext(r, cardMap.get(r.getCardId()), session, cardMap, userId))
-            .orElse(toResponse(round, roundCard, sessionId));
+            .orElse(toResponse(round, roundCard, session, cardMap));
     }
 
     public AuctionRoundResponse readyNext(UUID sessionId, UUID userId, UUID roundId) {
@@ -315,12 +315,12 @@ public class AuctionService {
             closeRound(round, session, vBefore, cardMap);
             return session.findOpenRound()
                 .map(r -> toResponseWithContext(r, cardMap.get(r.getCardId()), session, cardMap, userId))
-                .orElse(toResponse(round, cardMap.get(round.getCardId()), sessionId));
+                .orElse(toResponse(round, cardMap.get(round.getCardId()), session, cardMap));
         } else {
             sessionStore.saveIfVersionMatch(session, vBefore);
             sseEmitterRegistry.broadcast(
                 sessionId, "round_ready",
-                Map.of("round", toResponse(round, cardMap.get(round.getCardId()), sessionId), "userId", userId)
+                Map.of("round", toResponse(round, cardMap.get(round.getCardId()), session, cardMap), "userId", userId)
             );
             return toResponseWithContext(round, cardMap.get(round.getCardId()), session, cardMap, userId);
         }
@@ -360,13 +360,13 @@ public class AuctionService {
                 closeRound(round, session, vBefore, cardMap);
                 return session.findOpenRound()
                     .map(r -> toResponseWithContext(r, cardMap.get(r.getCardId()), session, cardMap, userId))
-                    .orElse(toResponse(round, roundCard, sessionId));
+                    .orElse(toResponse(round, roundCard, session, cardMap));
             }
             round.setCurrentTurnUserId(opponentUserId);
             sessionStore.saveIfVersionMatch(session, vBefore);
             AuctionRoundResponse response = toResponseWithContext(round, roundCard, session, cardMap, userId);
             sseEmitterRegistry.broadcast(sessionId, "turn_passed",
-                Map.of("round", toResponse(round, roundCard, sessionId), "userId", userId));
+                Map.of("round", toResponse(round, roundCard, session, cardMap), "userId", userId));
             return response;
         }
 
@@ -378,7 +378,7 @@ public class AuctionService {
             closeRound(round, session, vBefore, cardMap);
             return session.findOpenRound()
                 .map(r -> toResponseWithContext(r, cardMap.get(r.getCardId()), session, cardMap, userId))
-                .orElse(toResponse(round, roundCard, sessionId));
+                .orElse(toResponse(round, roundCard, session, cardMap));
         }
 
         // No bids — give turn to opponent if they can bid and haven't also passed
@@ -391,7 +391,7 @@ public class AuctionService {
             sessionStore.saveIfVersionMatch(session, vBefore);
             AuctionRoundResponse response = toResponseWithContext(round, roundCard, session, cardMap, userId);
             sseEmitterRegistry.broadcast(sessionId, "turn_passed",
-                Map.of("round", toResponse(round, roundCard, sessionId), "userId", userId));
+                Map.of("round", toResponse(round, roundCard, session, cardMap), "userId", userId));
             return response;
         }
 
@@ -399,7 +399,7 @@ public class AuctionService {
         closeRound(round, session, vBefore, cardMap);
         return session.findOpenRound()
             .map(r -> toResponseWithContext(r, cardMap.get(r.getCardId()), session, cardMap, userId))
-            .orElse(toResponse(round, roundCard, sessionId));
+            .orElse(toResponse(round, roundCard, session, cardMap));
     }
 
     public AuctionStateResponse getAuctionState(UUID sessionId, UUID userId) {
@@ -481,7 +481,7 @@ public class AuctionService {
         }
 
         AuctionRoundResponse currentRound = session.findOpenRound()
-            .map(r -> toResponse(r, cardMap.get(r.getCardId()), session.getId()))
+            .map(r -> toResponse(r, cardMap.get(r.getCardId()), session, cardMap))
             .orElse(null);
 
         return new SpectateSnapshot(
@@ -581,7 +581,7 @@ public class AuctionService {
             sessionStore.saveIfVersionMatch(session, vBefore);
             sseEmitterRegistry.broadcast(
                 sessionId, "round_ended",
-                Map.of("round", toResponse(round, roundCard, sessionId), "result", "PASSED")
+                Map.of("round", toResponse(round, roundCard, session, cardMap), "result", "PASSED")
             );
             maybeFinalizeSession(session, cardMap);
             maybeStartNextRound(session);
@@ -599,7 +599,7 @@ public class AuctionService {
             sessionStore.saveIfVersionMatch(session, vBefore);
             sseEmitterRegistry.broadcast(
                 sessionId, "round_ended",
-                Map.of("round", toResponse(round, roundCard, sessionId), "result", "PASSED", "reason", "winner_roster_full")
+                Map.of("round", toResponse(round, roundCard, session, cardMap), "result", "PASSED", "reason", "winner_roster_full")
             );
             maybeFinalizeSession(session, cardMap);
             maybeStartNextRound(session);
@@ -611,7 +611,7 @@ public class AuctionService {
             sessionStore.saveIfVersionMatch(session, vBefore);
             sseEmitterRegistry.broadcast(
                 sessionId, "round_ended",
-                Map.of("round", toResponse(round, roundCard, sessionId), "result", "PASSED", "reason", "winner_position_full")
+                Map.of("round", toResponse(round, roundCard, session, cardMap), "result", "PASSED", "reason", "winner_position_full")
             );
             maybeFinalizeSession(session, cardMap);
             maybeStartNextRound(session);
@@ -625,7 +625,7 @@ public class AuctionService {
 
         sseEmitterRegistry.broadcast(
             sessionId, "round_ended",
-            Map.of("round", toResponse(round, roundCard, sessionId), "result", "SOLD", "winnerUserId", winner.getUserId())
+            Map.of("round", toResponse(round, roundCard, session, cardMap), "result", "SOLD", "winnerUserId", winner.getUserId())
         );
         maybeFinalizeSession(session, cardMap);
         maybeStartNextRound(session);
@@ -675,7 +675,7 @@ public class AuctionService {
         round.markPassed();
         sseEmitterRegistry.broadcast(
             session.getId(), "round_ended",
-            Map.of("round", toResponse(round, roundCard, session.getId()), "result", "PASSED", "reason", "no_eligible_turn_bidder")
+            Map.of("round", toResponse(round, roundCard, session, cardMap), "result", "PASSED", "reason", "no_eligible_turn_bidder")
         );
     }
 
@@ -708,14 +708,14 @@ public class AuctionService {
         if (round.getStatus() == RoundStatus.PASSED) {
             String reason = round.getHighestBidderId() != null ? "winner_cannot_take" : "both_passed";
             sseEmitterRegistry.broadcast(sessionId, "round_ended",
-                Map.of("round", toResponse(round, roundCard, sessionId), "result", "PASSED", "reason", reason));
+                Map.of("round", toResponse(round, roundCard, session, cardMap), "result", "PASSED", "reason", reason));
         } else if (round.getStatus() == RoundStatus.SOLD) {
             ActivePlayer winner = session.getPlayers().stream()
                 .filter(p -> p.getId().equals(round.getHighestBidderId()))
                 .findFirst().orElse(null);
             if (winner != null) {
                 sseEmitterRegistry.broadcast(sessionId, "round_ended",
-                    Map.of("round", toResponse(round, roundCard, sessionId), "result", "SOLD", "winnerUserId", winner.getUserId()));
+                    Map.of("round", toResponse(round, roundCard, session, cardMap), "result", "SOLD", "winnerUserId", winner.getUserId()));
             }
             meterRegistry.counter("auction.round.closed", "result", "SOLD").increment();
         }
@@ -741,7 +741,7 @@ public class AuctionService {
             Card roundCard = cardMap.get(openRound.getCardId());
             sseEmitterRegistry.broadcast(
                 sessionId, "round_ended",
-                Map.of("round", toResponse(openRound, roundCard, sessionId), "result", "PASSED", "reason", "both_rosters_complete")
+                Map.of("round", toResponse(openRound, roundCard, session, cardMap), "result", "PASSED", "reason", "both_rosters_complete")
             );
         });
 
@@ -806,9 +806,24 @@ public class AuctionService {
             .findFirst().orElse(null);
     }
 
-    private AuctionRoundResponse toResponse(ActiveRound round, Card card, UUID sessionId) {
-        // Used for SSE broadcasts (shared payload). passedPlayerIds is included so clients can derive viewer flags.
-        return buildRoundResponse(round, card, sessionId, null, true, false, false, false, false);
+    /**
+     * Shared SSE broadcast payload — no viewer-specific flags, but does include
+     * highestBidderUserId and opponentCanBid so clients can apply correct UI state
+     * without a follow-up REST call.
+     */
+    private AuctionRoundResponse toResponse(ActiveRound round, Card card, ActiveSession session, Map<UUID, Card> cardMap) {
+        long minimumBid = minimumBidForRound(round);
+        boolean opponentCanBid = true;
+        if (round.getCurrentTurnUserId() != null) {
+            UUID opponentUserId = otherPlayerUserId(session, round.getCurrentTurnUserId());
+            ActivePlayer opponent = session.findPlayerByUserId(opponentUserId).orElse(null);
+            opponentCanBid = opponent != null
+                && !round.hasUserPassed(opponentUserId)
+                && canPlayerBidRound(opponent, card, minimumBid, cardMap);
+        }
+        return buildRoundResponse(round, card, session.getId(),
+            resolveHighestBidderUserId(round, session), opponentCanBid,
+            false, false, false, false);
     }
 
     private AuctionRoundResponse toResponseWithContext(ActiveRound round, Card card,
