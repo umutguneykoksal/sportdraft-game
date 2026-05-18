@@ -4,10 +4,12 @@ import { getSpectateState } from "../api/lobbyClient";
 import { fetchEventsSince } from "../api/sessionClient";
 import {
   decideReplayAction,
+  drainUnseenEvents,
   mergeRoundFromRest,
   pickSharedFields,
   processEventBatch,
   RefreshKind,
+  sortBySeq,
 } from "./eventDispatch";
 import { RealtimeEnvelope } from "./types";
 import { useRealtimeSession } from "./useRealtimeSession";
@@ -16,7 +18,7 @@ const POLL_INTERVAL_IDLE_MS = 30_000;
 const POLL_INTERVAL_ROUND_OPEN_MS = 5_000;
 const POLL_INTERVAL_DISCONNECTED_MS = 2_000;
 const VISIBILITY_REFRESH_THRESHOLD_MS = 10_000;
-const HEARTBEAT_TIMEOUT_MS = 45_000;
+const HEARTBEAT_TIMEOUT_MS = 90_000;
 
 export function useSpectateSync(sessionId: string | null) {
   const [state, setState] = useState<SpectateStateResponse | null>(null);
@@ -26,20 +28,24 @@ export function useSpectateSync(sessionId: string | null) {
   const [reconnectKey, setReconnectKey] = useState(0);
   const [loadFailed, setLoadFailed] = useState(false);
 
-  const { events, isConnected } = useRealtimeSession(sessionId, true, reconnectKey);
-
   const fetchingRef = useRef(false);
   const pendingRefreshRef = useRef<RefreshKind>("none");
   const fetchGenRef = useRef(0);
-  const lastEventIdxRef = useRef(-1);
   const lastServerSeqRef = useRef(0);
   const lastEventTimeRef = useRef(Date.now());
   const lastHeartbeatRef = useRef(Date.now());
   const hasLoadedRef = useRef(false);
+  const seenEventIdsRef = useRef(new Set<string>());
+
+  const noteTransportActivity = useCallback(() => {
+    lastHeartbeatRef.current = Date.now();
+  }, []);
 
   const forceReconnect = useCallback(() => {
     setReconnectKey((k) => k + 1);
   }, []);
+
+  const { events, isConnected } = useRealtimeSession(sessionId, true, reconnectKey, noteTransportActivity);
 
   const applySpectateState = useCallback((s: SpectateStateResponse) => {
     setState(s);
@@ -55,11 +61,11 @@ export function useSpectateSync(sessionId: string | null) {
     fetchingRef.current = false;
     pendingRefreshRef.current = "none";
     fetchGenRef.current = 0;
-    lastEventIdxRef.current = -1;
     lastServerSeqRef.current = 0;
     lastEventTimeRef.current = Date.now();
     lastHeartbeatRef.current = Date.now();
     hasLoadedRef.current = false;
+    seenEventIdsRef.current.clear();
   }, [sessionId]);
 
   const runRefresh = useCallback(async (sid: string) => {
@@ -100,8 +106,8 @@ export function useSpectateSync(sessionId: string | null) {
         }
       }
 
-      const actionable = envs.filter(
-        (e) => e.eventType !== "heartbeat" && (e.seq ?? 0) !== 0
+      const actionable = sortBySeq(
+        envs.filter((e) => e.eventType !== "heartbeat" && (e.seq ?? 0) !== 0)
       );
       if (actionable.length === 0) return;
 
@@ -111,7 +117,7 @@ export function useSpectateSync(sessionId: string | null) {
         {
           patchRound: (incoming, merge) => {
             setRound((prev) => {
-              if (prev && prev.roundId !== incoming.roundId) return prev;
+              if (prev && prev.roundId !== incoming.roundId) return incoming;
               return merge && prev
                 ? mergeRoundFromRest(prev, { ...prev, ...pickSharedFields(incoming) }) ?? prev
                 : incoming;
@@ -165,32 +171,32 @@ export function useSpectateSync(sessionId: string | null) {
     if (!sessionId || matchCompleted) return;
 
     if (isConnected && !was) {
+      noteTransportActivity();
       const lastSeq = lastServerSeqRef.current;
-      if (lastSeq === 0) return;
 
-      fetchEventsSince(sessionId, lastSeq, true)
-        .then(({ events: missed, lastSeq: serverLastSeq }) => {
-          const action = decideReplayAction(lastSeq, serverLastSeq, missed.length);
-          if (action === "none") return;
-          if (action === "full") {
-            runRefresh(sessionId);
-            return;
-          }
-          dispatchEvents(missed as RealtimeEnvelope[], sessionId);
-          lastServerSeqRef.current = Math.max(lastServerSeqRef.current, serverLastSeq);
-        })
-        .catch(() => runRefresh(sessionId));
+      const replayPromise =
+        lastSeq > 0
+          ? fetchEventsSince(sessionId, lastSeq, true)
+              .then(({ events: missed, lastSeq: serverLastSeq }) => {
+                const action = decideReplayAction(lastSeq, serverLastSeq, missed.length);
+                if (action === "replay") {
+                  dispatchEvents(missed as RealtimeEnvelope[], sessionId);
+                  lastServerSeqRef.current = Math.max(lastServerSeqRef.current, serverLastSeq);
+                } else if (action === "full") {
+                  runRefresh(sessionId);
+                }
+              })
+              .catch(() => runRefresh(sessionId))
+          : Promise.resolve();
+
+      replayPromise.finally(() => runRefresh(sessionId));
     }
-  }, [isConnected, sessionId, matchCompleted, runRefresh, dispatchEvents]);
+  }, [isConnected, sessionId, matchCompleted, runRefresh, dispatchEvents, noteTransportActivity]);
 
   useEffect(() => {
     if (!sessionId || events.length === 0 || matchCompleted) return;
 
-    const newEvents: RealtimeEnvelope[] = [];
-    for (let i = lastEventIdxRef.current + 1; i < events.length; i++) {
-      newEvents.push(events[i]);
-    }
-    lastEventIdxRef.current = events.length - 1;
+    const newEvents = drainUnseenEvents(events, seenEventIdsRef.current);
     if (newEvents.length === 0) return;
     dispatchEvents(newEvents, sessionId);
   }, [events, sessionId, matchCompleted, dispatchEvents]);

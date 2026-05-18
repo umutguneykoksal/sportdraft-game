@@ -29,6 +29,7 @@ class AuctionEngineTest {
         AuctionRoundResponse round = new AuctionRoundResponse(
             UUID.randomUUID(),
             sessionId,
+            1L,
             UUID.randomUUID(),
             "Card",
             Position.CM.name(),

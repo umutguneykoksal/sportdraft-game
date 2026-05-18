@@ -34,6 +34,12 @@ describe("mergeRoundFromRest", () => {
     const incoming = baseRound({ highestBidCents: 300, endsAt: "2026-05-18T12:00:30.000Z" });
     expect(mergeRoundFromRest(current, incoming)).toBe(current);
   });
+
+  it("rejects stale lower session version from REST", () => {
+    const current = baseRound({ version: 5, highestBidCents: 100 });
+    const incoming = baseRound({ version: 3, highestBidCents: 500 });
+    expect(mergeRoundFromRest(current, incoming)).toBe(current);
+  });
 });
 
 describe("decideReplayAction", () => {
@@ -106,9 +112,9 @@ describe("processEventBatch", () => {
     expect(result.refreshKind).toBe("full");
   });
 
-  it("clears round on PASSED round_ended", () => {
+  it("clears round and requests state refresh on PASSED round_ended", () => {
     const clearRound = jest.fn();
-    processEventBatch(
+    const { result } = processEventBatch(
       [{ eventType: "round_ended", seq: 6, payload: { result: "PASSED" }, occurredAt: new Date().toISOString() }],
       5,
       {
@@ -119,5 +125,6 @@ describe("processEventBatch", () => {
       }
     );
     expect(clearRound).toHaveBeenCalled();
+    expect(result.refreshKind).toBe("state");
   });
 });

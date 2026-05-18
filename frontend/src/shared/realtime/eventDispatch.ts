@@ -36,6 +36,10 @@ export function mergeRoundFromRest(
   if (current == null) return incoming;
   if (current.roundId !== incoming.roundId) return incoming;
 
+  if (incoming.version != null && current.version != null && incoming.version < current.version) {
+    return current;
+  }
+
   const currentBid = current.highestBidCents ?? 0;
   const incomingBid = incoming.highestBidCents ?? 0;
   if (incomingBid < currentBid) return current;
@@ -105,7 +109,7 @@ export function processEventBatch(
     switch (env.eventType) {
       case "bid_placed":
       case "turn_passed": {
-        if (seq > 0 && lastServerSeq > 0 && seq > lastServerSeq + 1) {
+        if (seq > 0 && maxSeq > 0 && seq > maxSeq + 1) {
           seqGapDetected = true;
         }
         const payload = env.payload as { round?: AuctionRoundResponse };
@@ -121,6 +125,8 @@ export function processEventBatch(
           refreshKind = maxRefresh(refreshKind, spectate ? "full" : "state");
         } else {
           handlers.clearRound();
+          // Server auto-starts next round; REST fallback if round_started event is missed.
+          refreshKind = maxRefresh(refreshKind, "state");
         }
         break;
       }
@@ -128,6 +134,10 @@ export function processEventBatch(
       case "round_ready":
       case "match_start_ready":
         refreshKind = maxRefresh(refreshKind, spectate ? "full" : "state");
+        break;
+
+      case "round_resolving":
+        refreshKind = maxRefresh(refreshKind, "state");
         break;
 
       case "round_started": {
@@ -165,8 +175,42 @@ export function processEventBatch(
   };
 }
 
-function maxRefresh(current: RefreshKind, next: RefreshKind): RefreshKind {
+/** Sort envelopes by seq ascending; unsequenced events keep stable relative order. */
+export function sortBySeq(envs: RealtimeEnvelope[]): RealtimeEnvelope[] {
+  return [...envs].sort((a, b) => {
+    const seqA = a.seq ?? 0;
+    const seqB = b.seq ?? 0;
+    if (seqA === 0 && seqB === 0) return 0;
+    if (seqA === 0) return 1;
+    if (seqB === 0) return -1;
+    return seqA - seqB;
+  });
+}
+
+export function maxRefresh(current: RefreshKind, next: RefreshKind): RefreshKind {
   if (current === "full" || next === "full") return "full";
   if (current === "state" || next === "state") return "state";
   return "none";
+}
+
+const MAX_SEEN_EVENT_IDS = 300;
+
+/** Drain envelopes not yet processed (stable across ring-buffer truncation). */
+export function drainUnseenEvents(
+  events: RealtimeEnvelope[],
+  seen: Set<string>
+): RealtimeEnvelope[] {
+  const fresh: RealtimeEnvelope[] = [];
+  for (const env of events) {
+    const id = env.eventId ?? `${env.eventType}:${env.occurredAt}:${env.seq ?? 0}`;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    fresh.push(env);
+  }
+  while (seen.size > MAX_SEEN_EVENT_IDS) {
+    const oldest = seen.values().next().value;
+    if (oldest === undefined) break;
+    seen.delete(oldest);
+  }
+  return fresh;
 }

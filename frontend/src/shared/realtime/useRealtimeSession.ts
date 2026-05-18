@@ -4,17 +4,28 @@ import { createTransport } from "./transportFactory";
 import { RealtimeEnvelope } from "./types";
 
 const WS_FAILOVER_ATTEMPTS = 3;
+const MAX_BUFFERED_EVENTS = 120;
 
-export function useRealtimeSession(sessionId: string | null, spectator = false, reconnectKey = 0) {
+export function useRealtimeSession(
+  sessionId: string | null,
+  spectator = false,
+  reconnectKey = 0,
+  onActivity?: () => void
+) {
   const [events, setEvents] = useState<RealtimeEnvelope[]>([]);
   const [isConnected, setIsConnected] = useState(false);
   const reconnectTimerRef = useRef<number | null>(null);
   const attemptsRef = useRef(0);
+  const onActivityRef = useRef(onActivity);
   const transportModeRef = useRef<"websocket" | "sse">(
     (process.env.REACT_APP_REALTIME_TRANSPORT ?? "websocket").toLowerCase() === "sse"
       ? "sse"
       : "websocket"
   );
+
+  useEffect(() => {
+    onActivityRef.current = onActivity;
+  }, [onActivity]);
 
   useEffect(() => {
     if (!sessionId) {
@@ -41,6 +52,10 @@ export function useRealtimeSession(sessionId: string | null, spectator = false, 
 
     let closed = false;
 
+    const noteActivity = () => {
+      onActivityRef.current?.();
+    };
+
     const connect = () => {
       if (reconnectTimerRef.current !== null) {
         window.clearTimeout(reconnectTimerRef.current);
@@ -52,6 +67,7 @@ export function useRealtimeSession(sessionId: string | null, spectator = false, 
       const transport = createTransport(preferred, wsUrl, sseUrl, {
         onOpen: () => {
           attemptsRef.current = 0;
+          noteActivity();
           setIsConnected(true);
         },
         onClose: () => {
@@ -76,9 +92,16 @@ export function useRealtimeSession(sessionId: string | null, spectator = false, 
           setIsConnected(false);
         },
         onMessage: (data) => {
+          noteActivity();
           try {
             const parsed = JSON.parse(data) as RealtimeEnvelope;
-            setEvents((prev) => [...prev.slice(-30), parsed]);
+            if (parsed.eventType === "pong") {
+              return;
+            }
+            setEvents((prev) => {
+              const next = [...prev, parsed];
+              return next.length > MAX_BUFFERED_EVENTS ? next.slice(-MAX_BUFFERED_EVENTS) : next;
+            });
           } catch {
             // ignore malformed payload
           }

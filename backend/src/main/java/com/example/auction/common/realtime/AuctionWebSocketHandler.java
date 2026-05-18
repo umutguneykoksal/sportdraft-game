@@ -1,5 +1,9 @@
 package com.example.auction.common.realtime;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -13,10 +17,12 @@ import org.springframework.web.socket.handler.TextWebSocketHandler;
 public class AuctionWebSocketHandler extends TextWebSocketHandler {
 
     private final WebSocketSessionRegistry registry;
+    private final ObjectMapper objectMapper;
     private final Map<String, UUID> sessionIdByWsId = new ConcurrentHashMap<>();
 
-    public AuctionWebSocketHandler(WebSocketSessionRegistry registry) {
+    public AuctionWebSocketHandler(WebSocketSessionRegistry registry, ObjectMapper objectMapper) {
         this.registry = registry;
+        this.objectMapper = objectMapper;
     }
 
     @Override
@@ -27,7 +33,19 @@ public class AuctionWebSocketHandler extends TextWebSocketHandler {
 
     @Override
     protected void handleTextMessage(WebSocketSession session, TextMessage message) {
-        // Client messages are ignored for now; mutations stay on REST.
+        try {
+            JsonNode node = objectMapper.readTree(message.getPayload());
+            if (node.has("type") && "ping".equals(node.get("type").asText())) {
+                Map<String, Object> pong = new LinkedHashMap<>();
+                pong.put("eventType", "pong");
+                pong.put("seq", 0L);
+                pong.put("occurredAt", Instant.now().toString());
+                pong.put("payload", Map.of("now", Instant.now().toString()));
+                session.sendMessage(new TextMessage(objectMapper.writeValueAsString(pong)));
+            }
+        } catch (Exception ignored) {
+            // Client mutations stay on REST; ignore unknown payloads.
+        }
     }
 
     @Override

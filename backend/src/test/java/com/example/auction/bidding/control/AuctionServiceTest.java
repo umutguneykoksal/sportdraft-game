@@ -3,6 +3,8 @@ package com.example.auction.bidding.control;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
 import com.example.auction.bidding.boundary.PlaceBidRequest;
@@ -16,11 +18,13 @@ import com.example.auction.session.redis.ActivePlayer;
 import com.example.auction.session.redis.ActiveRound;
 import com.example.auction.session.redis.ActiveSession;
 import com.example.auction.session.redis.ActiveSessionStore;
+import com.example.auction.session.redis.SessionMutationGuard;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Supplier;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -36,6 +40,8 @@ class AuctionServiceTest {
     @Mock
     private ActiveSessionStore sessionStore;
     @Mock
+    private SessionMutationGuard mutationGuard;
+    @Mock
     private CardCatalogService cardCatalog;
     @Mock
     private SseEmitterRegistry sseEmitterRegistry;
@@ -48,8 +54,18 @@ class AuctionServiceTest {
 
     @BeforeEach
     void setUp() {
+        when(mutationGuard.mutate(any(UUID.class), any())).thenAnswer(invocation -> {
+            Supplier<?> action = invocation.getArgument(1);
+            return action.get();
+        });
+        lenient().doAnswer(invocation -> {
+            Runnable action = invocation.getArgument(1);
+            action.run();
+            return null;
+        }).when(mutationGuard).mutateVoid(any(UUID.class), any());
         auctionService = new AuctionService(
             sessionStore,
+            mutationGuard,
             cardCatalog,
             sseEmitterRegistry,
             publisher,

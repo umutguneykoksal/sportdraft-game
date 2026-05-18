@@ -16,6 +16,7 @@ import com.example.auction.session.redis.ActivePlayer;
 import com.example.auction.session.redis.ActiveRound;
 import com.example.auction.session.redis.ActiveSession;
 import com.example.auction.session.redis.ActiveSessionStore;
+import com.example.auction.session.redis.SessionMutationGuard;
 import com.example.auction.simulation.control.SessionFinalizedEvent;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Instant;
@@ -51,6 +52,7 @@ public class AuctionService {
     private static final long TURN_OPEN_AFTER_SECONDS = 15L;
 
     private final ActiveSessionStore sessionStore;
+    private final SessionMutationGuard mutationGuard;
     private final CardCatalogService cardCatalog;
     private final SseEmitterRegistry sseEmitterRegistry;
     private final ApplicationEventPublisher publisher;
@@ -58,12 +60,14 @@ public class AuctionService {
 
     public AuctionService(
         ActiveSessionStore sessionStore,
+        SessionMutationGuard mutationGuard,
         CardCatalogService cardCatalog,
         SseEmitterRegistry sseEmitterRegistry,
         ApplicationEventPublisher publisher,
         MeterRegistry meterRegistry
     ) {
         this.sessionStore = sessionStore;
+        this.mutationGuard = mutationGuard;
         this.cardCatalog = cardCatalog;
         this.sseEmitterRegistry = sseEmitterRegistry;
         this.publisher = publisher;
@@ -81,6 +85,10 @@ public class AuctionService {
     // --- Public API ---
 
     public void confirmMatchStart(UUID sessionId, UUID userId) {
+        mutationGuard.mutateVoid(sessionId, () -> confirmMatchStartInternal(sessionId, userId));
+    }
+
+    private void confirmMatchStartInternal(UUID sessionId, UUID userId) {
         ActiveSession session = sessionStore.getById(sessionId);
         session.findPlayerByUserId(userId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Player not in session"));
@@ -102,7 +110,11 @@ public class AuctionService {
     }
 
     public AuctionRoundResponse startRound(UUID sessionId) {
-        ActiveSession session = sessionStore.getById(sessionId);
+        return mutationGuard.mutate(sessionId, () -> startRoundInternal(sessionStore.getById(sessionId)));
+    }
+
+    private AuctionRoundResponse startRoundInternal(ActiveSession session) {
+        UUID sessionId = session.getId();
         long vBefore = session.getVersion();
 
         if (session.getStatus() != SessionStatus.AUCTIONING) {
@@ -157,8 +169,11 @@ public class AuctionService {
                 openingBidder, RoundStatus.OPEN
             );
             session.getRounds().add(round);
-            normalizeTurnForRound(round, session, cardMap);
-            if (round.getStatus() != RoundStatus.OPEN) continue;
+            if (normalizeTurnForRound(round, session, cardMap)) {
+                finalizeSettledRound(round, session, vBefore, cardMap, false);
+                vBefore = session.getVersion();
+                continue;
+            }
 
             createdRound = round;
             session.setCardPoolIndex(idx);
@@ -189,6 +204,10 @@ public class AuctionService {
     }
 
     public AuctionRoundResponse placeBid(UUID sessionId, UUID userId, String idempotencyKey, PlaceBidRequest request) {
+        return mutationGuard.mutate(sessionId, () -> placeBidInternal(sessionId, userId, idempotencyKey, request));
+    }
+
+    private AuctionRoundResponse placeBidInternal(UUID sessionId, UUID userId, String idempotencyKey, PlaceBidRequest request) {
         ActiveSession session = sessionStore.getById(sessionId);
         long vBefore = session.getVersion();
 
@@ -225,9 +244,9 @@ public class AuctionService {
         if (bidder.isRosterFull()) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "Roster is full");
         }
-        normalizeTurnForRound(round, session, cardMap);
-        if (round.getStatus() != RoundStatus.OPEN) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Round is not open");
+        if (normalizeTurnForRound(round, session, cardMap)) {
+            finalizeSettledRound(round, session, vBefore, cardMap, true);
+            return resolveMutationResponse(session, cardMap, userId, roundCard, round);
         }
         boolean turnOpen = isTurnOpen(round);
         if (!turnOpen && round.getCurrentTurnUserId() != null && !round.getCurrentTurnUserId().equals(userId)) {
@@ -266,31 +285,29 @@ public class AuctionService {
         round.getBids().add(bid);
         round.registerBid(bidder.getId(), request.amountCents(), newEndsAt, nextTurn);
         normalizeTurnForRound(round, session, cardMap);
-        sessionStore.saveIfVersionMatch(session, vBefore);
 
-        boolean settled = round.getStatus() != RoundStatus.OPEN;
-        if (!settled) {
-            AuctionRoundResponse response = toResponseWithContext(round, roundCard, session, cardMap, userId);
-            sseEmitterRegistry.broadcast(
-                sessionId, "bid_placed",
-                Map.of("round", toResponse(round, roundCard, session, cardMap), "userId", userId, "amountCents", request.amountCents())
-            );
+        if (round.getStatus() != RoundStatus.OPEN) {
+            finalizeSettledRound(round, session, vBefore, cardMap, true);
             meterRegistry.counter("auction.bid.placed").increment();
-            return response;
+            return resolveMutationResponse(session, cardMap, userId, roundCard, round);
         }
 
-        // Round was settled inline (opponent couldn't bid) - broadcast AFTER save
-        broadcastRoundResolving(sessionId, round.getId());
-        broadcastSettledRound(round, session, cardMap);
+        sessionStore.saveIfVersionMatch(session, vBefore);
+
+        AuctionRoundResponse response = toResponseWithContext(round, roundCard, session, cardMap, userId);
+        sseEmitterRegistry.broadcast(
+            sessionId, "bid_placed",
+            Map.of("round", toResponse(round, roundCard, session, cardMap), "userId", userId, "amountCents", request.amountCents())
+        );
         meterRegistry.counter("auction.bid.placed").increment();
-        maybeFinalizeSession(session, cardMap);
-        maybeStartNextRound(session);
-        return session.findOpenRound()
-            .map(r -> toResponseWithContext(r, cardMap.get(r.getCardId()), session, cardMap, userId))
-            .orElse(toResponse(round, roundCard, session, cardMap));
+        return response;
     }
 
     public AuctionRoundResponse readyNext(UUID sessionId, UUID userId, UUID roundId) {
+        return mutationGuard.mutate(sessionId, () -> readyNextInternal(sessionId, userId, roundId));
+    }
+
+    private AuctionRoundResponse readyNextInternal(UUID sessionId, UUID userId, UUID roundId) {
         ActiveSession session = sessionStore.getById(sessionId);
         long vBefore = session.getVersion();
         Map<UUID, Card> cardMap = loadCardMap();
@@ -327,6 +344,10 @@ public class AuctionService {
     }
 
     public AuctionRoundResponse passRound(UUID sessionId, UUID userId, UUID roundId) {
+        return mutationGuard.mutate(sessionId, () -> passRoundInternal(sessionId, userId, roundId));
+    }
+
+    private AuctionRoundResponse passRoundInternal(UUID sessionId, UUID userId, UUID roundId) {
         ActiveSession session = sessionStore.getById(sessionId);
         long vBefore = session.getVersion();
         Map<UUID, Card> cardMap = loadCardMap();
@@ -342,12 +363,17 @@ public class AuctionService {
                 .map(r -> toResponseWithContext(r, cardMap.get(r.getCardId()), session, cardMap, userId))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "Round is not open"));
         }
+
+        Card roundCard = cardMap.get(round.getCardId());
+        if (normalizeTurnForRound(round, session, cardMap)) {
+            finalizeSettledRound(round, session, vBefore, cardMap, true);
+            return resolveMutationResponse(session, cardMap, userId, roundCard, round);
+        }
         boolean turnOpen = isTurnOpen(round);
         if (!turnOpen && round.getCurrentTurnUserId() != null && !round.getCurrentTurnUserId().equals(userId)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Not your turn");
         }
 
-        Card roundCard = cardMap.get(round.getCardId());
         UUID opponentUserId = otherPlayerUserId(session, userId);
         boolean callerIsHighestBidder = round.getHighestBidderId() != null
             && session.findPlayerByUserId(userId)
@@ -518,39 +544,45 @@ public class AuctionService {
     // --- Scheduled jobs ---
 
     /**
-     * Single consolidated scheduler for all AUCTIONING sessions.
-     * Loads the session list once and runs all checks per session:
-     *  1) close expired rounds
-     *  2) normalize turn assignment
-     *  3) reconcile rosters → enter match start if full
+     * Scheduler for AUCTIONING sessions — timer-driven only (HTTP-event-driven model).
+     * Round logic (bid/pass/turn) runs exclusively on REST handlers to avoid racing
+     * the 1s scheduler thread against player HTTP requests on the same Redis session.
+     *
+     *  1) close rounds whose grace deadline has passed
+     *  2) reconcile full rosters → match start pending
      */
     @Scheduled(fixedDelay = 1000)
     public void processAuctioningSessions() {
         Instant now = Instant.now();
         Map<UUID, Card> cardMap = loadCardMap();
-        for (ActiveSession session : sessionStore.findByStatus(SessionStatus.AUCTIONING)) {
+        for (ActiveSession snapshot : sessionStore.findByStatus(SessionStatus.AUCTIONING)) {
+            UUID sessionId = snapshot.getId();
             try {
-                Optional<ActiveRound> openOpt = session.findOpenRound();
-                if (openOpt.isPresent()) {
-                    ActiveRound round = openOpt.get();
-                    Instant graceDeadline = round.getEndsAt().plusMillis(BID_GRACE_PERIOD_MS);
-                    if (!graceDeadline.isAfter(now)) {
-                        long vBefore = session.getVersion();
-                        closeRound(round, session, vBefore, cardMap);
-                        continue;
+                mutationGuard.mutateVoid(sessionId, () -> {
+                    ActiveSession session = sessionStore.getById(sessionId);
+                    if (session.getStatus() != SessionStatus.AUCTIONING) {
+                        return;
                     }
-                    long vBefore = session.getVersion();
-                    normalizeTurnForRound(round, session, cardMap);
-                    if (session.getVersion() == vBefore && round.getStatus() != RoundStatus.OPEN) {
-                        sessionStore.saveIfVersionMatch(session, vBefore);
+                    Optional<ActiveRound> openOpt = session.findOpenRound();
+                    if (openOpt.isPresent()) {
+                        ActiveRound round = openOpt.get();
+                        Instant graceDeadline = round.getEndsAt().plusMillis(BID_GRACE_PERIOD_MS);
+                        if (!graceDeadline.isAfter(now)) {
+                            closeRound(round, session, session.getVersion(), cardMap);
+                        }
                     }
-                }
-                if (session.playerCount() >= 2 && isSessionRostersFull(session)) {
-                    long vBefore = session.getVersion();
-                    enterMatchStartPending(session, vBefore);
-                }
+                    if (session.playerCount() >= 2 && isSessionRostersFull(session)) {
+                        enterMatchStartPending(session, session.getVersion());
+                    }
+                });
             } catch (ActiveSessionStore.OptimisticLockException e) {
-                // Another thread modified this session; will retry next tick
+                // Another writer modified this session; retry next tick
+            } catch (ResponseStatusException e) {
+                if (e.getStatusCode() == HttpStatus.CONFLICT && "Session busy, retry".equals(e.getReason())) {
+                    // Lock held by an HTTP mutation; retry next tick
+                } else {
+                    throw e;
+                }
             }
         }
     }
@@ -558,11 +590,21 @@ public class AuctionService {
     @Scheduled(fixedDelay = 1000)
     public void expireMatchStartCountdowns() {
         Instant now = Instant.now();
-        for (ActiveSession session : sessionStore.findByStatus(SessionStatus.MATCH_START_PENDING)) {
-            if (session.getMatchStartDeadlineAt() != null && !session.getMatchStartDeadlineAt().isAfter(now)) {
-                long vBefore = session.getVersion();
-                finalizeSessionFromFullRosters(session, vBefore);
+        for (ActiveSession snapshot : sessionStore.findByStatus(SessionStatus.MATCH_START_PENDING)) {
+            UUID sessionId = snapshot.getId();
+            if (snapshot.getMatchStartDeadlineAt() == null || snapshot.getMatchStartDeadlineAt().isAfter(now)) {
+                continue;
             }
+            mutationGuard.mutateVoid(sessionId, () -> {
+                ActiveSession session = sessionStore.getById(sessionId);
+                if (session.getStatus() != SessionStatus.MATCH_START_PENDING) {
+                    return;
+                }
+                if (session.getMatchStartDeadlineAt() == null || session.getMatchStartDeadlineAt().isAfter(now)) {
+                    return;
+                }
+                finalizeSessionFromFullRosters(session, session.getVersion());
+            });
         }
     }
 
@@ -640,11 +682,26 @@ public class AuctionService {
             return;
         }
         if (session.findOpenRound().isPresent()) return;
-        startRound(session.getId());
+        startRoundInternal(session);
     }
 
-    private void normalizeTurnForRound(ActiveRound round, ActiveSession session, Map<UUID, Card> cardMap) {
-        if (round.getStatus() != RoundStatus.OPEN || round.getCurrentTurnUserId() == null) return;
+    /**
+     * Idempotent: opens the first or next round when auction is active and none is open.
+     * Called when auction begins and after every round close on the server.
+     */
+    public void ensureOpenRound(UUID sessionId) {
+        mutationGuard.mutateVoid(sessionId, () -> maybeStartNextRound(sessionStore.getById(sessionId)));
+    }
+
+    /**
+     * Reassigns turn when the current holder cannot bid, or closes the round when neither player can act.
+     *
+     * @return true when the round was settled in memory (PASSED or SOLD); caller must persist via {@link #finalizeSettledRound}
+     */
+    private boolean normalizeTurnForRound(ActiveRound round, ActiveSession session, Map<UUID, Card> cardMap) {
+        if (round.getStatus() != RoundStatus.OPEN || round.getCurrentTurnUserId() == null) {
+            return round.getStatus() != RoundStatus.OPEN;
+        }
         Card roundCard = cardMap.get(round.getCardId());
         UUID currentTurnUserId = round.getCurrentTurnUserId();
         ActivePlayer currentPlayer = session.findPlayerByUserId(currentTurnUserId).orElse(null);
@@ -653,30 +710,56 @@ public class AuctionService {
         boolean currentCanBid = currentPlayer != null
             && !round.hasUserPassed(currentTurnUserId)
             && canPlayerBidRound(currentPlayer, roundCard, minimumAllowed, cardMap);
-        if (currentCanBid) return;
+        if (currentCanBid) return false;
 
-        // Current turn holder can't bid or has permanently passed.
-        // If someone already holds the highest bid, close as SOLD.
         if (round.getHighestBidderId() != null) {
             settleRoundInline(round, session, cardMap);
-            return;
+            return round.getStatus() != RoundStatus.OPEN;
         }
 
-        // No bids yet — give the turn to the other player if they can bid and haven't passed
         UUID otherUserId = otherPlayerUserId(session, currentTurnUserId);
         ActivePlayer otherPlayer = session.findPlayerByUserId(otherUserId).orElse(null);
         if (otherPlayer != null
             && !round.hasUserPassed(otherUserId)
             && canPlayerBidRound(otherPlayer, roundCard, minimumAllowed, cardMap)) {
             round.setCurrentTurnUserId(otherUserId);
-            return;
+            return false;
         }
 
         round.markPassed();
-        sseEmitterRegistry.broadcast(
-            session.getId(), "round_ended",
-            Map.of("round", toResponse(round, roundCard, session, cardMap), "result", "PASSED", "reason", "no_eligible_turn_bidder")
-        );
+        return true;
+    }
+
+    private void finalizeSettledRound(
+        ActiveRound round,
+        ActiveSession session,
+        long vBefore,
+        Map<UUID, Card> cardMap,
+        boolean chainNextRound
+    ) {
+        UUID sessionId = session.getId();
+        broadcastRoundResolving(sessionId, round.getId());
+        sessionStore.saveIfVersionMatch(session, vBefore);
+        broadcastSettledRound(round, session, cardMap);
+        if (round.getStatus() == RoundStatus.PASSED) {
+            meterRegistry.counter("auction.round.closed", "result", "PASSED").increment();
+        }
+        maybeFinalizeSession(session, cardMap);
+        if (chainNextRound) {
+            maybeStartNextRound(session);
+        }
+    }
+
+    private AuctionRoundResponse resolveMutationResponse(
+        ActiveSession session,
+        Map<UUID, Card> cardMap,
+        UUID userId,
+        Card closedRoundCard,
+        ActiveRound closedRound
+    ) {
+        return session.findOpenRound()
+            .map(r -> toResponseWithContext(r, cardMap.get(r.getCardId()), session, cardMap, userId))
+            .orElse(toResponseWithContext(closedRound, closedRoundCard, session, cardMap, userId));
     }
 
     /** 
@@ -821,7 +904,7 @@ public class AuctionService {
                 && !round.hasUserPassed(opponentUserId)
                 && canPlayerBidRound(opponent, card, minimumBid, cardMap);
         }
-        return buildRoundResponse(round, card, session.getId(),
+        return buildRoundResponse(round, card, session.getId(), session.getVersion(),
             resolveHighestBidderUserId(round, session), opponentCanBid,
             false, false, false, false);
     }
@@ -843,20 +926,20 @@ public class AuctionService {
         boolean viewerCanPass = computeViewerCanPass(round, viewerUserId);
         boolean viewerCanFillCard = computeViewerCanFillCard(session, viewerUserId, card, cardMap);
         return buildRoundResponse(
-            round, card, session.getId(), resolveHighestBidderUserId(round, session), opponentCanBid,
+            round, card, session.getId(), session.getVersion(), resolveHighestBidderUserId(round, session), opponentCanBid,
             viewerCanBid, viewerCanTake, viewerCanPass, viewerCanFillCard
         );
     }
 
     private AuctionRoundResponse buildRoundResponse(
-        ActiveRound round, Card card, UUID sessionId,
+        ActiveRound round, Card card, UUID sessionId, long sessionVersion,
         UUID highestBidderUserId, boolean opponentCanBid,
         boolean viewerCanBid, boolean viewerCanTake, boolean viewerCanPass, boolean viewerCanFillCard
     ) {
         PlayerAttributes attrs = card.getAttributes();
         Instant turnOpenAt = computeTurnOpenAt(round);
         return new AuctionRoundResponse(
-            round.getId(), sessionId,
+            round.getId(), sessionId, sessionVersion,
             card.getId(), card.getName(), card.getPosition().name(), eligiblePositionNames(card), card.getRating(),
             attrs.pace(), attrs.shooting(), attrs.passing(), attrs.defending(), attrs.physical(),
             round.getHighestBidCents(), round.getHighestBidderId(), highestBidderUserId,

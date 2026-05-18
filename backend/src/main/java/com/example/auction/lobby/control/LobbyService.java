@@ -1,5 +1,6 @@
 package com.example.auction.lobby.control;
 
+import com.example.auction.bidding.control.AuctionService;
 import com.example.auction.bidding.control.CardCatalogService;
 import com.example.auction.common.realtime.SessionEventLog;
 import com.example.auction.common.sse.SseEmitterRegistry;
@@ -17,6 +18,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
@@ -31,13 +33,16 @@ public class LobbyService {
     private final SseEmitterRegistry sseEmitterRegistry;
     private final CardCatalogService cardCatalog;
     private final SessionEventLog eventLog;
+    private final AuctionService auctionService;
 
     public LobbyService(ActiveSessionStore sessionStore, SseEmitterRegistry sseEmitterRegistry,
-                         CardCatalogService cardCatalog, SessionEventLog eventLog) {
+                         CardCatalogService cardCatalog, SessionEventLog eventLog,
+                         @Lazy AuctionService auctionService) {
         this.sessionStore = sessionStore;
         this.sseEmitterRegistry = sseEmitterRegistry;
         this.cardCatalog = cardCatalog;
         this.eventLog = eventLog;
+        this.auctionService = auctionService;
     }
 
     public List<LobbyRoomResponse> listRooms() {
@@ -211,6 +216,7 @@ public class LobbyService {
             session.moveToAuctioning(buildShuffledCardPool());
             sessionStore.saveIfVersionMatch(session, versionBefore);
             sseEmitterRegistry.broadcast(sessionId, "auctioning_started", Map.of("sessionId", sessionId));
+            auctionService.ensureOpenRound(sessionId);
         } else {
             session.setCountdownEndsAt(Instant.now().plus(10, ChronoUnit.SECONDS));
             sessionStore.saveIfVersionMatch(session, versionBefore);
@@ -262,6 +268,7 @@ public class LobbyService {
                         session.getId(), "auctioning_started",
                         Map.of("sessionId", session.getId())
                     );
+                    auctionService.ensureOpenRound(session.getId());
                 } else {
                     session.moveToWaiting();
                     sessionStore.saveIfVersionMatch(session, vBefore);

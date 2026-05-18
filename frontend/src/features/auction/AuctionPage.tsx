@@ -8,7 +8,6 @@ import {
   passRound,
   pingSession,
   placeBid,
-  startRound,
 } from "../../shared/api";
 import { ROUND_STATUS_LABELS } from "../../shared/api/contracts";
 import { clearActiveSessionId, setActiveSessionId } from "../../shared/session";
@@ -55,7 +54,7 @@ export function AuctionPage() {
   const [turnIsOpen, setTurnIsOpen] = useState(false);
 
   // Central sync: replaces effects 1–4 (initial load, poll, reconnect, event handler)
-  const { snapshot: sessionSnap, auctionState, round, setRound, isConnected, lastEvent, error: syncError, sessionNotFound, matchCompleted } =
+  const { snapshot: sessionSnap, auctionState, round, applyActorRound, isConnected, lastEvent, error: syncError, sessionNotFound, matchCompleted } =
     useSessionSync(sessionId ?? null);
   const [resolvingRoundId, setResolvingRoundId] = useState<string | null>(null);
 
@@ -194,7 +193,7 @@ export function AuctionPage() {
   const finishRoundAction = (updated: AuctionRoundResponse | null) => {
     setLoading(false);
     setResolvingRoundId(null);
-    if (updated) setRound(updated);
+    if (updated) applyActorRound(updated);
   };
 
   // 5. Bid amount auto-adjust on round change
@@ -320,32 +319,6 @@ export function AuctionPage() {
     const id = window.setInterval(() => pingSession(sessionId), 10_000);
     return () => window.clearInterval(id);
   }, [sessionId]);
-
-  // 9. Auto-start next round when auction is active but no round exists
-  const startingRef = useRef(false);
-  useEffect(() => {
-    if (!sessionId || !auctionPhaseActive || round) return;
-    let cancelled = false;
-    const attempt = async () => {
-      if (startingRef.current) return;
-      startingRef.current = true;
-      try {
-        const r = await startRound(sessionId);
-        if (!cancelled) setRound(r);
-      } catch {
-        if (cancelled) return;
-        try {
-          const state = await getAuctionState(sessionId);
-          if (!cancelled && state.currentRound) setRound(state.currentRound);
-        } catch { /* poll will catch up */ }
-      } finally {
-        startingRef.current = false;
-      }
-    };
-    attempt();
-    const retryId = window.setInterval(attempt, 3000);
-    return () => { cancelled = true; window.clearInterval(retryId); };
-  }, [sessionId, auctionPhaseActive, round]);
 
   // ---- Handlers ----
 

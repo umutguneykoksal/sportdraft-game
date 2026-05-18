@@ -58,6 +58,8 @@ export interface SessionSnapshotResponse {
 export interface AuctionRoundResponse {
   roundId: string;
   sessionId: string;
+  /** Session version at response time; actor clients use this to ignore stale WS patches. */
+  version?: number;
   cardId: string;
   cardName: string;
   position: string;

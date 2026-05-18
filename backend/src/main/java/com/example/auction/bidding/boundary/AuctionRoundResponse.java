@@ -7,6 +7,8 @@ import java.util.UUID;
 public record AuctionRoundResponse(
     UUID roundId,
     UUID sessionId,
+    /** Optimistic-lock version of the session at response time; clients use this to ignore stale WS patches. */
+    long version,
     UUID cardId,
     String cardName,
     String position,
