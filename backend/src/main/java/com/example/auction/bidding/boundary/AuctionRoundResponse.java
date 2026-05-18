@@ -26,6 +26,12 @@ public record AuctionRoundResponse(
     Instant endsAt,
     Instant turnOpenAt,
     String status,
-    boolean opponentCanBid
+    boolean opponentCanBid,
+    /** Whether the requesting player may place a bid on this round right now. */
+    boolean viewerCanBid,
+    /** Whether the requesting player may take the card at minimum bid (solo eligible turn). */
+    boolean viewerCanTake,
+    /** Whether the requesting player may pass / end turn on this round. */
+    boolean viewerCanPass
 ) {
 }

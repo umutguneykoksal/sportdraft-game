@@ -78,6 +78,9 @@ export interface AuctionRoundResponse {
   turnOpenAt: string | null;
   status: string;
   opponentCanBid: boolean;
+  viewerCanBid: boolean;
+  viewerCanTake: boolean;
+  viewerCanPass: boolean;
 }
 
 export interface AuctionTeamCardResponse {

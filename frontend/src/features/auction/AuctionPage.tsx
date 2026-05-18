@@ -64,16 +64,18 @@ export function AuctionPage() {
   const opponentFormation: Formation = (auctionState?.opponentFormation as Formation) ?? "FOUR_FOUR_TWO";
   const error = actionError ?? syncError;
 
+  const mySquadFull = myTeam.length >= 11;
   const isMyTurn = !!myUserId && !!round && round.currentTurnUserId === myUserId;
-  const couldBid = isMyTurn || turnIsOpen;
   const roundIsOpen = round?.status === "OPEN";
+  const showTakePanel = round?.viewerCanTake === true;
+  const couldBid = round?.viewerCanBid === true;
+  const canPass = round?.viewerCanPass === true;
   const isResolvingRound = !!round && resolvingRoundId === round.roundId;
   // Lock only during our HTTP call, or when server broadcasts round_resolving (e.g. opponent passed).
   const controlsLocked = loading || isResolvingRound;
   const biddingLockedByGrace = inGracePeriod && secondsLeft <= 0 && !controlsLocked;
   const canBid = couldBid && !biddingLockedByGrace && !controlsLocked;
   const inTimerGrace = inGracePeriod && secondsLeft <= 0 && !timeExtended;
-  const mySquadFull = myTeam.length >= 11;
   const auctionPhaseActive = sessionSnap?.status === "AUCTIONING";
 
   // Budget: starting 100 minus spent
@@ -567,14 +569,21 @@ export function AuctionPage() {
                         </p>
                       </div>
                     )}
-                    {round.opponentCanBid === false ? (
+                    {roundIsOpen && !couldBid && !showTakePanel && !canPass && (
+                      <div className="bg-slate-800/80 border border-slate-500/30 rounded-lg px-3 py-2 text-center">
+                        <p className="text-slate-300 text-sm font-medium">
+                          No open slot for this card in your formation
+                        </p>
+                      </div>
+                    )}
+                    {showTakePanel ? (
                       <>
                     <div className="bg-amber-900/20 border border-amber-500/30 rounded-lg px-3 py-2 text-center">
                       <p className="text-amber-400 text-sm font-medium">Opponent can't bid on this card</p>
                     </div>
                     <button
                       onClick={handleTake}
-                      disabled={controlsLocked || mySquadFull || minimumBid > budget}
+                      disabled={controlsLocked || minimumBid > budget}
                       className="w-full bg-accent-green hover:bg-green-600 disabled:opacity-40 text-white font-bold py-3 rounded-lg transition-colors text-lg"
                     >
                       Take for {minimumBid} cr
@@ -587,7 +596,7 @@ export function AuctionPage() {
                       Pass
                     </button>
                       </>
-                    ) : (
+                    ) : couldBid ? (
                       <>
                         <div className="flex gap-2">
                           <input
@@ -651,7 +660,15 @@ export function AuctionPage() {
                       </button>
                     )}
                       </>
-                    )}
+                    ) : canPass ? (
+                      <button
+                        onClick={handlePassRound}
+                        disabled={controlsLocked}
+                        className="w-full bg-red-900/30 border border-red-500/30 text-red-400 hover:bg-red-900/50 disabled:opacity-40 py-2 rounded-lg transition-colors text-sm font-medium"
+                      >
+                        Pass
+                      </button>
+                    ) : null}
                   </div>
                 )}
 
@@ -679,6 +696,10 @@ export function AuctionPage() {
                       ? couldBid
                           ? "Time's up — bids locked"
                           : "Time's up — resolving turn…"
+                      : !couldBid && canPass
+                        ? "No slot for this card — pass to skip"
+                      : !couldBid && !canPass
+                        ? "No slot for this card — waiting"
                       : turnIsOpen
                         ? "Bidding open to both players!"
                         : isMyTurn
