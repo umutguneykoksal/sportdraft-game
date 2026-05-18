@@ -279,6 +279,7 @@ public class AuctionService {
         }
 
         // Round was settled inline (opponent couldn't bid) - broadcast AFTER save
+        broadcastRoundResolving(sessionId, round.getId());
         broadcastSettledRound(round, session, cardMap);
         meterRegistry.counter("auction.bid.placed").increment();
         maybeFinalizeSession(session, cardMap);
@@ -571,6 +572,7 @@ public class AuctionService {
         if (round.getStatus() != RoundStatus.OPEN || session.getStatus() != SessionStatus.AUCTIONING) {
             return;
         }
+        broadcastRoundResolving(sessionId, round.getId());
         Card roundCard = cardMap.get(round.getCardId());
 
         if (round.getHighestBidderId() == null) {
@@ -786,6 +788,13 @@ public class AuctionService {
         ));
     }
 
+    private void broadcastRoundResolving(UUID sessionId, UUID roundId) {
+        sseEmitterRegistry.broadcast(
+            sessionId, "round_resolving",
+            Map.of("sessionId", sessionId, "roundId", roundId)
+        );
+    }
+
     // --- Helpers ---
 
     private UUID resolveHighestBidderUserId(ActiveRound round, ActiveSession session) {
@@ -916,7 +925,7 @@ public class AuctionService {
     }
 
     private List<String> eligiblePositionNames(Card card) {
-        return card.getEligiblePositions().stream().map(Position::name).sorted().toList();
+        return card.orderedEligiblePositionNames();
     }
 
     private boolean isSessionRostersFull(ActiveSession session) {

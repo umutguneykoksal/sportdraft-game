@@ -46,6 +46,20 @@ class RosterSlotAssignmentTest {
     }
 
     @Test
+    void prefersPrimaryForForwardWhoAlsoPlaysCam() {
+        UUID salahId = UUID.fromString("44444444-4444-4444-4444-444444444002");
+        Card salah = card(salahId, "Salah", Position.FWD, Set.of(Position.FWD, Position.CAM));
+
+        ActivePlayer player = new ActivePlayer(
+            UUID.randomUUID(), UUID.randomUUID(), "P1", Formation.FOUR_TWO_THREE_ONE, 100
+        );
+        Map<UUID, Card> cardMap = Map.of(salahId, salah);
+
+        assertThat(RosterSlotAssignment.resolveAssignment(player, salah, cardMap))
+            .contains(Position.FWD);
+    }
+
+    @Test
     void cannotFillWhenAllEligibleSlotsFull() {
         UUID trentId = UUID.fromString("22222222-2222-2222-2222-222222222003");
         Card trent = card(trentId, "Trent", Position.DEF, Set.of(Position.DEF, Position.CM));

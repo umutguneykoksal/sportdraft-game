@@ -15,6 +15,8 @@ export interface SessionSyncState {
   error: string | null;
   sessionNotFound: boolean;
   matchCompleted: boolean;
+  /** True while fetching state after a push event (not background poll). */
+  isRefreshing: boolean;
 }
 
 /**
@@ -43,6 +45,7 @@ export function useSessionSync(sessionId: string | null, spectator = false): Ses
   const [error, setError] = useState<string | null>(null);
   const [sessionNotFound, setSessionNotFound] = useState(false);
   const [matchCompleted, setMatchCompleted] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const { events, isConnected } = useRealtimeSession(sessionId, spectator);
 
@@ -60,21 +63,24 @@ export function useSessionSync(sessionId: string | null, spectator = false): Ses
     setError(null);
     setSessionNotFound(false);
     setMatchCompleted(false);
+    setIsRefreshing(false);
     fetchingRef.current = false;
     pendingRefreshRef.current = false;
     lastEventIdxRef.current = -1;
   }, [sessionId]);
 
   // Core refresh function - always fetches full state from server
-  const refresh = useCallback(async (sid: string) => {
+  const refresh = useCallback(async (sid: string, lockUi = false) => {
     // Don't skip if already fetching - queue the intent instead
     if (fetchingRef.current) {
       // Mark that another refresh is needed after current one completes
       pendingRefreshRef.current = true;
+      if (lockUi) setIsRefreshing(true);
       return;
     }
     fetchingRef.current = true;
     pendingRefreshRef.current = false;
+    if (lockUi) setIsRefreshing(true);
 
     try {
       const [snap, state] = await Promise.all([
@@ -97,11 +103,12 @@ export function useSessionSync(sessionId: string | null, spectator = false): Ses
       }
     } finally {
       fetchingRef.current = false;
-      
+      setIsRefreshing(false);
+
       // If another refresh was requested while we were fetching, do it now
       if (pendingRefreshRef.current) {
         pendingRefreshRef.current = false;
-        refresh(sid);
+        refresh(sid, true);
       }
     }
   }, []);
@@ -143,7 +150,7 @@ export function useSessionSync(sessionId: string | null, spectator = false): Ses
       }
 
       // Push arrived → immediate refresh (don't wait for poll interval)
-      refresh(sessionId);
+      refresh(sessionId, true);
       break; // One refresh per batch is enough
     }
     
@@ -173,6 +180,7 @@ export function useSessionSync(sessionId: string | null, spectator = false): Ses
     lastEvent, 
     error, 
     sessionNotFound,
-    matchCompleted
+    matchCompleted,
+    isRefreshing,
   };
 }

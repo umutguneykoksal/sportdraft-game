@@ -14,8 +14,9 @@ import { ROUND_STATUS_LABELS } from "../../shared/api/contracts";
 import { clearActiveSessionId, setActiveSessionId } from "../../shared/session";
 import { useSessionSync } from "../../shared/realtime/useSessionSync";
 import { TeamPitch } from "../../shared/components/TeamPitch";
+import { PositionBadgeRow } from "../../shared/components/PositionBadgeRow";
 import { FORMATION_LABELS } from "../../shared/formations";
-import { formatEligiblePositions, openEligibleHighlights } from "../../shared/positions";
+import { openEligibleHighlights } from "../../shared/positions";
 import type { Formation } from "../../shared/api/contracts";
 
 /** UI lock / transition delay after timer hits 0 (may be >= backend grace; not required to match). */
@@ -52,8 +53,9 @@ export function AuctionPage() {
   const [turnIsOpen, setTurnIsOpen] = useState(false);
 
   // Central sync: replaces effects 1–4 (initial load, poll, reconnect, event handler)
-  const { snapshot: sessionSnap, auctionState, round, setRound, isConnected, lastEvent, error: syncError, sessionNotFound, matchCompleted } =
+  const { snapshot: sessionSnap, auctionState, round, setRound, isConnected, lastEvent, error: syncError, sessionNotFound, matchCompleted, isRefreshing } =
     useSessionSync(sessionId ?? null);
+  const [resolvingRoundId, setResolvingRoundId] = useState<string | null>(null);
 
   const myTeam = auctionState ? mapCards(auctionState.myTeam) : [];
   const opponentTeam = auctionState ? mapCards(auctionState.opponentTeam) : [];
@@ -63,8 +65,10 @@ export function AuctionPage() {
 
   const isMyTurn = !!myUserId && !!round && round.currentTurnUserId === myUserId;
   const couldBid = isMyTurn || turnIsOpen;
-  const biddingLockedByGrace = inGracePeriod && secondsLeft <= 0 && !loading;
-  const canBid = couldBid && !biddingLockedByGrace;
+  const isResolvingRound = !!round && resolvingRoundId === round.roundId;
+  const controlsLocked = loading || isRefreshing || isResolvingRound;
+  const biddingLockedByGrace = inGracePeriod && secondsLeft <= 0 && !controlsLocked;
+  const canBid = couldBid && !biddingLockedByGrace && !controlsLocked;
   const inTimerGrace = inGracePeriod && secondsLeft <= 0 && !timeExtended;
   const mySquadFull = myTeam.length >= 11;
   const auctionPhaseActive = sessionSnap?.status === "AUCTIONING";
@@ -116,6 +120,26 @@ export function AuctionPage() {
       serverClockOffsetMsRef.current = serverEventTime - Date.now();
     }
   }, [lastEvent]);
+
+  // Lock controls as soon as server starts closing the round (e.g. opponent passed after your bid)
+  useEffect(() => {
+    if (!lastEvent) return;
+    if (lastEvent.eventType === "round_resolving") {
+      const payload = lastEvent.payload as { roundId?: string };
+      if (payload.roundId) setResolvingRoundId(payload.roundId);
+    }
+    if (lastEvent.eventType === "round_ended" || lastEvent.eventType === "round_started") {
+      setResolvingRoundId(null);
+    }
+  }, [lastEvent]);
+
+  useEffect(() => {
+    if (!round) {
+      setResolvingRoundId(null);
+      return;
+    }
+    if (round.status !== "OPEN") setResolvingRoundId(null);
+  }, [round?.roundId, round?.status]);
 
   // 5. Bid amount auto-adjust on round change
   useEffect(() => {
@@ -339,9 +363,6 @@ export function AuctionPage() {
     FWD: "bg-red-500",
   };
 
-  const roundPositionLabel = round
-    ? formatEligiblePositions(round.position, round.eligiblePositions)
-    : "";
   const pitchHighlights = openEligibleHighlights(myFormation, myTeam, round?.eligiblePositions);
 
   // ---- Render ----
@@ -443,9 +464,11 @@ export function AuctionPage() {
                 className="bg-surface-card rounded-xl border border-white/10 p-4 animate-fade-in"
               >
                 <div className="text-center mb-4">
-                  <span className={`${positionColors[round.position] ?? "bg-gray-500"} text-white text-xs px-2 py-1 rounded-full font-bold`}>
-                    {roundPositionLabel}
-                  </span>
+                  <PositionBadgeRow
+                    primary={round.position}
+                    eligiblePositions={round.eligiblePositions}
+                    colors={positionColors}
+                  />
                   <h2 className="text-2xl font-extrabold text-white mt-2">{round.cardName}</h2>
                   <p className="text-4xl font-black text-card-gold mt-1">{round.cardRating ?? "?"}</p>
                   <p className="text-xs text-slate-400 mt-1">Rating</p>
@@ -482,10 +505,14 @@ export function AuctionPage() {
                 )}
 
                 {/* Grace period overlay — shown only while bids are locked at 0s */}
-                {inGracePeriod && secondsLeft <= 0 && !timeExtended && couldBid && (
+                {(controlsLocked || (inGracePeriod && secondsLeft <= 0 && !timeExtended)) && couldBid && (
                   <div className="bg-amber-900/30 border border-amber-500/30 rounded-lg px-3 py-2 mb-4 text-center animate-pulse">
                     <p className="text-amber-400 text-sm font-medium">
-                      {loading ? "Submitting bid…" : "Time's up — bids locked"}
+                      {loading
+                        ? "Submitting…"
+                        : isResolvingRound || isRefreshing
+                          ? "Round resolving…"
+                          : "Time's up — bids locked"}
                     </p>
                   </div>
                 )}
@@ -514,14 +541,14 @@ export function AuctionPage() {
                     </div>
                     <button
                       onClick={handleTake}
-                      disabled={loading || mySquadFull || minimumBid > budget}
+                      disabled={controlsLocked || mySquadFull || minimumBid > budget}
                       className="w-full bg-accent-green hover:bg-green-600 disabled:opacity-40 text-white font-bold py-3 rounded-lg transition-colors text-lg"
                     >
                       Take for {minimumBid} cr
                     </button>
                     <button
                       onClick={handlePassRound}
-                      disabled={loading}
+                      disabled={controlsLocked}
                       className="w-full bg-red-900/30 border border-red-500/30 text-red-400 hover:bg-red-900/50 disabled:opacity-40 py-2 rounded-lg transition-colors text-sm font-medium"
                     >
                       Pass
@@ -537,7 +564,7 @@ export function AuctionPage() {
                         min={1}
                         max={budget}
                         placeholder="Bid (cr)"
-                        disabled={loading || !canBid || mySquadFull}
+                        disabled={controlsLocked || !canBid || mySquadFull}
                         className="flex-1 bg-surface-elevated border border-white/10 rounded-lg px-3 py-2 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-accent disabled:opacity-40"
                       />
                       <button
@@ -546,7 +573,7 @@ export function AuctionPage() {
                           const safe = Number.isFinite(current) ? current : Math.max(1, (round?.highestBidCents ?? 0) + 1);
                           setAmount(String(Math.min(safe + 1, budget)));
                         }}
-                        disabled={loading || !canBid || mySquadFull}
+                        disabled={controlsLocked || !canBid || mySquadFull}
                         className="bg-surface-elevated border border-white/10 text-white px-3 py-2 rounded-lg hover:bg-white/10 disabled:opacity-40 transition-colors"
                       >
                         +1
@@ -557,7 +584,7 @@ export function AuctionPage() {
                           const safe = Number.isFinite(current) ? current : Math.max(1, (round?.highestBidCents ?? 0) + 1);
                           setAmount(String(Math.min(safe + 5, budget)));
                         }}
-                        disabled={loading || !canBid || mySquadFull}
+                        disabled={controlsLocked || !canBid || mySquadFull}
                         className="bg-surface-elevated border border-white/10 text-white px-3 py-2 rounded-lg hover:bg-white/10 disabled:opacity-40 transition-colors"
                       >
                         +5
@@ -566,7 +593,7 @@ export function AuctionPage() {
 
                     <button
                       onClick={handleBid}
-                      disabled={loading || !canBid || mySquadFull}
+                      disabled={controlsLocked || !canBid || mySquadFull}
                       className="w-full bg-accent hover:bg-blue-600 disabled:opacity-40 text-white font-bold py-3 rounded-lg transition-colors"
                     >
                       Place Bid
@@ -575,7 +602,7 @@ export function AuctionPage() {
                     {myUserId && round.highestBidderUserId === myUserId ? (
                       <button
                         onClick={handlePassRound}
-                        disabled={loading || !canBid}
+                        disabled={controlsLocked || !canBid}
                         className="w-full bg-slate-700/50 border border-slate-500/30 text-slate-300 hover:bg-slate-700/70 disabled:opacity-40 py-2 rounded-lg transition-colors text-sm font-medium"
                       >
                         End Turn
@@ -583,7 +610,7 @@ export function AuctionPage() {
                     ) : (
                       <button
                         onClick={handlePassRound}
-                        disabled={loading || !canBid}
+                        disabled={controlsLocked || !canBid}
                         className="w-full bg-red-900/30 border border-red-500/30 text-red-400 hover:bg-red-900/50 disabled:opacity-40 py-2 rounded-lg transition-colors text-sm font-medium"
                       >
                         Pass
@@ -596,6 +623,8 @@ export function AuctionPage() {
                 <div className={`mt-3 text-center text-sm font-medium py-2 rounded-lg transition-colors duration-300 ${
                   mySquadFull
                     ? "bg-accent-green/10 text-accent-green"
+                    : controlsLocked && !loading
+                      ? "bg-amber-500/10 text-amber-400"
                     : inTimerGrace
                       ? "bg-amber-500/10 text-amber-400"
                       : turnIsOpen
@@ -606,10 +635,12 @@ export function AuctionPage() {
                 }`}>
                   {mySquadFull
                     ? "Squad full (11/11)"
+                    : controlsLocked
+                      ? loading
+                        ? "Submitting…"
+                        : "Round resolving…"
                     : inTimerGrace
-                      ? loading && couldBid
-                        ? "Submitting bid…"
-                        : couldBid
+                      ? couldBid
                           ? "Time's up — bids locked"
                           : "Time's up — resolving turn…"
                       : turnIsOpen

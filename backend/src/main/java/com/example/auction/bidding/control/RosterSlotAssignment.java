@@ -27,8 +27,12 @@ public final class RosterSlotAssignment {
         if (player.isRosterFull()) {
             return Optional.empty();
         }
+        Position primary = card.getPosition();
+        if (card.canPlay(primary) && openSlotsForPosition(player, primary, cardMap) > 0) {
+            return Optional.of(primary);
+        }
         for (Position pos : ASSIGNMENT_ORDER) {
-            if (!card.canPlay(pos)) {
+            if (pos == primary || !card.canPlay(pos)) {
                 continue;
             }
             if (openSlotsForPosition(player, pos, cardMap) > 0) {

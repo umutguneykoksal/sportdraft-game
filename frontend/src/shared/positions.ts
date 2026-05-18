@@ -1,9 +1,11 @@
 import type { Formation, AuctionTeamCardResponse, Position } from "./api/contracts";
 import { FORMATION_DOTS } from "./formations";
 
-export function formatEligiblePositions(primary: string, eligiblePositions?: string[]): string {
-  const positions = eligiblePositions?.length ? eligiblePositions : [primary];
-  return Array.from(new Set(positions)).join(" · ");
+/** Primary first, then other eligible positions A–Z. */
+export function orderedEligiblePositions(primary: string, eligiblePositions?: string[]): string[] {
+  const all = eligiblePositions?.length ? eligiblePositions : [primary];
+  const rest = all.filter((p) => p !== primary).sort();
+  return [primary, ...rest];
 }
 
 /** Formation slots still open for any of the round card's eligible positions. */
