@@ -34,6 +34,7 @@ class AuctionEngineTest {
             Position.CM.name(),
             List.of(Position.CM.name()),
             80,
+            75, 78, 82, 70, 74,
             0,
             null,
             null,

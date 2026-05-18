@@ -5,6 +5,7 @@ import com.example.auction.bidding.boundary.AuctionStateResponse;
 import com.example.auction.bidding.boundary.AuctionTeamCardResponse;
 import com.example.auction.bidding.boundary.PlaceBidRequest;
 import com.example.auction.bidding.entity.Card;
+import com.example.auction.bidding.entity.PlayerAttributes;
 import com.example.auction.bidding.entity.Position;
 import com.example.auction.bidding.entity.RoundStatus;
 import com.example.auction.common.sse.SseEmitterRegistry;
@@ -806,15 +807,7 @@ public class AuctionService {
     }
 
     private AuctionRoundResponse toResponse(ActiveRound round, Card card, UUID sessionId) {
-        Instant turnOpenAt = computeTurnOpenAt(round);
-        return new AuctionRoundResponse(
-            round.getId(), sessionId,
-            card.getId(), card.getName(), card.getPosition().name(), eligiblePositionNames(card), card.getRating(),
-            round.getHighestBidCents(), round.getHighestBidderId(), null,
-            round.getCurrentTurnUserId(), round.getReadyUserOneId(), round.getReadyUserTwoId(),
-            round.getEndsAt(), turnOpenAt, round.getStatus().name(),
-            true
-        );
+        return buildRoundResponse(round, card, sessionId, null, true);
     }
 
     private AuctionRoundResponse toResponseWithContext(ActiveRound round, Card card,
@@ -828,12 +821,22 @@ public class AuctionService {
                 && !round.hasUserPassed(opponentUserId)
                 && canPlayerBidRound(opponent, card, minimumBid, cardMap);
         }
+        return buildRoundResponse(
+            round, card, session.getId(), resolveHighestBidderUserId(round, session), opponentCanBid
+        );
+    }
+
+    private AuctionRoundResponse buildRoundResponse(
+        ActiveRound round, Card card, UUID sessionId,
+        UUID highestBidderUserId, boolean opponentCanBid
+    ) {
+        PlayerAttributes attrs = card.getAttributes();
         Instant turnOpenAt = computeTurnOpenAt(round);
         return new AuctionRoundResponse(
-            round.getId(), session.getId(),
+            round.getId(), sessionId,
             card.getId(), card.getName(), card.getPosition().name(), eligiblePositionNames(card), card.getRating(),
-            round.getHighestBidCents(), round.getHighestBidderId(),
-            resolveHighestBidderUserId(round, session),
+            attrs.pace(), attrs.shooting(), attrs.passing(), attrs.defending(), attrs.physical(),
+            round.getHighestBidCents(), round.getHighestBidderId(), highestBidderUserId,
             round.getCurrentTurnUserId(), round.getReadyUserOneId(), round.getReadyUserTwoId(),
             round.getEndsAt(), turnOpenAt, round.getStatus().name(),
             opponentCanBid
@@ -919,7 +922,9 @@ public class AuctionService {
             .map(cardId -> {
                 Card card = cardMap.get(cardId);
                 Position assigned = RosterSlotAssignment.assignedPosition(player, cardId, cardMap);
-                return new SessionFinalizedEvent.RatedCard(card.getId(), assigned, card.getRating(), card.getName());
+                return new SessionFinalizedEvent.RatedCard(
+                    card.getId(), assigned, card.getRating(), card.getName(), card.getAttributes()
+                );
             })
             .toList();
     }

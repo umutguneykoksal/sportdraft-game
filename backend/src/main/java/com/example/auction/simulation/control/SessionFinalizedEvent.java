@@ -1,5 +1,6 @@
 package com.example.auction.simulation.control;
 
+import com.example.auction.bidding.entity.PlayerAttributes;
 import com.example.auction.bidding.entity.Position;
 import com.example.auction.session.entity.Formation;
 import java.time.Instant;
@@ -18,5 +19,11 @@ public record SessionFinalizedEvent(
     UUID homePlayerId,
     UUID awayPlayerId
 ) {
-    public record RatedCard(UUID id, Position position, int rating, String name) {}
+    public record RatedCard(
+        UUID id,
+        Position position,
+        int rating,
+        String name,
+        PlayerAttributes attributes
+    ) {}
 }

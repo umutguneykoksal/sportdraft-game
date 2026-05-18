@@ -12,6 +12,7 @@ import { getSpectateState } from "../../shared/api/lobbyClient";
 import { useSpectateStream } from "../../shared/sse";
 import { TeamPitch } from "../../shared/components/TeamPitch";
 import { PositionBadgeRow } from "../../shared/components/PositionBadgeRow";
+import { PlayerAttributeBars } from "../../shared/components/PlayerAttributeBars";
 import { FORMATION_LABELS } from "../../shared/formations";
 import { openEligibleHighlights } from "../../shared/positions";
 
@@ -293,7 +294,16 @@ export function SpectatePage() {
                   />
                   <h2 className="text-2xl font-extrabold text-white mt-2">{round.cardName}</h2>
                   <p className="text-4xl font-black text-card-gold mt-1">{round.cardRating ?? "?"}</p>
-                  <p className="text-xs text-slate-400 mt-1">Rating</p>
+                  <p className="text-xs text-slate-400 mt-1">Overall</p>
+                  {round.pace != null && (
+                    <PlayerAttributeBars
+                      pace={round.pace}
+                      shooting={round.shooting ?? 0}
+                      passing={round.passing ?? 0}
+                      defending={round.defending ?? 0}
+                      physical={round.physical ?? 0}
+                    />
+                  )}
                 </div>
 
                 {/* Timer Bar */}

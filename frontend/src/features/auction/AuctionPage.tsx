@@ -15,6 +15,7 @@ import { clearActiveSessionId, setActiveSessionId } from "../../shared/session";
 import { useSessionSync } from "../../shared/realtime/useSessionSync";
 import { TeamPitch } from "../../shared/components/TeamPitch";
 import { PositionBadgeRow } from "../../shared/components/PositionBadgeRow";
+import { PlayerAttributeBars } from "../../shared/components/PlayerAttributeBars";
 import { FORMATION_LABELS } from "../../shared/formations";
 import { openEligibleHighlights } from "../../shared/positions";
 import type { Formation } from "../../shared/api/contracts";
@@ -56,6 +57,8 @@ export function AuctionPage() {
   const { snapshot: sessionSnap, auctionState, round, setRound, isConnected, lastEvent, error: syncError, sessionNotFound, matchCompleted, isRefreshing } =
     useSessionSync(sessionId ?? null);
   const [resolvingRoundId, setResolvingRoundId] = useState<string | null>(null);
+  const [actionPending, setActionPending] = useState(false);
+  const pendingRoundIdRef = useRef<string | null>(null);
 
   const myTeam = auctionState ? mapCards(auctionState.myTeam) : [];
   const opponentTeam = auctionState ? mapCards(auctionState.opponentTeam) : [];
@@ -65,8 +68,9 @@ export function AuctionPage() {
 
   const isMyTurn = !!myUserId && !!round && round.currentTurnUserId === myUserId;
   const couldBid = isMyTurn || turnIsOpen;
+  const roundIsOpen = round?.status === "OPEN";
   const isResolvingRound = !!round && resolvingRoundId === round.roundId;
-  const controlsLocked = loading || isRefreshing || isResolvingRound;
+  const controlsLocked = loading || isRefreshing || isResolvingRound || actionPending;
   const biddingLockedByGrace = inGracePeriod && secondsLeft <= 0 && !controlsLocked;
   const canBid = couldBid && !biddingLockedByGrace && !controlsLocked;
   const inTimerGrace = inGracePeriod && secondsLeft <= 0 && !timeExtended;
@@ -130,16 +134,47 @@ export function AuctionPage() {
     }
     if (lastEvent.eventType === "round_ended" || lastEvent.eventType === "round_started") {
       setResolvingRoundId(null);
+      setActionPending(false);
+      pendingRoundIdRef.current = null;
     }
   }, [lastEvent]);
 
   useEffect(() => {
     if (!round) {
       setResolvingRoundId(null);
+      setActionPending(false);
+      pendingRoundIdRef.current = null;
       return;
     }
-    if (round.status !== "OPEN") setResolvingRoundId(null);
-  }, [round?.roundId, round?.status]);
+    if (round.status !== "OPEN") {
+      setResolvingRoundId(null);
+      setActionPending(false);
+      pendingRoundIdRef.current = null;
+      return;
+    }
+    if (
+      actionPending
+      && pendingRoundIdRef.current
+      && pendingRoundIdRef.current !== round.roundId
+    ) {
+      setActionPending(false);
+      pendingRoundIdRef.current = null;
+    }
+  }, [round?.roundId, round?.status, actionPending]);
+
+  const beginRoundAction = () => {
+    if (round) {
+      pendingRoundIdRef.current = round.roundId;
+      setResolvingRoundId(round.roundId);
+    }
+    setActionPending(true);
+    setLoading(true);
+    setActionError(null);
+  };
+
+  const endRoundActionLoading = () => {
+    setLoading(false);
+  };
 
   // 5. Bid amount auto-adjust on round change
   useEffect(() => {
@@ -301,10 +336,21 @@ export function AuctionPage() {
       setActionError(`Insufficient budget. Need ${takeAmount} cr but only have ${budget} cr`);
       return;
     }
-    setLoading(true); setActionError(null);
-    try { setRound(await placeBid(sessionId, round.roundId, takeAmount)); }
-    catch (e) { setActionError(e instanceof Error ? e.message : "Failed to take card"); }
-    finally { setLoading(false); }
+    beginRoundAction();
+    try {
+      const updated = await placeBid(sessionId, round.roundId, takeAmount);
+      setRound(updated);
+      if (updated.status === "OPEN") {
+        setActionPending(false);
+        pendingRoundIdRef.current = null;
+        setResolvingRoundId(null);
+      }
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : "Failed to take card");
+      setActionPending(false);
+      pendingRoundIdRef.current = null;
+      setResolvingRoundId(null);
+    } finally { endRoundActionLoading(); }
   };
 
   const handleBid = async () => {
@@ -314,9 +360,16 @@ export function AuctionPage() {
     const amountCents = Number(amount);
     if (!Number.isFinite(amountCents) || amountCents <= 0) { setActionError("Amount must be a positive number"); return; }
     if (amountCents > budget) { setActionError(`Insufficient budget. Maximum bid: ${budget} cr`); return; }
-    setLoading(true); setActionError(null);
-    try { setRound(await placeBid(sessionId, round.roundId, amountCents)); }
-    catch (e) {
+    beginRoundAction();
+    try {
+      const updated = await placeBid(sessionId, round.roundId, amountCents);
+      setRound(updated);
+      if (updated.status === "OPEN") {
+        setActionPending(false);
+        pendingRoundIdRef.current = null;
+        setResolvingRoundId(null);
+      }
+    } catch (e) {
       const msg = e instanceof Error ? e.message : "Failed to place bid";
       if (msg.includes("Concurrent update") || msg.includes("409")) {
         try {
@@ -326,16 +379,29 @@ export function AuctionPage() {
       } else {
         setActionError(msg);
       }
-    }
-    finally { setLoading(false); }
+      setActionPending(false);
+      pendingRoundIdRef.current = null;
+      setResolvingRoundId(null);
+    } finally { endRoundActionLoading(); }
   };
 
   const handlePassRound = async () => {
     if (!round) return;
-    setLoading(true); setActionError(null);
-    try { setRound(await passRound(sessionId, round.roundId)); }
-    catch (e) { setActionError(e instanceof Error ? e.message : "Failed to pass round"); }
-    finally { setLoading(false); }
+    beginRoundAction();
+    try {
+      const updated = await passRound(sessionId, round.roundId);
+      setRound(updated);
+      if (updated.status === "OPEN") {
+        setActionPending(false);
+        pendingRoundIdRef.current = null;
+        setResolvingRoundId(null);
+      }
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : "Failed to pass round");
+      setActionPending(false);
+      pendingRoundIdRef.current = null;
+      setResolvingRoundId(null);
+    } finally { endRoundActionLoading(); }
   };
 
   const handleConfirmMatchStart = async () => {
@@ -471,7 +537,16 @@ export function AuctionPage() {
                   />
                   <h2 className="text-2xl font-extrabold text-white mt-2">{round.cardName}</h2>
                   <p className="text-4xl font-black text-card-gold mt-1">{round.cardRating ?? "?"}</p>
-                  <p className="text-xs text-slate-400 mt-1">Rating</p>
+                  <p className="text-xs text-slate-400 mt-1">Overall</p>
+                  {round.pace != null && (
+                    <PlayerAttributeBars
+                      pace={round.pace}
+                      shooting={round.shooting ?? 0}
+                      passing={round.passing ?? 0}
+                      defending={round.defending ?? 0}
+                      physical={round.physical ?? 0}
+                    />
+                  )}
                 </div>
 
                 {/* Timer Bar */}
@@ -504,19 +579,6 @@ export function AuctionPage() {
                   </div>
                 )}
 
-                {/* Grace period overlay — shown only while bids are locked at 0s */}
-                {(controlsLocked || (inGracePeriod && secondsLeft <= 0 && !timeExtended)) && couldBid && (
-                  <div className="bg-amber-900/30 border border-amber-500/30 rounded-lg px-3 py-2 mb-4 text-center animate-pulse">
-                    <p className="text-amber-400 text-sm font-medium">
-                      {loading
-                        ? "Submitting…"
-                        : isResolvingRound || isRefreshing
-                          ? "Round resolving…"
-                          : "Time's up — bids locked"}
-                    </p>
-                  </div>
-                )}
-
                 {/* Current Bid */}
                 <div className="bg-surface-elevated rounded-lg p-3 mb-4 text-center transition-all duration-300">
                   <p className="text-xs text-slate-400">Highest Bid</p>
@@ -533,8 +595,14 @@ export function AuctionPage() {
                   </p>
                 </div>
 
-                {/* Bid Controls */}
-                {canBid && round.opponentCanBid === false ? (
+                {/* Bid Controls — hidden while submitting or resolving */}
+                {roundIsOpen && controlsLocked ? (
+                  <div className="py-6 text-center">
+                    <p className="text-amber-400 text-sm font-medium animate-pulse">
+                      {loading ? "Submitting…" : "Round resolving…"}
+                    </p>
+                  </div>
+                ) : roundIsOpen && canBid && round.opponentCanBid === false ? (
                   <div className="space-y-3">
                     <div className="bg-amber-900/20 border border-amber-500/30 rounded-lg px-3 py-2 text-center">
                       <p className="text-amber-400 text-sm font-medium">Opponent can't bid on this card</p>
@@ -554,7 +622,7 @@ export function AuctionPage() {
                       Pass
                     </button>
                   </div>
-                ) : (
+                ) : roundIsOpen ? (
                   <div className="space-y-3">
                     <div className="flex gap-2">
                       <input
@@ -617,13 +685,13 @@ export function AuctionPage() {
                       </button>
                     )}
                   </div>
-                )}
+                ) : null}
 
                 {/* Turn Indicator */}
                 <div className={`mt-3 text-center text-sm font-medium py-2 rounded-lg transition-colors duration-300 ${
                   mySquadFull
                     ? "bg-accent-green/10 text-accent-green"
-                    : controlsLocked && !loading
+                    : controlsLocked
                       ? "bg-amber-500/10 text-amber-400"
                     : inTimerGrace
                       ? "bg-amber-500/10 text-amber-400"
@@ -639,7 +707,7 @@ export function AuctionPage() {
                       ? loading
                         ? "Submitting…"
                         : "Round resolving…"
-                    : inTimerGrace
+                      : inTimerGrace
                       ? couldBid
                           ? "Time's up — bids locked"
                           : "Time's up — resolving turn…"

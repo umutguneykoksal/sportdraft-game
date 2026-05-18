@@ -87,7 +87,9 @@ public class MatchResultRecoveryService {
             .map(cardId -> {
                 Card card = cardMap.get(cardId);
                 Position assigned = RosterSlotAssignment.assignedPosition(player, cardId, cardMap);
-                return new SessionFinalizedEvent.RatedCard(card.getId(), assigned, card.getRating(), card.getName());
+                return new SessionFinalizedEvent.RatedCard(
+                    card.getId(), assigned, card.getRating(), card.getName(), card.getAttributes()
+                );
             })
             .toList();
     }

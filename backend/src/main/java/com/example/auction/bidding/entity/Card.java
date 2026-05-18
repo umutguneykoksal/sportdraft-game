@@ -35,6 +35,21 @@ public class Card {
     @Column(nullable = false)
     private int rating;
 
+    @Column(nullable = false)
+    private int pace;
+
+    @Column(nullable = false)
+    private int shooting;
+
+    @Column(nullable = false)
+    private int passing;
+
+    @Column(nullable = false)
+    private int defending;
+
+    @Column(nullable = false)
+    private int physical;
+
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "card_eligible_position", joinColumns = @JoinColumn(name = "card_id"))
     @Enumerated(EnumType.STRING)
@@ -49,11 +64,21 @@ public class Card {
     }
 
     public Card(UUID id, String name, Position position, int rating, Set<Position> eligiblePositions) {
+        this(id, name, position, rating, eligiblePositions, PlayerAttributes.fromOverall(position, rating));
+    }
+
+    public Card(UUID id, String name, Position position, int rating, Set<Position> eligiblePositions,
+                PlayerAttributes attributes) {
         this.id = id;
         this.name = name;
         this.position = position;
         this.rating = rating;
         this.eligiblePositions = new HashSet<>(eligiblePositions);
+        this.pace = attributes.pace();
+        this.shooting = attributes.shooting();
+        this.passing = attributes.passing();
+        this.defending = attributes.defending();
+        this.physical = attributes.physical();
     }
 
     public UUID getId() {
@@ -70,6 +95,10 @@ public class Card {
 
     public int getRating() {
         return rating;
+    }
+
+    public PlayerAttributes getAttributes() {
+        return new PlayerAttributes(pace, shooting, passing, defending, physical);
     }
 
     public Set<Position> getEligiblePositions() {

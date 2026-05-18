@@ -63,6 +63,11 @@ export interface AuctionRoundResponse {
   position: string;
   eligiblePositions?: string[];
   cardRating: number;
+  pace?: number;
+  shooting?: number;
+  passing?: number;
+  defending?: number;
+  physical?: number;
   highestBidCents: number;
   highestBidderId: string | null;
   highestBidderUserId: string | null;

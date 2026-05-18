@@ -1,5 +1,6 @@
 package com.example.auction.simulation.control;
 
+import com.example.auction.bidding.entity.PlayerAttributes;
 import com.example.auction.bidding.entity.Position;
 import com.example.auction.session.entity.Formation;
 import com.example.auction.simulation.entity.MatchEvent;
@@ -274,11 +275,11 @@ public class MatchSimulator {
     );
 
     private double attackScore(Formation formation, List<SessionFinalizedEvent.RatedCard> roster) {
-        return weightedScore(formation, roster, ATTACK_WEIGHT) * formation.getAttackMod();
+        return weightedStrength(formation, roster, ATTACK_WEIGHT, PlayerStrength::attack) * formation.getAttackMod();
     }
 
     private double defenseScore(Formation formation, List<SessionFinalizedEvent.RatedCard> roster) {
-        return weightedScore(formation, roster, DEFENSE_WEIGHT) * formation.getDefenseMod();
+        return weightedStrength(formation, roster, DEFENSE_WEIGHT, PlayerStrength::defense) * formation.getDefenseMod();
     }
 
     /**
@@ -287,12 +288,18 @@ public class MatchSimulator {
      * and role-based weight, so formations without CDM/CAM are not penalised
      * by phantom 40-rated defaults.
      */
-    private double weightedScore(
+    @FunctionalInterface
+    private interface StrengthFn {
+        double apply(Position position, PlayerAttributes attrs);
+    }
+
+    private double weightedStrength(
         Formation formation,
         List<SessionFinalizedEvent.RatedCard> roster,
-        Map<Position, Double> roleWeights
+        Map<Position, Double> roleWeights,
+        StrengthFn strengthFn
     ) {
-        Map<Position, Double> avg = averages(roster);
+        Map<Position, Double> avg = averageStrengthByPosition(roster, strengthFn);
         double weightedSum = 0;
         double totalWeight = 0;
         for (Position pos : Position.values()) {
@@ -305,17 +312,21 @@ public class MatchSimulator {
         return totalWeight > 0 ? weightedSum / totalWeight : 40.0;
     }
 
-    private Map<Position, Double> averages(List<SessionFinalizedEvent.RatedCard> roster) {
-        Map<Position, Integer> total = new EnumMap<>(Position.class);
+    private Map<Position, Double> averageStrengthByPosition(
+        List<SessionFinalizedEvent.RatedCard> roster,
+        StrengthFn strengthFn
+    ) {
+        Map<Position, Double> sum = new EnumMap<>(Position.class);
         Map<Position, Integer> count = new EnumMap<>(Position.class);
         for (SessionFinalizedEvent.RatedCard card : roster) {
-            total.merge(card.position(), card.rating(), Integer::sum);
+            double value = strengthFn.apply(card.position(), card.attributes());
+            sum.merge(card.position(), value, Double::sum);
             count.merge(card.position(), 1, Integer::sum);
         }
         Map<Position, Double> avg = new EnumMap<>(Position.class);
         for (Position pos : Position.values()) {
             int c = count.getOrDefault(pos, 0);
-            avg.put(pos, c == 0 ? 40.0 : (double) total.get(pos) / c);
+            avg.put(pos, c == 0 ? 40.0 : sum.get(pos) / c);
         }
         return avg;
     }
