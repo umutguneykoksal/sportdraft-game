@@ -45,7 +45,7 @@ public class AuctionService {
     private static final long ANTI_SNIPE_WINDOW_SECONDS = 10L;  // Bid in last 10 seconds triggers extension
     private static final long ANTI_SNIPE_EXTENSION_SECONDS = 10L;  // Extends by 10 seconds (no max limit)
     private static final long ROUND_DURATION_SECONDS = 20L;
-    /** Grace period for network latency - bids arriving within this window after endsAt are still accepted. */
+    /** Grace period after endsAt — late bids accepted; round closes only after this elapses. */
     private static final long BID_GRACE_PERIOD_MS = 1500L;
     private static final long TURN_OPEN_AFTER_SECONDS = 10L;
 
@@ -531,7 +531,8 @@ public class AuctionService {
                 Optional<ActiveRound> openOpt = session.findOpenRound();
                 if (openOpt.isPresent()) {
                     ActiveRound round = openOpt.get();
-                    if (!round.getEndsAt().isAfter(now)) {
+                    Instant graceDeadline = round.getEndsAt().plusMillis(BID_GRACE_PERIOD_MS);
+                    if (!graceDeadline.isAfter(now)) {
                         long vBefore = session.getVersion();
                         closeRound(round, session, vBefore, cardMap);
                         continue;

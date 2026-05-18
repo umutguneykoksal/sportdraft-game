@@ -17,6 +17,9 @@ import { TeamPitch } from "../../shared/components/TeamPitch";
 import { FORMATION_LABELS } from "../../shared/formations";
 import type { Formation, Position } from "../../shared/api/contracts";
 
+/** UI lock / transition delay after timer hits 0 (may be >= backend grace; not required to match). */
+const BID_UI_GRACE_MS = 2000;
+
 function mapCards(raw: AuctionTeamCardResponse[]): AuctionTeamCardResponse[] {
   return raw.map((c) => ({
     cardId: c.cardId,
@@ -38,9 +41,11 @@ export function AuctionPage() {
   const [secondsLeft, setSecondsLeft] = useState<number>(0);
   const [matchStartSecondsLeft, setMatchStartSecondsLeft] = useState<number>(0);
   const [timeExtended, setTimeExtended] = useState(false);
+  const [inGracePeriod, setInGracePeriod] = useState(false);
   const previousRoundIdRef = useRef<string | null>(null);
   const countdownRoundIdRef = useRef<string | null>(null);
   const previousSecondsLeftRef = useRef<number>(0);
+  const graceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const serverClockOffsetMsRef = useRef<number>(0);
   const roundTotalSecondsRef = useRef<number>(20);
   const [turnIsOpen, setTurnIsOpen] = useState(false);
@@ -56,7 +61,9 @@ export function AuctionPage() {
   const error = actionError ?? syncError;
 
   const isMyTurn = !!myUserId && !!round && round.currentTurnUserId === myUserId;
-  const canBid = isMyTurn || turnIsOpen;
+  const couldBid = isMyTurn || turnIsOpen;
+  const biddingLockedByGrace = inGracePeriod && secondsLeft <= 0 && !loading;
+  const canBid = couldBid && !biddingLockedByGrace;
   const mySquadFull = myTeam.length >= 11;
   const auctionPhaseActive = sessionSnap?.status === "AUCTIONING";
 
@@ -121,9 +128,30 @@ export function AuctionPage() {
     });
   }, [round]);
 
-  // 6. Round countdown timer
+  // 6. Round countdown timer + post-zero grace (bid lock; anti-snipe extension)
   useEffect(() => {
-    if (!round) { setSecondsLeft(0); return; }
+    const clearGrace = () => {
+      if (graceTimeoutRef.current) {
+        clearTimeout(graceTimeoutRef.current);
+        graceTimeoutRef.current = null;
+      }
+      setInGracePeriod(false);
+    };
+    const startGrace = () => {
+      clearGrace();
+      setInGracePeriod(true);
+      graceTimeoutRef.current = setTimeout(() => {
+        graceTimeoutRef.current = null;
+        setInGracePeriod(false);
+      }, BID_UI_GRACE_MS);
+    };
+
+    if (!round) {
+      setSecondsLeft(0);
+      clearGrace();
+      return;
+    }
+
     const computeSecondsLeft = () => {
       const adjustedNow = Date.now() + serverClockOffsetMsRef.current;
       return Math.max(0, Math.ceil((new Date(round.endsAt).getTime() - adjustedNow) / 1000));
@@ -134,6 +162,7 @@ export function AuctionPage() {
 
     // Anti-snipe: timer was at 0, same round gets a new endsAt (not on round open)
     if (!roundChanged && wasExpired && initial > 0) {
+      clearGrace();
       setTimeExtended(true);
       setTimeout(() => setTimeExtended(false), 2000);
     }
@@ -142,9 +171,13 @@ export function AuctionPage() {
       countdownRoundIdRef.current = round.roundId;
       roundTotalSecondsRef.current = initial;
       setTimeExtended(false);
+      clearGrace();
       previousSecondsLeftRef.current = initial;
     } else if (initial > roundTotalSecondsRef.current) {
       roundTotalSecondsRef.current = initial;
+      if (initial > 0) clearGrace();
+    } else if (!roundChanged && wasExpired && initial <= 0 && graceTimeoutRef.current == null) {
+      startGrace();
     }
 
     setSecondsLeft(initial);
@@ -152,12 +185,19 @@ export function AuctionPage() {
       previousSecondsLeftRef.current = initial;
     }
     const timer = setInterval(() => {
+      const prev = previousSecondsLeftRef.current;
       const secs = computeSecondsLeft();
+      if (prev > 0 && secs <= 0) {
+        startGrace();
+      }
+      if (secs > 0) {
+        clearGrace();
+      }
       setSecondsLeft(secs);
       previousSecondsLeftRef.current = secs;
     }, 250);
     return () => clearInterval(timer);
-  }, [round]);
+  }, [round?.roundId, round?.endsAt]);
 
   // 6b. Track when bidding opens to both players
   useEffect(() => {
@@ -434,10 +474,12 @@ export function AuctionPage() {
                   </div>
                 )}
 
-                {/* Time's up overlay - still allows last-second bids due to grace period */}
-                {secondsLeft <= 0 && !timeExtended && (
+                {/* Grace period overlay — shown only while bids are locked at 0s */}
+                {inGracePeriod && secondsLeft <= 0 && !timeExtended && couldBid && (
                   <div className="bg-amber-900/30 border border-amber-500/30 rounded-lg px-3 py-2 mb-4 text-center animate-pulse">
-                    <p className="text-amber-400 text-sm font-medium">Finalizing round... (last chance to bid!)</p>
+                    <p className="text-amber-400 text-sm font-medium">
+                      {loading ? "Submitting bid…" : "Time's up — bids locked"}
+                    </p>
                   </div>
                 )}
 
