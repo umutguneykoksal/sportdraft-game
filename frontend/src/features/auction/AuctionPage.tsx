@@ -39,6 +39,7 @@ export function AuctionPage() {
   const [matchStartSecondsLeft, setMatchStartSecondsLeft] = useState<number>(0);
   const [timeExtended, setTimeExtended] = useState(false);
   const previousRoundIdRef = useRef<string | null>(null);
+  const countdownRoundIdRef = useRef<string | null>(null);
   const previousSecondsLeftRef = useRef<number>(0);
   const serverClockOffsetMsRef = useRef<number>(0);
   const roundTotalSecondsRef = useRef<number>(20);
@@ -128,24 +129,28 @@ export function AuctionPage() {
       return Math.max(0, Math.ceil((new Date(round.endsAt).getTime() - adjustedNow) / 1000));
     };
     const initial = computeSecondsLeft();
-    const wasExpired = previousSecondsLeftRef.current <= 0;
-    const sameRound = previousRoundIdRef.current === round.roundId;
-    
-    // Detect anti-snipe time extension (was 0, now > 0, same round)
-    if (sameRound && wasExpired && initial > 0) {
+    const roundChanged = countdownRoundIdRef.current !== round.roundId;
+    const wasExpired = !roundChanged && previousSecondsLeftRef.current <= 0;
+
+    // Anti-snipe: timer was at 0, same round gets a new endsAt (not on round open)
+    if (!roundChanged && wasExpired && initial > 0) {
       setTimeExtended(true);
-      setTimeout(() => setTimeExtended(false), 2000); // Show for 2 seconds
+      setTimeout(() => setTimeExtended(false), 2000);
     }
-    
-    if (!sameRound) {
+
+    if (roundChanged) {
+      countdownRoundIdRef.current = round.roundId;
       roundTotalSecondsRef.current = initial;
       setTimeExtended(false);
+      previousSecondsLeftRef.current = initial;
     } else if (initial > roundTotalSecondsRef.current) {
       roundTotalSecondsRef.current = initial;
     }
-    
+
     setSecondsLeft(initial);
-    previousSecondsLeftRef.current = initial;
+    if (!roundChanged) {
+      previousSecondsLeftRef.current = initial;
+    }
     const timer = setInterval(() => {
       const secs = computeSecondsLeft();
       setSecondsLeft(secs);
