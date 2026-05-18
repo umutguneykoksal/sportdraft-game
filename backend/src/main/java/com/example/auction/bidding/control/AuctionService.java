@@ -45,10 +45,10 @@ public class AuctionService {
     private static final long MATCH_START_COUNTDOWN_SECONDS = 20L;
     private static final long ANTI_SNIPE_WINDOW_SECONDS = 10L;  // Bid in last 10 seconds triggers extension
     private static final long ANTI_SNIPE_EXTENSION_SECONDS = 10L;  // Extends by 10 seconds (no max limit)
-    private static final long ROUND_DURATION_SECONDS = 20L;
+    private static final long ROUND_DURATION_SECONDS = 30L;
     /** Grace period after endsAt — late bids accepted; round closes only after this elapses. */
     private static final long BID_GRACE_PERIOD_MS = 1500L;
-    private static final long TURN_OPEN_AFTER_SECONDS = 10L;
+    private static final long TURN_OPEN_AFTER_SECONDS = 15L;
 
     private final ActiveSessionStore sessionStore;
     private final CardCatalogService cardCatalog;
@@ -807,6 +807,7 @@ public class AuctionService {
     }
 
     private AuctionRoundResponse toResponse(ActiveRound round, Card card, UUID sessionId) {
+        // Used for SSE broadcasts (shared payload). passedPlayerIds is included so clients can derive viewer flags.
         return buildRoundResponse(round, card, sessionId, null, true, false, false, false, false);
     }
 
@@ -846,7 +847,8 @@ public class AuctionService {
             round.getHighestBidCents(), round.getHighestBidderId(), highestBidderUserId,
             round.getCurrentTurnUserId(), round.getReadyUserOneId(), round.getReadyUserTwoId(),
             round.getEndsAt(), turnOpenAt, round.getStatus().name(),
-            opponentCanBid, viewerCanBid, viewerCanTake, viewerCanPass, viewerCanFillCard
+            opponentCanBid, viewerCanBid, viewerCanTake, viewerCanPass, viewerCanFillCard,
+            round.getPassedUserIds()
         );
     }
 

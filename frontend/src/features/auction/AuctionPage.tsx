@@ -19,6 +19,7 @@ import { PlayerAttributeBars } from "../../shared/components/PlayerAttributeBars
 import { FORMATION_LABELS } from "../../shared/formations";
 import { openEligibleHighlights } from "../../shared/positions";
 import type { Formation } from "../../shared/api/contracts";
+import { deriveViewerFlags } from "./deriveViewerFlags";
 
 /** UI lock / transition delay after timer hits 0 (may be >= backend grace; not required to match). */
 const BID_UI_GRACE_MS = 2000;
@@ -50,7 +51,7 @@ export function AuctionPage() {
   const previousSecondsLeftRef = useRef<number>(0);
   const graceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const serverClockOffsetMsRef = useRef<number>(0);
-  const roundTotalSecondsRef = useRef<number>(20);
+  const roundTotalSecondsRef = useRef<number>(30);
   const [turnIsOpen, setTurnIsOpen] = useState(false);
 
   // Central sync: replaces effects 1–4 (initial load, poll, reconnect, event handler)
@@ -64,13 +65,28 @@ export function AuctionPage() {
   const opponentFormation: Formation = (auctionState?.opponentFormation as Formation) ?? "FOUR_FOUR_TWO";
   const error = actionError ?? syncError;
 
+  // Budget: starting 100 minus spent (needed by deriveViewerFlags below)
+  const spent = myTeam.reduce((sum, c) => sum + c.amountCents, 0);
+  const budget = 100 - spent;
+
   const mySquadFull = myTeam.length >= 11;
   const isMyTurn = !!myUserId && !!round && round.currentTurnUserId === myUserId;
   const roundIsOpen = round?.status === "OPEN";
-  const showTakePanel = round?.viewerCanTake === true;
-  const couldBid = round?.viewerCanBid === true;
-  const canPass = round?.viewerCanPass === true;
-  const canFillCard = round?.viewerCanFillCard === true;
+
+  // Derive viewer action flags locally so SSE-patched round keeps them accurate without a REST call.
+  const { viewerCanBid, viewerCanTake, viewerCanPass, viewerCanFillCard } = deriveViewerFlags(
+    round ?? null,
+    myUserId,
+    myTeam,
+    myFormation,
+    budget,
+    serverClockOffsetMsRef.current
+  );
+  const showTakePanel = viewerCanTake;
+  const couldBid = viewerCanBid;
+  const canPass = viewerCanPass;
+  const canFillCard = viewerCanFillCard;
+
   const iAmHighestBidder = !!myUserId && round?.highestBidderUserId === myUserId;
   const opponentHasBid = (round?.highestBidCents ?? 0) > 0;
   const waitingOnOpponent = roundIsOpen && !isMyTurn && !turnIsOpen;
@@ -107,10 +123,6 @@ export function AuctionPage() {
   const canBid = couldBid && !biddingLockedByGrace && !controlsLocked;
   const inTimerGrace = inGracePeriod && secondsLeft <= 0 && !timeExtended;
   const auctionPhaseActive = sessionSnap?.status === "AUCTIONING";
-
-  // Budget: starting 100 minus spent
-  const spent = myTeam.reduce((sum, c) => sum + c.amountCents, 0);
-  const budget = 100 - spent;
 
   // Minimum bid to win: current bid + 1 (or 1 if no bids yet)
   const minimumBid = round ? Math.max(1, round.highestBidCents + 1) : 1;

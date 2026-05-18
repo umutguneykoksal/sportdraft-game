@@ -34,6 +34,8 @@ public record AuctionRoundResponse(
     /** Whether the requesting player may pass / end turn on this round. */
     boolean viewerCanPass,
     /** Whether the card fits an open slot on the viewer's formation (ignores whose turn it is). */
-    boolean viewerCanFillCard
+    boolean viewerCanFillCard,
+    /** Player UUIDs who have permanently passed on this round (shared; used by clients to derive viewer flags without a REST call). */
+    List<UUID> passedPlayerIds
 ) {
 }

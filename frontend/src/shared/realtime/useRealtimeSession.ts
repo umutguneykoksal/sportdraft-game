@@ -3,7 +3,7 @@ import { getApiBase } from "../api";
 import { createTransport } from "./transportFactory";
 import { RealtimeEnvelope } from "./types";
 
-export function useRealtimeSession(sessionId: string | null, spectator = false) {
+export function useRealtimeSession(sessionId: string | null, spectator = false, reconnectKey = 0) {
   const [events, setEvents] = useState<RealtimeEnvelope[]>([]);
   const [isConnected, setIsConnected] = useState(false);
   const reconnectTimerRef = useRef<number | null>(null);
@@ -76,7 +76,7 @@ export function useRealtimeSession(sessionId: string | null, spectator = false) 
       }
       disconnect?.();
     };
-  }, [sessionId]);
+  }, [sessionId, reconnectKey]);
 
   return { events, isConnected };
 }

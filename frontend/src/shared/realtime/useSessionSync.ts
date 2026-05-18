@@ -15,27 +15,49 @@ export interface SessionSyncState {
   error: string | null;
   sessionNotFound: boolean;
   matchCompleted: boolean;
-  /** True while fetching state after a push event (not background poll). */
+  /** @deprecated Always false — kept for interface compat while callers migrate. */
   isRefreshing: boolean;
 }
 
 /**
- * Poll-first, Push-optimization sync strategy.
+ * Event-driven sync strategy:
  *
- * How it works:
- *  1. Poll every POLL_INTERVAL_MS (3s) regardless of push connection
- *  2. When push event arrives → immediate poll (skip waiting)
- *  3. Server version in snapshot → skip redundant updates if unchanged
+ *  bid_placed / turn_passed  → patch round in memory (0 REST calls)
+ *  round_ended / round_started → refreshState (getAuctionState only)
+ *  match_start_pending / session_finalizing → refreshFull (snapshot + state)
  *
- * Why this is better than patch-from-push:
- *  - Push is unreliable (network drops, proxy buffering, browser throttling)
- *  - Patching from event payloads can cause state divergence
- *  - Poll always returns authoritative server state
- *  - Push just accelerates the refresh, doesn't carry state
+ *  Poll: 30s when SSE is live (safety net), 2s when disconnected (fast recovery).
+ *
+ *  Visibility: on tab-focus, if >10s since last event → refreshState; if SSE
+ *              disconnected → force reconnect.
+ *  Heartbeat: if no heartbeat for 45s → force SSE reconnect (silent proxy drop).
  */
 
-const POLL_INTERVAL_MS = 3000;
-const POLL_INTERVAL_DISCONNECTED_MS = 2000;
+const POLL_INTERVAL_CONNECTED_MS   = 30_000;
+const POLL_INTERVAL_DISCONNECTED_MS = 2_000;
+const VISIBILITY_REFRESH_THRESHOLD_MS = 10_000;
+const HEARTBEAT_TIMEOUT_MS = 45_000;
+
+/** Fields from the SSE round payload that can be safely merged into local round state. */
+const SHARED_ROUND_FIELDS: ReadonlyArray<keyof AuctionRoundResponse> = [
+  "highestBidCents",
+  "highestBidderUserId",
+  "currentTurnUserId",
+  "endsAt",
+  "turnOpenAt",
+  "passedPlayerIds",
+  "status",
+  "opponentCanBid",
+];
+
+function pickSharedFields(src: AuctionRoundResponse): Partial<AuctionRoundResponse> {
+  const srcAny = src as unknown as Record<string, unknown>;
+  const out: Record<string, unknown> = {};
+  for (const k of SHARED_ROUND_FIELDS) {
+    if (k in src) out[k] = srcAny[k];
+  }
+  return out as Partial<AuctionRoundResponse>;
+}
 
 export function useSessionSync(sessionId: string | null, spectator = false): SessionSyncState {
   const [snapshot, setSnapshot] = useState<SessionSnapshotResponse | null>(null);
@@ -45,14 +67,21 @@ export function useSessionSync(sessionId: string | null, spectator = false): Ses
   const [error, setError] = useState<string | null>(null);
   const [sessionNotFound, setSessionNotFound] = useState(false);
   const [matchCompleted, setMatchCompleted] = useState(false);
-  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [reconnectKey, setReconnectKey] = useState(0);
 
-  const { events, isConnected } = useRealtimeSession(sessionId, spectator);
+  const { events, isConnected } = useRealtimeSession(sessionId, spectator, reconnectKey);
 
-  // Refs for fetch coordination
   const fetchingRef = useRef(false);
   const pendingRefreshRef = useRef(false);
   const lastEventIdxRef = useRef(-1);
+
+  // Track timestamps for visibility + heartbeat detection
+  const lastEventTimeRef = useRef(Date.now());
+  const lastHeartbeatRef = useRef(Date.now());
+
+  const forceReconnect = useCallback(() => {
+    setReconnectKey((k) => k + 1);
+  }, []);
 
   // Reset on session change
   useEffect(() => {
@@ -63,32 +92,53 @@ export function useSessionSync(sessionId: string | null, spectator = false): Ses
     setError(null);
     setSessionNotFound(false);
     setMatchCompleted(false);
-    setIsRefreshing(false);
     fetchingRef.current = false;
     pendingRefreshRef.current = false;
     lastEventIdxRef.current = -1;
+    lastEventTimeRef.current = Date.now();
+    lastHeartbeatRef.current = Date.now();
   }, [sessionId]);
 
-  // Core refresh function - always fetches full state from server
-  const refresh = useCallback(async (sid: string, lockUi = false) => {
-    // Don't skip if already fetching - queue the intent instead
+  // ─── Fetch helpers ────────────────────────────────────────────────────────
+
+  const refreshState = useCallback(async (sid: string) => {
     if (fetchingRef.current) {
-      // Mark that another refresh is needed after current one completes
       pendingRefreshRef.current = true;
-      if (lockUi) setIsRefreshing(true);
       return;
     }
     fetchingRef.current = true;
     pendingRefreshRef.current = false;
-    if (lockUi) setIsRefreshing(true);
-
     try {
-      const [snap, state] = await Promise.all([
-        getSessionSnapshot(sid),
-        getAuctionState(sid),
-      ]);
+      const state = await getAuctionState(sid);
+      setAuctionState(state);
+      setRound(state.currentRound);
+      setError(null);
+      setSessionNotFound(false);
+    } catch (e) {
+      if (e instanceof ApiError && (e.status === 404 || e.status === 401)) {
+        setSessionNotFound(true);
+        setError(null);
+      } else {
+        setError(e instanceof Error ? e.message : "Sync failed");
+      }
+    } finally {
+      fetchingRef.current = false;
+      if (pendingRefreshRef.current) {
+        pendingRefreshRef.current = false;
+        refreshState(sid);
+      }
+    }
+  }, []);
 
-      // Always update state - no version check that could skip updates
+  const refreshFull = useCallback(async (sid: string) => {
+    if (fetchingRef.current) {
+      pendingRefreshRef.current = true;
+      return;
+    }
+    fetchingRef.current = true;
+    pendingRefreshRef.current = false;
+    try {
+      const [snap, state] = await Promise.all([getSessionSnapshot(sid), getAuctionState(sid)]);
       setSnapshot(snap);
       setAuctionState(state);
       setRound(state.currentRound);
@@ -103,84 +153,147 @@ export function useSessionSync(sessionId: string | null, spectator = false): Ses
       }
     } finally {
       fetchingRef.current = false;
-      setIsRefreshing(false);
-
-      // If another refresh was requested while we were fetching, do it now
       if (pendingRefreshRef.current) {
         pendingRefreshRef.current = false;
-        refresh(sid, true);
+        refreshFull(sid);
       }
     }
   }, []);
 
-  // Initial load
+  // ─── Initial load ─────────────────────────────────────────────────────────
+
   useEffect(() => {
     if (!sessionId) return;
-    refresh(sessionId);
-  }, [sessionId, refresh]);
+    refreshFull(sessionId);
+  }, [sessionId, refreshFull]);
 
-  // Regular polling - the backbone of reliability
-  // Stop polling when session ends or match completes (session will be archived soon)
+  // ─── Background poll (safety net / disconnected recovery) ─────────────────
+
   useEffect(() => {
     if (!sessionId || sessionNotFound || matchCompleted) return;
-    
-    const interval = isConnected ? POLL_INTERVAL_MS : POLL_INTERVAL_DISCONNECTED_MS;
-    const id = window.setInterval(() => refresh(sessionId), interval);
+    const interval = isConnected ? POLL_INTERVAL_CONNECTED_MS : POLL_INTERVAL_DISCONNECTED_MS;
+    const id = window.setInterval(() => refreshState(sessionId), interval);
     return () => window.clearInterval(id);
-  }, [sessionId, isConnected, sessionNotFound, matchCompleted, refresh]);
+  }, [sessionId, isConnected, sessionNotFound, matchCompleted, refreshState]);
 
-  // Push event handler - triggers immediate refresh, doesn't patch
+  // ─── Reconnect on reconnect → full refresh ─────────────────────────────────
+
+  const prevConnectedRef = useRef(false);
+  useEffect(() => {
+    const was = prevConnectedRef.current;
+    prevConnectedRef.current = isConnected;
+    if (!sessionId || sessionNotFound || matchCompleted) return;
+    if (isConnected && !was) {
+      refreshFull(sessionId);
+    }
+  }, [isConnected, sessionId, sessionNotFound, matchCompleted, refreshFull]);
+
+  // ─── SSE event handler ────────────────────────────────────────────────────
+
   useEffect(() => {
     if (!sessionId || events.length === 0 || sessionNotFound || matchCompleted) return;
 
-    // Process new events since last check
     for (let i = lastEventIdxRef.current + 1; i < events.length; i++) {
       const env = events[i];
-      
-      // Skip heartbeats
-      if (env.eventType === "heartbeat" || (env.seq ?? 0) === 0) continue;
+
+      if (env.eventType === "heartbeat" || (env.seq ?? 0) === 0) {
+        lastHeartbeatRef.current = Date.now();
+        continue;
+      }
+
+      lastEventTimeRef.current = Date.now();
+      lastHeartbeatRef.current = Date.now();
+
+      if (env.eventType === "match_completed") {
+        setMatchCompleted(true);
+        setLastEvent(env);
+        lastEventIdxRef.current = events.length - 1;
+        return;
+      }
 
       setLastEvent(env);
 
-      // Match completed - signal to navigate to match result page, stop further polling
-      if (env.eventType === "match_completed") {
-        setMatchCompleted(true);
-        lastEventIdxRef.current = events.length - 1;
-        return; // Don't refresh, let navigation happen
+      switch (env.eventType) {
+        case "bid_placed":
+        case "turn_passed": {
+          // Patch round in memory from SSE payload — 0 REST calls
+          const payload = env.payload as { round?: AuctionRoundResponse };
+          if (payload?.round) {
+            setRound((prev) =>
+              prev ? { ...prev, ...pickSharedFields(payload.round!) } : payload.round!
+            );
+          }
+          break;
+        }
+
+        case "round_ended":
+        case "round_started":
+          // Team/budget may have changed — fetch updated auction state
+          refreshState(sessionId);
+          break;
+
+        case "match_start_pending":
+        case "session_finalizing":
+          // Session status changed — need full snapshot + auction state
+          refreshFull(sessionId);
+          break;
+
+        default:
+          // For any other events, do a state refresh
+          refreshState(sessionId);
+          break;
       }
 
-      // Push arrived → immediate refresh (don't wait for poll interval)
-      refresh(sessionId, true);
-      break; // One refresh per batch is enough
+      break; // one dispatch per batch
     }
-    
+
     lastEventIdxRef.current = events.length - 1;
-  }, [events, sessionId, sessionNotFound, matchCompleted, refresh]);
+  }, [events, sessionId, sessionNotFound, matchCompleted, refreshState, refreshFull]);
 
-  // Reconnect → immediate refresh
-  const prevConnectedRef = useRef(false);
+  // ─── Visibility change detection ─────────────────────────────────────────
+
   useEffect(() => {
-    const wasConnected = prevConnectedRef.current;
-    prevConnectedRef.current = isConnected;
-    
     if (!sessionId || sessionNotFound || matchCompleted) return;
-    
-    // Just connected (was disconnected)
-    if (isConnected && !wasConnected) {
-      refresh(sessionId);
-    }
-  }, [isConnected, sessionId, sessionNotFound, matchCompleted, refresh]);
 
-  return { 
-    snapshot, 
-    auctionState, 
-    round, 
-    setRound,  // For optimistic UI (bid response)
-    isConnected, 
-    lastEvent, 
-    error, 
+    const handleVisibility = () => {
+      if (document.visibilityState !== "visible") return;
+      const gap = Date.now() - lastEventTimeRef.current;
+      if (gap > VISIBILITY_REFRESH_THRESHOLD_MS) {
+        refreshState(sessionId);
+      }
+      if (!isConnected) {
+        forceReconnect();
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => document.removeEventListener("visibilitychange", handleVisibility);
+  }, [sessionId, isConnected, sessionNotFound, matchCompleted, refreshState, forceReconnect]);
+
+  // ─── Heartbeat timeout → force reconnect on silent disconnect ─────────────
+
+  useEffect(() => {
+    if (!sessionId || sessionNotFound || matchCompleted || !isConnected) return;
+
+    const id = window.setInterval(() => {
+      if (Date.now() - lastHeartbeatRef.current > HEARTBEAT_TIMEOUT_MS) {
+        forceReconnect();
+      }
+    }, 10_000);
+
+    return () => window.clearInterval(id);
+  }, [sessionId, isConnected, sessionNotFound, matchCompleted, forceReconnect]);
+
+  return {
+    snapshot,
+    auctionState,
+    round,
+    setRound,
+    isConnected,
+    lastEvent,
+    error,
     sessionNotFound,
     matchCompleted,
-    isRefreshing,
+    isRefreshing: false,
   };
 }

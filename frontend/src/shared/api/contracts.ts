@@ -82,6 +82,8 @@ export interface AuctionRoundResponse {
   viewerCanTake: boolean;
   viewerCanPass: boolean;
   viewerCanFillCard: boolean;
+  /** UUIDs of players who permanently passed this round — included in SSE payloads so clients can derive viewer flags without a REST call. */
+  passedPlayerIds: string[];
 }
 
 export interface AuctionTeamCardResponse {
