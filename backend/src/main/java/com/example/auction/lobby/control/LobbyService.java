@@ -28,6 +28,8 @@ public class LobbyService {
 
     private static final long STARTING_BUDGET_CENTS = 100L;
     private static final int MAX_CONCURRENT_ROOMS = 4;
+    /** Countdown after both players confirm formation, before auction begins. */
+    private static final long FORMATION_BOTH_READY_COUNTDOWN_SECONDS = 5L;
 
     private final ActiveSessionStore sessionStore;
     private final SseEmitterRegistry sseEmitterRegistry;
@@ -213,17 +215,21 @@ public class LobbyService {
         }
 
         if (session.areBothMatchStartReady()) {
-            session.moveToAuctioning(buildShuffledCardPool());
-            sessionStore.saveIfVersionMatch(session, versionBefore);
-            sseEmitterRegistry.broadcast(sessionId, "auctioning_started", Map.of("sessionId", sessionId));
-            auctionService.ensureOpenRound(sessionId);
-        } else {
-            session.setCountdownEndsAt(Instant.now().plus(10, ChronoUnit.SECONDS));
+            session.setCountdownEndsAt(
+                Instant.now().plus(FORMATION_BOTH_READY_COUNTDOWN_SECONDS, ChronoUnit.SECONDS)
+            );
             sessionStore.saveIfVersionMatch(session, versionBefore);
             sseEmitterRegistry.broadcast(
                 sessionId, "formation_ready",
                 Map.of("sessionId", sessionId, "readyCount", session.matchStartReadyCount(),
                        "countdownEndsAt", session.getCountdownEndsAt())
+            );
+        } else {
+            session.setCountdownEndsAt(null);
+            sessionStore.saveIfVersionMatch(session, versionBefore);
+            sseEmitterRegistry.broadcast(
+                sessionId, "formation_ready",
+                Map.of("sessionId", sessionId, "readyCount", session.matchStartReadyCount())
             );
         }
 
@@ -258,7 +264,7 @@ public class LobbyService {
 
         for (ActiveSession session : sessionStore.findByStatus(SessionStatus.FORMATION_SELECT)) {
             if (session.getCountdownEndsAt() != null && !session.getCountdownEndsAt().isAfter(now)
-                && session.matchStartReadyCount() > 0) {
+                && session.areBothMatchStartReady()) {
                 long vBefore = session.getVersion();
                 if (session.playerCount() == 2) {
                     session.getPlayers().forEach(ActivePlayer::confirmDefaultFormationIfMissing);

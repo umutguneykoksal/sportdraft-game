@@ -82,8 +82,21 @@ class CoreFlowIntegrationTest {
 
         lobbyService.selectFormation(sessionId, user1, Formation.FOUR_FOUR_TWO);
         lobbyService.selectFormation(sessionId, user2, Formation.FOUR_THREE_THREE);
-        lobbyService.confirmFormationReady(sessionId, user1);
-        SessionSnapshotResponse auctioning = lobbyService.confirmFormationReady(sessionId, user2);
+        SessionSnapshotResponse afterFirstReady = lobbyService.confirmFormationReady(sessionId, user1);
+        assertThat(afterFirstReady.status()).isEqualTo(SessionStatus.FORMATION_SELECT);
+        assertThat(afterFirstReady.matchStartReadyCount()).isEqualTo(1);
+
+        SessionSnapshotResponse afterSecondReady = lobbyService.confirmFormationReady(sessionId, user2);
+        assertThat(afterSecondReady.status()).isEqualTo(SessionStatus.FORMATION_SELECT);
+        assertThat(afterSecondReady.matchStartReadyCount()).isEqualTo(2);
+
+        session = sessionStore.getById(sessionId);
+        v = session.getVersion();
+        session.setCountdownEndsAt(Instant.now().minusSeconds(1));
+        sessionStore.saveIfVersionMatch(session, v);
+        lobbyService.advanceTimedPhases();
+
+        SessionSnapshotResponse auctioning = lobbyService.getSnapshot(sessionId, user1);
         assertThat(auctioning.status()).isEqualTo(SessionStatus.AUCTIONING);
 
         AuctionRoundResponse round = auctionService.startRound(sessionId);

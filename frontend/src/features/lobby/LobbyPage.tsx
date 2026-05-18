@@ -315,17 +315,24 @@ export function LobbyPage() {
                 </div>
               </div>
 
-              {/* Formation Ready Countdown */}
-              {countdownSecondsLeft !== null && countdownSecondsLeft > 0 && snapshot.matchStartReadyCount > 0 && (
+              {/* One player ready — wait for opponent, no countdown */}
+              {snapshot.matchStartReadyCount === 1 && (
+                <p className="text-center text-slate-400 text-sm">
+                  {snapshot.matchStartConfirmedByMe
+                    ? "Waiting for opponent to confirm..."
+                    : "Opponent is ready! Select formation and click Start Auction."}
+                </p>
+              )}
+
+              {/* Both ready — 5s countdown before auction */}
+              {snapshot.matchStartReadyCount === 2
+                && countdownSecondsLeft !== null
+                && countdownSecondsLeft > 0 && (
                 <div className="text-center">
                   <div className="inline-flex items-center justify-center w-20 h-20 rounded-full border-4 border-accent bg-surface-card">
                     <span className="text-2xl font-bold text-white">{countdownSecondsLeft}</span>
                   </div>
-                  <p className="text-slate-400 mt-2 text-sm">
-                    {snapshot.matchStartConfirmedByMe
-                      ? "Waiting for opponent..."
-                      : "Opponent is ready! Auction starting..."}
-                  </p>
+                  <p className="text-slate-400 mt-2 text-sm">Auction starting...</p>
                 </div>
               )}
 
