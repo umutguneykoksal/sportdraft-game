@@ -312,11 +312,12 @@ export function AuctionPage() {
     return () => window.clearInterval(timer);
   }, [sessionSnap?.matchStartDeadlineAt]);
 
-  // 8. REST-based keepalive ping (independent of SSE connection health)
+  // 8. REST-based keepalive ping (independent of WS/SSE health — used for forfeit detection).
+  // 10s interval keeps us safely within the 30s connectionTracker threshold.
   useEffect(() => {
     if (!sessionId) return;
     pingSession(sessionId);
-    const id = window.setInterval(() => pingSession(sessionId), 20_000);
+    const id = window.setInterval(() => pingSession(sessionId), 10_000);
     return () => window.clearInterval(id);
   }, [sessionId]);
 

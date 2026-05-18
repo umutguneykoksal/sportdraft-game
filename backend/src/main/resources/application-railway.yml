@@ -8,7 +8,9 @@ spring:
 
 app:
   session:
-    disconnect-timeout-seconds: ${APP_SESSION_DISCONNECT_TIMEOUT_SECONDS:20}
+    # 60s: pure gameplay decision (WebSocket removes proxy timeout constraint).
+    # Gives a disconnected player ~60s to reconnect before forfeiting.
+    disconnect-timeout-seconds: ${APP_SESSION_DISCONNECT_TIMEOUT_SECONDS:60}
 
 management:
   tracing:

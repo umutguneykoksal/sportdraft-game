@@ -17,9 +17,8 @@ spring.task:
 
 app:
   session:
-    # 90 s gives reverse proxies (Railway, Nginx default 75 s) time to pass heartbeats
-    # before we declare a forfeit. Must be > proxy idle timeout (≥ 75 s).
-    disconnect-timeout-seconds: ${APP_SESSION_DISCONNECT_TIMEOUT_SECONDS:90}
+    # 60s: pure gameplay decision — WebSocket removes any proxy timeout constraint.
+    disconnect-timeout-seconds: ${APP_SESSION_DISCONNECT_TIMEOUT_SECONDS:60}
 
 management:
   tracing:

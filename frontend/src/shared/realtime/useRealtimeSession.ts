@@ -27,8 +27,10 @@ export function useRealtimeSession(sessionId: string | null, spectator = false, 
     const sseUrl = `${base}/api/sessions/${encodeURIComponent(sessionId)}/events?token=${encodeURIComponent(token)}${spectatorParam}`;
 
     let closed = false;
+    // Default to WebSocket — more reliable on reverse-proxy infra (Railway) than SSE.
+    // Set REACT_APP_REALTIME_TRANSPORT=sse to force SSE (e.g. for debugging).
     const preferred =
-      (process.env.REACT_APP_REALTIME_TRANSPORT ?? "sse").toLowerCase() === "websocket" ? "websocket" : "sse";
+      (process.env.REACT_APP_REALTIME_TRANSPORT ?? "websocket").toLowerCase() === "sse" ? "sse" : "websocket";
 
     const connect = () => {
       if (reconnectTimerRef.current !== null) {

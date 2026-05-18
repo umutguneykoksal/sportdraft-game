@@ -54,3 +54,4 @@ export async function getAuctionState(sessionId: string): Promise<AuctionStateRe
   });
   return parseOrThrow<AuctionStateResponse>(response, `getAuctionState failed: ${response.status}`);
 }
+
