@@ -1,11 +1,18 @@
 package com.example.auction.bidding.entity;
 
+import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
+import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
 import jakarta.persistence.Table;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.UUID;
 
 @Entity
@@ -25,14 +32,25 @@ public class Card {
     @Column(nullable = false)
     private int rating;
 
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "card_eligible_position", joinColumns = @JoinColumn(name = "card_id"))
+    @Enumerated(EnumType.STRING)
+    @Column(name = "position", length = 10)
+    private Set<Position> eligiblePositions = new HashSet<>();
+
     protected Card() {
     }
 
     public Card(UUID id, String name, Position position, int rating) {
+        this(id, name, position, rating, Set.of(position));
+    }
+
+    public Card(UUID id, String name, Position position, int rating, Set<Position> eligiblePositions) {
         this.id = id;
         this.name = name;
         this.position = position;
         this.rating = rating;
+        this.eligiblePositions = new HashSet<>(eligiblePositions);
     }
 
     public UUID getId() {
@@ -49,5 +67,16 @@ public class Card {
 
     public int getRating() {
         return rating;
+    }
+
+    public Set<Position> getEligiblePositions() {
+        if (eligiblePositions == null || eligiblePositions.isEmpty()) {
+            return Set.of(position);
+        }
+        return Collections.unmodifiableSet(eligiblePositions);
+    }
+
+    public boolean canPlay(Position pos) {
+        return getEligiblePositions().contains(pos);
     }
 }

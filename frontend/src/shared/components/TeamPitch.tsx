@@ -8,6 +8,7 @@ interface TeamPitchProps {
   teamColor?: string;
   teamBorderColor?: string;
   highlightPosition?: Position;
+  highlightPositions?: Position[];
   showAmount?: boolean;
 }
 
@@ -25,7 +26,15 @@ function buildSlots(
   formation: Formation,
   cards: AuctionTeamCardResponse[],
   highlightPosition?: Position,
+  highlightPositions?: Position[],
 ): SlotData[] {
+  const highlightSet = new Set(
+    highlightPositions?.length
+      ? highlightPositions
+      : highlightPosition
+        ? [highlightPosition]
+        : [],
+  );
   const dots = FORMATION_DOTS[formation];
   const pool: Record<Position, AuctionTeamCardResponse[]> = {
     GK: [],
@@ -46,7 +55,7 @@ function buildSlots(
       y: dot.y,
       pos: dot.pos,
       card,
-      highlighted: !card && highlightPosition === dot.pos,
+      highlighted: !card && highlightSet.has(dot.pos),
     };
   });
 }
@@ -56,9 +65,10 @@ export function TeamPitch({
   cards,
   teamColor = "#ffffff",
   highlightPosition,
+  highlightPositions,
   showAmount,
 }: TeamPitchProps) {
-  const slots = buildSlots(formation, cards, highlightPosition);
+  const slots = buildSlots(formation, cards, highlightPosition, highlightPositions);
 
   return (
     <div

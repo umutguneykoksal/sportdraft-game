@@ -7,6 +7,7 @@ import static org.mockito.Mockito.when;
 import com.example.auction.bidding.boundary.AuctionRoundResponse;
 import com.example.auction.bidding.entity.Position;
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -31,6 +32,7 @@ class AuctionEngineTest {
             UUID.randomUUID(),
             "Card",
             Position.CM.name(),
+            List.of(Position.CM.name()),
             80,
             0,
             null,

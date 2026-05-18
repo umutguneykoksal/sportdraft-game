@@ -12,6 +12,7 @@ import { getSpectateState } from "../../shared/api/lobbyClient";
 import { useSpectateStream } from "../../shared/sse";
 import { TeamPitch } from "../../shared/components/TeamPitch";
 import { FORMATION_LABELS } from "../../shared/formations";
+import { formatEligiblePositions, openEligibleHighlights } from "../../shared/positions";
 
 function mapCards(raw: AuctionTeamCardResponse[]): AuctionTeamCardResponse[] {
   return raw.map((c) => ({
@@ -179,6 +180,11 @@ export function SpectatePage() {
   const isAuctioning = state.status === "AUCTIONING";
   const isFinished = state.status === "FINISHED";
 
+  const roundPositionLabel = round
+    ? formatEligiblePositions(round.position, round.eligiblePositions)
+    : "";
+  const pitchHighlights = openEligibleHighlights(homeFormation, homeTeam, round?.eligiblePositions);
+
   return (
     <div className="min-h-screen bg-surface">
       {/* Top Bar */}
@@ -252,7 +258,7 @@ export function SpectatePage() {
                 cards={homeTeam}
                 teamColor="#3b82f6"
                 teamBorderColor="#60a5fa"
-                highlightPosition={round?.position as Position | undefined}
+                highlightPositions={pitchHighlights}
               />
             </div>
             <div className="px-4 py-2 border-t border-white/10 max-h-40 overflow-y-auto">
@@ -283,7 +289,7 @@ export function SpectatePage() {
               <div key={round.roundId} className="bg-surface-card rounded-xl border border-white/10 p-4 animate-fade-in">
                 <div className="text-center mb-4">
                   <span className={`${positionColors[round.position] ?? "bg-gray-500"} text-white text-xs px-2 py-1 rounded-full font-bold`}>
-                    {round.position}
+                    {roundPositionLabel}
                   </span>
                   <h2 className="text-2xl font-extrabold text-white mt-2">{round.cardName}</h2>
                   <p className="text-4xl font-black text-card-gold mt-1">{round.cardRating ?? "?"}</p>

@@ -146,7 +146,7 @@ public class AuctionService {
             if (card == null) continue;
 
             boolean anyEligible = session.getPlayers().stream()
-                .anyMatch(p -> canBidForPosition(p, card.getPosition(), cardMap));
+                .anyMatch(p -> RosterSlotAssignment.canFillCard(p, card, cardMap));
             if (!anyEligible) continue;
 
             Instant now = Instant.now();
@@ -241,10 +241,10 @@ public class AuctionService {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
                 "Insufficient budget. Maximum bid: %d cr".formatted(bidder.getRemainingBudgetCents()));
         }
-        if (openSlotsForPosition(bidder, roundCard.getPosition(), cardMap) <= 0) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "No open slot for this card position");
+        if (!RosterSlotAssignment.canFillCard(bidder, roundCard, cardMap)) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "No open slot for this card");
         }
-        int totalOpen = totalOpenSlots(bidder, cardMap);
+        int totalOpen = RosterSlotAssignment.totalOpenSlots(bidder, cardMap);
         long remainingAfterBid = bidder.getRemainingBudgetCents() - request.amountCents();
         long reserveRequired = Math.max(totalOpen - 1, 0);
         if (remainingAfterBid < reserveRequired) {
@@ -603,7 +603,7 @@ public class AuctionService {
             meterRegistry.counter("auction.round.closed", "result", "PASSED").increment();
             return;
         }
-        if (openSlotsForPosition(winner, roundCard.getPosition(), cardMap) <= 0) {
+        if (!RosterSlotAssignment.canFillCard(winner, roundCard, cardMap)) {
             round.markPassed();
             sessionStore.saveIfVersionMatch(session, vBefore);
             sseEmitterRegistry.broadcast(
@@ -616,8 +616,7 @@ public class AuctionService {
             return;
         }
 
-        winner.spendBudget(round.getHighestBidCents());
-        winner.addCard(roundCard.getId());
+        awardCardToWinner(winner, roundCard, round.getHighestBidCents(), cardMap);
         round.markSold();
         sessionStore.saveIfVersionMatch(session, vBefore);
 
@@ -688,11 +687,10 @@ public class AuctionService {
             .findFirst().orElse(null);
 
         if (winner == null || winner.isRosterFull()
-                || openSlotsForPosition(winner, roundCard.getPosition(), cardMap) <= 0) {
+                || !RosterSlotAssignment.canFillCard(winner, roundCard, cardMap)) {
             round.markPassed();
         } else {
-            winner.spendBudget(round.getHighestBidCents());
-            winner.addCard(roundCard.getId());
+            awardCardToWinner(winner, roundCard, round.getHighestBidCents(), cardMap);
             round.markSold();
         }
     }
@@ -775,14 +773,8 @@ public class AuctionService {
         ActivePlayer home = sorted.get(0);
         ActivePlayer away = sorted.get(1);
 
-        List<SessionFinalizedEvent.RatedCard> homeRoster = home.getCardIds().stream()
-            .map(cardMap::get)
-            .map(c -> new SessionFinalizedEvent.RatedCard(c.getId(), c.getPosition(), c.getRating(), c.getName()))
-            .toList();
-        List<SessionFinalizedEvent.RatedCard> awayRoster = away.getCardIds().stream()
-            .map(cardMap::get)
-            .map(c -> new SessionFinalizedEvent.RatedCard(c.getId(), c.getPosition(), c.getRating(), c.getName()))
-            .toList();
+        List<SessionFinalizedEvent.RatedCard> homeRoster = toRatedRoster(home, cardMap);
+        List<SessionFinalizedEvent.RatedCard> awayRoster = toRatedRoster(away, cardMap);
 
         session.moveToAwaitingResult();
         sessionStore.save(session);
@@ -808,7 +800,7 @@ public class AuctionService {
         Instant turnOpenAt = computeTurnOpenAt(round);
         return new AuctionRoundResponse(
             round.getId(), sessionId,
-            card.getId(), card.getName(), card.getPosition().name(), card.getRating(),
+            card.getId(), card.getName(), card.getPosition().name(), eligiblePositionNames(card), card.getRating(),
             round.getHighestBidCents(), round.getHighestBidderId(), null,
             round.getCurrentTurnUserId(), round.getReadyUserOneId(), round.getReadyUserTwoId(),
             round.getEndsAt(), turnOpenAt, round.getStatus().name(),
@@ -830,7 +822,7 @@ public class AuctionService {
         Instant turnOpenAt = computeTurnOpenAt(round);
         return new AuctionRoundResponse(
             round.getId(), session.getId(),
-            card.getId(), card.getName(), card.getPosition().name(), card.getRating(),
+            card.getId(), card.getName(), card.getPosition().name(), eligiblePositionNames(card), card.getRating(),
             round.getHighestBidCents(), round.getHighestBidderId(),
             resolveHighestBidderUserId(round, session),
             round.getCurrentTurnUserId(), round.getReadyUserOneId(), round.getReadyUserTwoId(),
@@ -844,11 +836,14 @@ public class AuctionService {
         Map<UUID, Long> soldAmountByCardId, Map<UUID, Integer> draftOrderByCardId
     ) {
         return player.getCardIds().stream()
-            .map(cardMap::get)
-            .map(card -> new AuctionTeamCardResponse(
-                card.getId(), card.getName(), card.getPosition().name(), card.getRating(),
-                soldAmountByCardId.getOrDefault(card.getId(), 0L)
-            ))
+            .map(cardId -> {
+                Card card = cardMap.get(cardId);
+                Position assigned = RosterSlotAssignment.assignedPosition(player, cardId, cardMap);
+                return new AuctionTeamCardResponse(
+                    card.getId(), card.getName(), assigned.name(), card.getRating(),
+                    soldAmountByCardId.getOrDefault(card.getId(), 0L)
+                );
+            })
             .sorted(Comparator.comparingInt(c -> draftOrderByCardId.getOrDefault(c.cardId(), Integer.MAX_VALUE)))
             .toList();
     }
@@ -893,36 +888,35 @@ public class AuctionService {
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "Opponent not found"));
     }
 
-    private boolean canBidForPosition(ActivePlayer player, Position position, Map<UUID, Card> cardMap) {
-        if (player.isRosterFull()) return false;
-        return openSlotsForPosition(player, position, cardMap) > 0 && player.getRemainingBudgetCents() >= STARTING_BID;
-    }
-
     private boolean canPlayerBidRound(ActivePlayer player, Card roundCard, long amountCents, Map<UUID, Card> cardMap) {
         if (player.isRosterFull()) return false;
-        if (openSlotsForPosition(player, roundCard.getPosition(), cardMap) <= 0) return false;
+        if (!RosterSlotAssignment.canFillCard(player, roundCard, cardMap)) return false;
         if (amountCents > player.getRemainingBudgetCents()) return false;
-        int totalOpen = totalOpenSlots(player, cardMap);
+        int totalOpen = RosterSlotAssignment.totalOpenSlots(player, cardMap);
         long remainingAfterBid = player.getRemainingBudgetCents() - amountCents;
         long reserveRequired = Math.max(totalOpen - 1, 0);
         return remainingAfterBid >= reserveRequired;
     }
 
-    private int openSlotsForPosition(ActivePlayer player, Position position, Map<UUID, Card> cardMap) {
-        int required = player.getFormation().slotCount(position);
-        long filled = player.getCardIds().stream()
-            .map(cardMap::get)
-            .filter(c -> c.getPosition() == position)
-            .count();
-        return Math.max(required - (int) filled, 0);
+    private void awardCardToWinner(ActivePlayer winner, Card roundCard, long amountCents, Map<UUID, Card> cardMap) {
+        Position assigned = RosterSlotAssignment.resolveAssignment(winner, roundCard, cardMap)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "No open slot for this card"));
+        winner.spendBudget(amountCents);
+        winner.addCard(roundCard.getId(), assigned);
     }
 
-    private int totalOpenSlots(ActivePlayer player, Map<UUID, Card> cardMap) {
-        int total = 0;
-        for (Position pos : Position.values()) {
-            total += openSlotsForPosition(player, pos, cardMap);
-        }
-        return total;
+    private List<SessionFinalizedEvent.RatedCard> toRatedRoster(ActivePlayer player, Map<UUID, Card> cardMap) {
+        return player.getCardIds().stream()
+            .map(cardId -> {
+                Card card = cardMap.get(cardId);
+                Position assigned = RosterSlotAssignment.assignedPosition(player, cardId, cardMap);
+                return new SessionFinalizedEvent.RatedCard(card.getId(), assigned, card.getRating(), card.getName());
+            })
+            .toList();
+    }
+
+    private List<String> eligiblePositionNames(Card card) {
+        return card.getEligiblePositions().stream().map(Position::name).sorted().toList();
     }
 
     private boolean isSessionRostersFull(ActiveSession session) {

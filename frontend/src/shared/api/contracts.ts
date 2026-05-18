@@ -61,6 +61,7 @@ export interface AuctionRoundResponse {
   cardId: string;
   cardName: string;
   position: string;
+  eligiblePositions?: string[];
   cardRating: number;
   highestBidCents: number;
   highestBidderId: string | null;

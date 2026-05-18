@@ -1,7 +1,9 @@
 package com.example.auction.simulation.control;
 
 import com.example.auction.bidding.control.CardCatalogService;
+import com.example.auction.bidding.control.RosterSlotAssignment;
 import com.example.auction.bidding.entity.Card;
+import com.example.auction.bidding.entity.Position;
 import com.example.auction.session.entity.SessionStatus;
 import com.example.auction.session.redis.ActivePlayer;
 import com.example.auction.session.redis.ActiveSession;
@@ -57,14 +59,8 @@ public class MatchResultRecoveryService {
         ActivePlayer away = sorted.get(1);
         long seed = session.getMatchSeed() == null ? sessionId.getMostSignificantBits() : session.getMatchSeed();
 
-        List<SessionFinalizedEvent.RatedCard> homeRoster = home.getCardIds().stream()
-            .map(cardMap::get)
-            .map(c -> new SessionFinalizedEvent.RatedCard(c.getId(), c.getPosition(), c.getRating(), c.getName()))
-            .toList();
-        List<SessionFinalizedEvent.RatedCard> awayRoster = away.getCardIds().stream()
-            .map(cardMap::get)
-            .map(c -> new SessionFinalizedEvent.RatedCard(c.getId(), c.getPosition(), c.getRating(), c.getName()))
-            .toList();
+        List<SessionFinalizedEvent.RatedCard> homeRoster = toRatedRoster(home, cardMap);
+        List<SessionFinalizedEvent.RatedCard> awayRoster = toRatedRoster(away, cardMap);
 
         SimulationResult result = matchSimulator.simulateWithTimeline(
             seed,
@@ -84,5 +80,15 @@ public class MatchResultRecoveryService {
             result.homeGoals(), result.awayGoals(), seed, result.timeline()
         ));
         return true;
+    }
+
+    private List<SessionFinalizedEvent.RatedCard> toRatedRoster(ActivePlayer player, Map<UUID, Card> cardMap) {
+        return player.getCardIds().stream()
+            .map(cardId -> {
+                Card card = cardMap.get(cardId);
+                Position assigned = RosterSlotAssignment.assignedPosition(player, cardId, cardMap);
+                return new SessionFinalizedEvent.RatedCard(card.getId(), assigned, card.getRating(), card.getName());
+            })
+            .toList();
     }
 }

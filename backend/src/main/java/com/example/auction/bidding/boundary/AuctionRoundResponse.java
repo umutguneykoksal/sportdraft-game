@@ -1,6 +1,7 @@
 package com.example.auction.bidding.boundary;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 public record AuctionRoundResponse(
@@ -9,6 +10,7 @@ public record AuctionRoundResponse(
     UUID cardId,
     String cardName,
     String position,
+    List<String> eligiblePositions,
     int cardRating,
     long highestBidCents,
     UUID highestBidderId,

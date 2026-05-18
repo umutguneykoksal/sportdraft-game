@@ -1,9 +1,12 @@
 package com.example.auction.session.redis;
 
+import com.example.auction.bidding.entity.Position;
 import com.example.auction.session.entity.Formation;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 public class ActivePlayer {
@@ -17,6 +20,8 @@ public class ActivePlayer {
     private boolean formationConfirmed;
     private long remainingBudgetCents;
     private List<UUID> cardIds = new ArrayList<>();
+    /** Formation slot filled when the card was won (may differ from card primary position). */
+    private Map<UUID, Position> cardAssignments = new HashMap<>();
 
     public ActivePlayer() {
     }
@@ -48,11 +53,12 @@ public class ActivePlayer {
         this.remainingBudgetCents -= amountCents;
     }
 
-    public void addCard(UUID cardId) {
+    public void addCard(UUID cardId, Position assignedPosition) {
         if (cardIds.size() >= MAX_ROSTER_SIZE) {
             throw new IllegalStateException("Roster is already full");
         }
         this.cardIds.add(cardId);
+        this.cardAssignments.put(cardId, assignedPosition);
     }
 
     @JsonIgnore
@@ -81,4 +87,8 @@ public class ActivePlayer {
     public void setRemainingBudgetCents(long remainingBudgetCents) { this.remainingBudgetCents = remainingBudgetCents; }
     public List<UUID> getCardIds() { return cardIds; }
     public void setCardIds(List<UUID> cardIds) { this.cardIds = cardIds; }
+    public Map<UUID, Position> getCardAssignments() { return cardAssignments; }
+    public void setCardAssignments(Map<UUID, Position> cardAssignments) {
+        this.cardAssignments = cardAssignments != null ? cardAssignments : new HashMap<>();
+    }
 }

@@ -15,7 +15,8 @@ import { clearActiveSessionId, setActiveSessionId } from "../../shared/session";
 import { useSessionSync } from "../../shared/realtime/useSessionSync";
 import { TeamPitch } from "../../shared/components/TeamPitch";
 import { FORMATION_LABELS } from "../../shared/formations";
-import type { Formation, Position } from "../../shared/api/contracts";
+import { formatEligiblePositions, openEligibleHighlights } from "../../shared/positions";
+import type { Formation } from "../../shared/api/contracts";
 
 /** UI lock / transition delay after timer hits 0 (may be >= backend grace; not required to match). */
 const BID_UI_GRACE_MS = 2000;
@@ -64,6 +65,7 @@ export function AuctionPage() {
   const couldBid = isMyTurn || turnIsOpen;
   const biddingLockedByGrace = inGracePeriod && secondsLeft <= 0 && !loading;
   const canBid = couldBid && !biddingLockedByGrace;
+  const inTimerGrace = inGracePeriod && secondsLeft <= 0 && !timeExtended;
   const mySquadFull = myTeam.length >= 11;
   const auctionPhaseActive = sessionSnap?.status === "AUCTIONING";
 
@@ -337,6 +339,11 @@ export function AuctionPage() {
     FWD: "bg-red-500",
   };
 
+  const roundPositionLabel = round
+    ? formatEligiblePositions(round.position, round.eligiblePositions)
+    : "";
+  const pitchHighlights = openEligibleHighlights(myFormation, myTeam, round?.eligiblePositions);
+
   // ---- Render ----
 
   return (
@@ -401,7 +408,7 @@ export function AuctionPage() {
                 cards={myTeam}
                 teamColor="#3b82f6"
                 teamBorderColor="#60a5fa"
-                highlightPosition={round?.position as Position | undefined}
+                highlightPositions={pitchHighlights}
               />
             </div>
             {/* Card List */}
@@ -437,7 +444,7 @@ export function AuctionPage() {
               >
                 <div className="text-center mb-4">
                   <span className={`${positionColors[round.position] ?? "bg-gray-500"} text-white text-xs px-2 py-1 rounded-full font-bold`}>
-                    {round.position}
+                    {roundPositionLabel}
                   </span>
                   <h2 className="text-2xl font-extrabold text-white mt-2">{round.cardName}</h2>
                   <p className="text-4xl font-black text-card-gold mt-1">{round.cardRating ?? "?"}</p>
@@ -589,19 +596,27 @@ export function AuctionPage() {
                 <div className={`mt-3 text-center text-sm font-medium py-2 rounded-lg transition-colors duration-300 ${
                   mySquadFull
                     ? "bg-accent-green/10 text-accent-green"
-                    : turnIsOpen
+                    : inTimerGrace
                       ? "bg-amber-500/10 text-amber-400"
-                      : isMyTurn
-                        ? "bg-accent/10 text-accent"
-                        : "bg-surface-elevated text-slate-400"
+                      : turnIsOpen
+                        ? "bg-amber-500/10 text-amber-400"
+                        : isMyTurn
+                          ? "bg-accent/10 text-accent"
+                          : "bg-surface-elevated text-slate-400"
                 }`}>
                   {mySquadFull
                     ? "Squad full (11/11)"
-                    : turnIsOpen
-                      ? "Bidding open to both players!"
-                      : isMyTurn
-                        ? "Your turn to bid!"
-                        : "Waiting for opponent..."}
+                    : inTimerGrace
+                      ? loading && couldBid
+                        ? "Submitting bid…"
+                        : couldBid
+                          ? "Time's up — bids locked"
+                          : "Time's up — resolving turn…"
+                      : turnIsOpen
+                        ? "Bidding open to both players!"
+                        : isMyTurn
+                          ? "Your turn to bid!"
+                          : "Waiting for opponent..."}
                 </div>
               </div>
             )}
