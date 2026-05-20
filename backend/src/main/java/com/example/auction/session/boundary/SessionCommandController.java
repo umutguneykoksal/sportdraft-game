@@ -1,7 +1,6 @@
 package com.example.auction.session.boundary;
 
 import com.example.auction.common.web.AuthTokenResolver;
-import com.example.auction.lobby.boundary.JoinLobbyRequest;
 import com.example.auction.lobby.boundary.SessionSnapshotResponse;
 import com.example.auction.session.control.SessionOrchestrator;
 import jakarta.validation.Valid;
@@ -25,15 +24,6 @@ public class SessionCommandController {
     public SessionCommandController(SessionOrchestrator sessionOrchestrator, AuthTokenResolver authTokenResolver) {
         this.sessionOrchestrator = sessionOrchestrator;
         this.authTokenResolver = authTokenResolver;
-    }
-
-    @PostMapping("/lobbies/join")
-    public SessionSnapshotResponse joinLobby(
-        @Valid @RequestBody(required = false) JoinLobbyRequest request,
-        @RequestHeader("Authorization") String authorization
-    ) {
-        String nickname = request != null ? request.nickname() : null;
-        return sessionOrchestrator.joinLobby(authTokenResolver.resolveUserId(authorization), nickname);
     }
 
     @DeleteMapping("/sessions/{sessionId}/players/me")

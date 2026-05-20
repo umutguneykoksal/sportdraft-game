@@ -6,6 +6,16 @@ export function getApiBase(): string {
   return API_BASE;
 }
 
+/** Default v2; rollback: set REACT_APP_API_VERSION=v1 */
+export function getApiPrefix(): string {
+  const version = (process.env.REACT_APP_API_VERSION ?? "v2").toLowerCase();
+  return version === "v1" ? "/api" : "/api/v2";
+}
+
+export function getClientUserId(): string | null {
+  return localStorage.getItem("sessionToken");
+}
+
 export function authHeaders(): Record<string, string> {
   const token = localStorage.getItem("sessionToken");
   if (!token) {

@@ -1,8 +1,8 @@
 import { AuctionRoundResponse, AuctionStateResponse } from "./contracts";
-import { authHeaders, getApiBase, parseOrThrow } from "./httpClient";
+import { authHeaders, getApiBase, getApiPrefix, parseOrThrow } from "./httpClient";
 
 export async function startRound(sessionId: string): Promise<AuctionRoundResponse> {
-  const response = await fetch(`${getApiBase()}/api/sessions/${sessionId}/auction/rounds/start`, {
+  const response = await fetch(`${getApiBase()}${getApiPrefix()}/sessions/${sessionId}/auction/rounds/start`, {
     method: "POST",
     headers: authHeaders(),
   });
@@ -14,7 +14,7 @@ export async function placeBid(
   roundId: string,
   amountCents: number
 ): Promise<AuctionRoundResponse> {
-  const response = await fetch(`${getApiBase()}/api/sessions/${sessionId}/bids`, {
+  const response = await fetch(`${getApiBase()}${getApiPrefix()}/sessions/${sessionId}/bids`, {
     method: "POST",
     headers: {
       ...authHeaders(),
@@ -26,7 +26,7 @@ export async function placeBid(
 }
 
 export async function readyNextRound(sessionId: string, roundId: string): Promise<AuctionRoundResponse> {
-  const response = await fetch(`${getApiBase()}/api/sessions/${sessionId}/auction/rounds/${roundId}/ready-next`, {
+  const response = await fetch(`${getApiBase()}${getApiPrefix()}/sessions/${sessionId}/auction/rounds/${roundId}/ready-next`, {
     method: "POST",
     headers: {
       ...authHeaders(),
@@ -37,7 +37,7 @@ export async function readyNextRound(sessionId: string, roundId: string): Promis
 }
 
 export async function passRound(sessionId: string, roundId: string): Promise<AuctionRoundResponse> {
-  const response = await fetch(`${getApiBase()}/api/sessions/${sessionId}/auction/rounds/${roundId}/pass`, {
+  const response = await fetch(`${getApiBase()}${getApiPrefix()}/sessions/${sessionId}/auction/rounds/${roundId}/pass`, {
     method: "POST",
     headers: {
       ...authHeaders(),
@@ -48,7 +48,7 @@ export async function passRound(sessionId: string, roundId: string): Promise<Auc
 }
 
 export async function getAuctionState(sessionId: string): Promise<AuctionStateResponse> {
-  const response = await fetch(`${getApiBase()}/api/sessions/${sessionId}/auction/state`, {
+  const response = await fetch(`${getApiBase()}${getApiPrefix()}/sessions/${sessionId}/auction/state`, {
     method: "GET",
     headers: authHeaders(),
   });

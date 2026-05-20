@@ -1,12 +1,12 @@
 import { Formation, SessionSnapshotResponse } from "./contracts";
-import { authHeaders, fetchWithTimeout, getApiBase, parseOrThrow } from "./httpClient";
+import { authHeaders, fetchWithTimeout, getApiBase, getApiPrefix, parseOrThrow } from "./httpClient";
 
 export async function getSessionSnapshot(sessionId: string): Promise<SessionSnapshotResponse> {
   let lastError: Error | null = null;
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
       const response = await fetchWithTimeout(
-        `${getApiBase()}/api/sessions/${sessionId}`,
+        `${getApiBase()}${getApiPrefix()}/sessions/${sessionId}`,
         { method: "GET", headers: authHeaders() },
         3500
       );
@@ -22,7 +22,7 @@ export async function getSessionSnapshot(sessionId: string): Promise<SessionSnap
 }
 
 export async function selectFormation(sessionId: string, formation: Formation): Promise<SessionSnapshotResponse> {
-  const response = await fetch(`${getApiBase()}/api/sessions/${sessionId}/formation`, {
+  const response = await fetch(`${getApiBase()}${getApiPrefix()}/sessions/${sessionId}/formation`, {
     method: "POST",
     headers: authHeaders(),
     body: JSON.stringify({ formation }),
@@ -31,7 +31,7 @@ export async function selectFormation(sessionId: string, formation: Formation): 
 }
 
 export async function confirmFormationReady(sessionId: string): Promise<SessionSnapshotResponse> {
-  const response = await fetch(`${getApiBase()}/api/sessions/${sessionId}/confirm-formation-ready`, {
+  const response = await fetch(`${getApiBase()}${getApiPrefix()}/sessions/${sessionId}/confirm-formation-ready`, {
     method: "POST",
     headers: authHeaders(),
   });
@@ -39,7 +39,7 @@ export async function confirmFormationReady(sessionId: string): Promise<SessionS
 }
 
 export async function confirmMatchStart(sessionId: string): Promise<SessionSnapshotResponse> {
-  const response = await fetch(`${getApiBase()}/api/sessions/${sessionId}/confirm-match-start`, {
+  const response = await fetch(`${getApiBase()}${getApiPrefix()}/sessions/${sessionId}/confirm-match-start`, {
     method: "POST",
     headers: authHeaders(),
   });
@@ -48,7 +48,7 @@ export async function confirmMatchStart(sessionId: string): Promise<SessionSnaps
 
 export async function pingSession(sessionId: string): Promise<void> {
   try {
-    await fetch(`${getApiBase()}/api/sessions/${sessionId}/ping`, {
+    await fetch(`${getApiBase()}${getApiPrefix()}/sessions/${sessionId}/ping`, {
       method: "POST",
       headers: authHeaders(),
     });
@@ -71,7 +71,7 @@ export async function fetchEventsSince(
   const token = localStorage.getItem("sessionToken") ?? "";
   const spectatorParam = spectator ? "&spectator=true" : "";
   const response = await fetch(
-    `${getApiBase()}/api/sessions/${sessionId}/events/sync?afterSeq=${afterSeq}&token=${encodeURIComponent(token)}${spectatorParam}`,
+    `${getApiBase()}${getApiPrefix()}/sessions/${sessionId}/events/sync?afterSeq=${afterSeq}&token=${encodeURIComponent(token)}${spectatorParam}`,
     { method: "GET" }
   );
   if (!response.ok) throw new Error(`fetchEventsSince failed: ${response.status}`);

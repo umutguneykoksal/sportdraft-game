@@ -1,9 +1,9 @@
 import { MatchResultResponse, MatchEvent } from "./contracts";
-import { authHeaders, getApiBase } from "./httpClient";
+import { authHeaders, getApiBase, getApiPrefix } from "./httpClient";
 import { ApiError, readErrorMessage } from "./errors";
 
 export async function getMatchResult(sessionId: string): Promise<MatchResultResponse | null> {
-  const response = await fetch(`${getApiBase()}/api/sessions/${sessionId}/match-result`, {
+  const response = await fetch(`${getApiBase()}${getApiPrefix()}/sessions/${sessionId}/match-result`, {
     method: "GET",
     headers: authHeaders(),
   });
@@ -17,7 +17,7 @@ export async function getMatchResult(sessionId: string): Promise<MatchResultResp
 }
 
 export async function getMatchTimeline(sessionId: string): Promise<MatchEvent[]> {
-  const response = await fetch(`${getApiBase()}/api/sessions/${sessionId}/match-timeline`, {
+  const response = await fetch(`${getApiBase()}${getApiPrefix()}/sessions/${sessionId}/match-timeline`, {
     method: "GET",
     headers: authHeaders(),
   });

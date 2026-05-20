@@ -1,17 +1,12 @@
 package com.example.auction.bidding.control;
 
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
-import com.example.auction.bidding.boundary.PlaceBidRequest;
-import com.example.auction.bidding.entity.Card;
-import com.example.auction.bidding.entity.Position;
-import com.example.auction.bidding.entity.RoundStatus;
-import com.example.auction.common.sse.SseEmitterRegistry;
 import com.example.auction.session.entity.Formation;
 import com.example.auction.session.entity.SessionStatus;
 import com.example.auction.session.redis.ActivePlayer;
@@ -19,10 +14,8 @@ import com.example.auction.session.redis.ActiveRound;
 import com.example.auction.session.redis.ActiveSession;
 import com.example.auction.session.redis.ActiveSessionStore;
 import com.example.auction.session.redis.SessionMutationGuard;
-import io.micrometer.core.instrument.MeterRegistry;
+import com.example.auction.bidding.entity.RoundStatus;
 import java.time.Instant;
-import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Supplier;
 import org.junit.jupiter.api.BeforeEach;
@@ -30,7 +23,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -44,11 +36,9 @@ class AuctionServiceTest {
     @Mock
     private CardCatalogService cardCatalog;
     @Mock
-    private SseEmitterRegistry sseEmitterRegistry;
+    private AuctionRoundLifecycle roundLifecycle;
     @Mock
-    private ApplicationEventPublisher publisher;
-    @Mock
-    private MeterRegistry meterRegistry;
+    private AuctionMatchTransition matchTransition;
 
     private AuctionService auctionService;
 
@@ -67,9 +57,8 @@ class AuctionServiceTest {
             sessionStore,
             mutationGuard,
             cardCatalog,
-            sseEmitterRegistry,
-            publisher,
-            meterRegistry
+            roundLifecycle,
+            matchTransition
         );
     }
 
@@ -88,6 +77,8 @@ class AuctionServiceTest {
         session.getRounds().add(openRound);
 
         when(sessionStore.getById(sessionId)).thenReturn(session);
+        when(roundLifecycle.startRound(session))
+            .thenThrow(new ResponseStatusException(HttpStatus.CONFLICT, "An active round already exists"));
 
         assertThatThrownBy(() -> auctionService.startRound(sessionId, session.getPlayers().get(0).getUserId()))
             .isInstanceOf(ResponseStatusException.class)
@@ -104,6 +95,8 @@ class AuctionServiceTest {
         ActiveSession session = new ActiveSession(sessionId, SessionStatus.WAITING, Instant.now());
         session.getPlayers().add(new ActivePlayer(UUID.randomUUID(), userId, "P1", Formation.FOUR_FOUR_TWO, 100));
         when(sessionStore.getById(sessionId)).thenReturn(session);
+        when(roundLifecycle.startRound(session))
+            .thenThrow(new ResponseStatusException(HttpStatus.CONFLICT, "Session is not auctioning"));
 
         assertThatThrownBy(() -> auctionService.startRound(sessionId, userId))
             .isInstanceOf(ResponseStatusException.class)

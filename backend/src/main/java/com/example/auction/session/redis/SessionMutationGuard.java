@@ -11,13 +11,15 @@ import org.springframework.web.server.ResponseStatusException;
 
 /**
  * Serializes all mutations on a single game session (HTTP commands + timer scheduler).
- * Prevents optimistic-lock races between concurrent writers.
+ * Retries optimistic version conflicts a few times before surfacing 409 to the client.
  */
 @Component
 public class SessionMutationGuard {
 
     private static final String LOCK_PREFIX = "session-lock:";
     private static final Duration LOCK_TTL = Duration.ofSeconds(5);
+    private static final int MAX_OPTIMISTIC_ATTEMPTS = 3;
+    private static final long RETRY_BASE_MS = 15L;
 
     private static final DefaultRedisScript<Long> UNLOCK_SCRIPT;
 
@@ -41,6 +43,27 @@ public class SessionMutationGuard {
     }
 
     public <T> T mutate(UUID sessionId, Supplier<T> action) {
+        for (int attempt = 0; attempt < MAX_OPTIMISTIC_ATTEMPTS; attempt++) {
+            try {
+                return runWithLock(sessionId, action);
+            } catch (ActiveSessionStore.OptimisticLockException e) {
+                if (attempt == MAX_OPTIMISTIC_ATTEMPTS - 1) {
+                    throw e;
+                }
+                sleepBeforeRetry(attempt);
+            }
+        }
+        throw new IllegalStateException("Unreachable");
+    }
+
+    public void mutateVoid(UUID sessionId, Runnable action) {
+        mutate(sessionId, () -> {
+            action.run();
+            return null;
+        });
+    }
+
+    private <T> T runWithLock(UUID sessionId, Supplier<T> action) {
         String key = lockKey(sessionId);
         String token = UUID.randomUUID().toString();
         Boolean acquired = redis.opsForValue().setIfAbsent(key, token, LOCK_TTL);
@@ -54,11 +77,13 @@ public class SessionMutationGuard {
         }
     }
 
-    public void mutateVoid(UUID sessionId, Runnable action) {
-        mutate(sessionId, () -> {
-            action.run();
-            return null;
-        });
+    private static void sleepBeforeRetry(int attempt) {
+        try {
+            Thread.sleep(RETRY_BASE_MS * (attempt + 1));
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Concurrent update — please retry");
+        }
     }
 
     private String lockKey(UUID sessionId) {

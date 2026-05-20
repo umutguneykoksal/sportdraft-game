@@ -28,6 +28,19 @@ class SessionOrchestratorTest {
     private SessionOrchestrator sessionOrchestrator;
 
     @Test
+    void createRoomDelegatesToLobbyService() {
+        UUID userId = UUID.randomUUID();
+        SessionSnapshotResponse snap = new SessionSnapshotResponse(
+            UUID.randomUUID(), SessionStatus.WAITING, Instant.now(), 1, true,
+            Formation.FOUR_FOUR_TWO, null, 0, false, 0L, 0L
+        );
+        when(lobbyService.createRoom(userId, "nick")).thenReturn(snap);
+
+        assertThat(sessionOrchestrator.createRoom(userId, "nick")).isEqualTo(snap);
+        verify(lobbyService).createRoom(userId, "nick");
+    }
+
+    @Test
     void confirmMatchStartDelegatesAndReturnsSnapshot() {
         UUID sessionId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();

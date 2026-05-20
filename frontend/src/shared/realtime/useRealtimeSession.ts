@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { getApiBase } from "../api";
+import { getApiBase, getApiPrefix } from "../api";
 import { createTransport } from "./transportFactory";
 import { WS_FAILOVER_ATTEMPTS, MAX_BUFFERED_EVENTS } from "./constants";
 import { RealtimeEnvelope } from "./types";
@@ -46,7 +46,7 @@ export function useRealtimeSession(
       : base.replace(/^http:\/\//, "ws://");
     const spectatorParam = spectator ? "&spectator=true" : "";
     const wsUrl = `${wsBase}/ws/sessions?sessionId=${encodeURIComponent(sessionId)}&token=${encodeURIComponent(token)}${spectatorParam}`;
-    const sseUrl = `${base}/api/sessions/${encodeURIComponent(sessionId)}/events?token=${encodeURIComponent(token)}${spectatorParam}`;
+    const sseUrl = `${base}${getApiPrefix()}/sessions/${encodeURIComponent(sessionId)}/events?token=${encodeURIComponent(token)}${spectatorParam}`;
 
     let closed = false;
 

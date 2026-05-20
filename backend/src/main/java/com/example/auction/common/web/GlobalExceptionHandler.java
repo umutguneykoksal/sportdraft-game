@@ -1,12 +1,12 @@
 package com.example.auction.common.web;
 
 import com.example.auction.session.redis.ActiveSessionStore;
-import java.time.Instant;
-import java.util.Map;
+import java.net.URI;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -17,50 +17,54 @@ import org.springframework.web.server.ResponseStatusException;
 public class GlobalExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
+    private static final URI ABOUT_BLANK = URI.create("about:blank");
 
     @ExceptionHandler(ResponseStatusException.class)
-    public ResponseEntity<Map<String, Object>> handleResponseStatus(ResponseStatusException ex) {
+    public ResponseEntity<ProblemDetail> handleResponseStatus(ResponseStatusException ex) {
         log.debug("ResponseStatusException: {} {}", ex.getStatusCode(), ex.getReason());
-        return ResponseEntity
-            .status(ex.getStatusCode())
-            .body(errorBody(ex.getStatusCode().value(), ex.getStatusCode().toString(), ex.getReason()));
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(ex.getStatusCode(), detailMessage(ex.getReason()));
+        problem.setTitle(ex.getStatusCode().toString());
+        problem.setType(ABOUT_BLANK);
+        return ResponseEntity.status(ex.getStatusCode()).body(problem);
     }
 
     @ExceptionHandler(ActiveSessionStore.OptimisticLockException.class)
-    public ResponseEntity<Map<String, Object>> handleOptimisticLock(ActiveSessionStore.OptimisticLockException ex) {
+    public ResponseEntity<ProblemDetail> handleOptimisticLock(ActiveSessionStore.OptimisticLockException ex) {
         log.debug("OptimisticLockException: {}", ex.getMessage());
-        return ResponseEntity
-            .status(HttpStatus.CONFLICT)
-            .body(errorBody(409, "CONFLICT", "Concurrent update — please retry"));
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+            HttpStatus.CONFLICT, "Concurrent update — please retry"
+        );
+        problem.setTitle("Conflict");
+        problem.setType(ABOUT_BLANK);
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(problem);
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
-    public ResponseEntity<Map<String, Object>> handleValidation(MethodArgumentNotValidException ex) {
+    public ResponseEntity<ProblemDetail> handleValidation(MethodArgumentNotValidException ex) {
         String message = ex.getBindingResult().getFieldErrors().stream()
             .map(err -> err.getField() + ": " + err.getDefaultMessage())
             .collect(Collectors.joining("; "));
         if (message.isBlank()) {
             message = "Validation failed";
         }
-        return ResponseEntity
-            .status(HttpStatus.BAD_REQUEST)
-            .body(errorBody(400, "BAD_REQUEST", message));
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, message);
+        problem.setTitle("Bad Request");
+        problem.setType(ABOUT_BLANK);
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(problem);
     }
 
     @ExceptionHandler(Exception.class)
-    public ResponseEntity<Map<String, Object>> handleUnexpected(Exception ex) {
+    public ResponseEntity<ProblemDetail> handleUnexpected(Exception ex) {
         log.error("Unhandled exception", ex);
-        return ResponseEntity
-            .status(HttpStatus.INTERNAL_SERVER_ERROR)
-            .body(errorBody(500, "INTERNAL_SERVER_ERROR", "An unexpected error occurred"));
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+            HttpStatus.INTERNAL_SERVER_ERROR, "An unexpected error occurred"
+        );
+        problem.setTitle("Internal Server Error");
+        problem.setType(ABOUT_BLANK);
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(problem);
     }
 
-    private static Map<String, Object> errorBody(int status, String error, String message) {
-        return Map.of(
-            "status", status,
-            "error", error,
-            "message", message != null ? message : "Unknown error",
-            "timestamp", Instant.now().toString()
-        );
+    private static String detailMessage(String reason) {
+        return reason != null ? reason : "Unknown error";
     }
 }

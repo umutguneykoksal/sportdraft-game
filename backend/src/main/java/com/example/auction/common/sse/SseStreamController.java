@@ -13,7 +13,7 @@ import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 @RestController
-@RequestMapping("/api/sessions")
+@RequestMapping({"/api/sessions", "/api/v2/sessions"})
 public class SseStreamController {
 
     private final SseEmitterRegistry sseEmitterRegistry;

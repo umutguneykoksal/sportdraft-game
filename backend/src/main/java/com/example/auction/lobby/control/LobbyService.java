@@ -9,6 +9,7 @@ import com.example.auction.lobby.boundary.SessionSnapshotResponse;
 import com.example.auction.session.entity.Formation;
 import com.example.auction.session.entity.SessionStatus;
 import com.example.auction.session.redis.ActivePlayer;
+import com.example.auction.session.control.SessionAccess;
 import com.example.auction.session.redis.ActiveSession;
 import com.example.auction.session.redis.ActiveSessionStore;
 import java.time.Instant;
@@ -142,8 +143,8 @@ public class LobbyService {
         ActiveSession session = sessionStore.getById(sessionId);
         long versionBefore = session.getVersion();
 
-        ActivePlayer player = session.findPlayerByUserId(userId)
-            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Player not in session"));
+        SessionAccess.requireMember(session, userId);
+        ActivePlayer player = session.findPlayerByUserId(userId).orElseThrow();
 
         session.getPlayers().remove(player);
 
@@ -183,8 +184,8 @@ public class LobbyService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Session is not in formation selection phase");
         }
 
-        ActivePlayer player = session.findPlayerByUserId(userId)
-            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Player not in session"));
+        SessionAccess.requireMember(session, userId);
+        ActivePlayer player = session.findPlayerByUserId(userId).orElseThrow();
 
         player.selectFormation(formation);
         sessionStore.saveIfVersionMatch(session, versionBefore);
@@ -204,9 +205,7 @@ public class LobbyService {
         if (session.getStatus() != SessionStatus.FORMATION_SELECT) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Not in formation selection phase");
         }
-        if (!session.hasPlayerWithUserId(userId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Player not in session");
-        }
+        SessionAccess.requireMember(session, userId);
 
         session.getPlayers().forEach(ActivePlayer::confirmDefaultFormationIfMissing);
         boolean changed = session.registerMatchStartReady(userId);

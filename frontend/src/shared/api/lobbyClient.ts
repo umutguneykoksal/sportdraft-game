@@ -1,15 +1,15 @@
 import { LobbyRoomResponse, MatchEvent, SessionSnapshotResponse, SpectateStateResponse } from "./contracts";
-import { authHeaders, getApiBase, parseOrThrow } from "./httpClient";
+import { authHeaders, getApiBase, getApiPrefix, parseOrThrow } from "./httpClient";
 
 export async function listLobbies(): Promise<LobbyRoomResponse[]> {
-  const response = await fetch(`${getApiBase()}/api/lobbies`, {
+  const response = await fetch(`${getApiBase()}${getApiPrefix()}/lobbies`, {
     headers: authHeaders(),
   });
   return parseOrThrow<LobbyRoomResponse[]>(response, `listLobbies failed: ${response.status}`);
 }
 
 export async function createRoom(nickname: string): Promise<SessionSnapshotResponse> {
-  const response = await fetch(`${getApiBase()}/api/lobbies`, {
+  const response = await fetch(`${getApiBase()}${getApiPrefix()}/lobbies`, {
     method: "POST",
     headers: authHeaders(),
     body: JSON.stringify({ nickname }),
@@ -18,7 +18,7 @@ export async function createRoom(nickname: string): Promise<SessionSnapshotRespo
 }
 
 export async function joinRoom(sessionId: string, nickname: string): Promise<SessionSnapshotResponse> {
-  const response = await fetch(`${getApiBase()}/api/lobbies/${sessionId}/join`, {
+  const response = await fetch(`${getApiBase()}${getApiPrefix()}/lobbies/${sessionId}/join`, {
     method: "POST",
     headers: authHeaders(),
     body: JSON.stringify({ nickname }),
@@ -28,7 +28,7 @@ export async function joinRoom(sessionId: string, nickname: string): Promise<Ses
 
 /** @deprecated Use createRoom + joinRoom instead. */
 export async function joinLobby(nickname: string): Promise<SessionSnapshotResponse> {
-  const response = await fetch(`${getApiBase()}/api/lobbies/join`, {
+  const response = await fetch(`${getApiBase()}${getApiPrefix()}/lobbies/join`, {
     method: "POST",
     headers: authHeaders(),
     body: JSON.stringify({ nickname }),
@@ -37,7 +37,7 @@ export async function joinLobby(nickname: string): Promise<SessionSnapshotRespon
 }
 
 export async function leaveLobby(sessionId: string): Promise<SessionSnapshotResponse> {
-  const response = await fetch(`${getApiBase()}/api/sessions/${sessionId}/players/me`, {
+  const response = await fetch(`${getApiBase()}${getApiPrefix()}/sessions/${sessionId}/players/me`, {
     method: "DELETE",
     headers: authHeaders(),
   });
@@ -45,14 +45,14 @@ export async function leaveLobby(sessionId: string): Promise<SessionSnapshotResp
 }
 
 export async function getSpectateState(sessionId: string): Promise<SpectateStateResponse> {
-  const response = await fetch(`${getApiBase()}/api/sessions/${sessionId}/spectate`, {
+  const response = await fetch(`${getApiBase()}${getApiPrefix()}/sessions/${sessionId}/spectate`, {
     headers: authHeaders(),
   });
   return parseOrThrow<SpectateStateResponse>(response, `getSpectateState failed: ${response.status}`);
 }
 
 export async function getSpectateMatchTimeline(sessionId: string): Promise<MatchEvent[]> {
-  const response = await fetch(`${getApiBase()}/api/sessions/${sessionId}/spectate/match-timeline`, {
+  const response = await fetch(`${getApiBase()}${getApiPrefix()}/sessions/${sessionId}/spectate/match-timeline`, {
     method: "GET",
   });
   if (response.status === 404) {

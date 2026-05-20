@@ -20,7 +20,7 @@ import org.springframework.web.bind.annotation.RestController;
  * requested seq is too old (client should fall back to a full snapshot fetch).
  */
 @RestController
-@RequestMapping("/api/sessions")
+@RequestMapping({"/api/sessions", "/api/v2/sessions"})
 public class SessionEventSyncController {
 
     private final SessionEventLog eventLog;
