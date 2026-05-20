@@ -38,6 +38,20 @@ describe("buildRoundOutcomeNotice", () => {
     expect(notice?.amountCents).toBe(42);
   });
 
+  it("uses opponent nickname in 4-player mode", () => {
+    const notice = buildRoundOutcomeNotice(
+      { result: "SOLD", winnerUserId: "user-b", round: baseRound },
+      "user-a",
+      "Alice",
+      [
+        { userId: "user-a", nickname: "Alice" },
+        { userId: "user-b", nickname: "Bob" },
+      ]
+    );
+    expect(notice?.winnerLabel).toBe("Bob");
+    expect(notice?.isMine).toBe(false);
+  });
+
   it("builds passed notice with friendly reason", () => {
     const notice = buildRoundOutcomeNotice(
       { result: "PASSED", reason: "both_passed", round: { ...baseRound, status: "PASSED" } },

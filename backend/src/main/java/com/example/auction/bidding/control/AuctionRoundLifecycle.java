@@ -335,10 +335,14 @@ public class AuctionRoundLifecycle {
         round.registerPass(userId);
 
         if (round.getHighestBidderId() != null) {
-            settlement.closeRound(round, session, vBefore, cardMap);
-            return session.findOpenRound()
-                .map(r -> AuctionRoundResponses.toResponseWithContext(r, cardMap.get(r.getCardId()), session, cardMap, userId))
-                .orElse(AuctionRoundResponses.toResponse(round, roundCard, session, cardMap));
+            boolean closeAfterPass = session.getMaxPlayers() <= 2
+                || AuctionRules.allNonWinnersHavePassed(session, round);
+            if (closeAfterPass) {
+                settlement.closeRound(round, session, vBefore, cardMap);
+                return session.findOpenRound()
+                    .map(r -> AuctionRoundResponses.toResponseWithContext(r, cardMap.get(r.getCardId()), session, cardMap, userId))
+                    .orElse(AuctionRoundResponses.toResponse(round, roundCard, session, cardMap));
+            }
         }
 
         Optional<UUID> nextBidder = AuctionRules.findNextEligibleBidder(session, round, roundCard, cardMap, userId);

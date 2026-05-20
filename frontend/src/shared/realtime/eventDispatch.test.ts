@@ -112,6 +112,47 @@ describe("processEventBatch", () => {
     expect(result.refreshKind).toBe("full");
   });
 
+  it("invokes onRoundEnded for each round_ended even when followed by round_started", () => {
+    const onRoundEnded = jest.fn();
+    const soldRound = {
+      roundId: "r1",
+      sessionId: "s1",
+      cardId: "c1",
+      cardName: "Haaland",
+      status: "SOLD",
+      highestBidCents: 10,
+    };
+    const nextRound = { ...soldRound, roundId: "r2", cardName: "Salah", status: "OPEN" };
+    processEventBatch(
+      [
+        {
+          eventType: "round_ended",
+          seq: 5,
+          payload: { result: "SOLD", round: soldRound, winnerUserId: "u1" },
+          occurredAt: new Date().toISOString(),
+        },
+        {
+          eventType: "round_started",
+          seq: 6,
+          payload: { round: nextRound },
+          occurredAt: new Date().toISOString(),
+        },
+      ],
+      4,
+      {
+        patchRound: jest.fn(),
+        clearRound: jest.fn(),
+        setRound: jest.fn(),
+        onMatchCompleted: jest.fn(),
+        onRoundEnded,
+      }
+    );
+    expect(onRoundEnded).toHaveBeenCalledTimes(1);
+    expect(onRoundEnded).toHaveBeenCalledWith(
+      expect.objectContaining({ result: "SOLD", winnerUserId: "u1" })
+    );
+  });
+
   it("clears round and requests state refresh on PASSED round_ended", () => {
     const clearRound = jest.fn();
     const { result } = processEventBatch(

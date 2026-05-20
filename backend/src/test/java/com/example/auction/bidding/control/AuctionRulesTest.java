@@ -5,8 +5,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.example.auction.session.entity.Formation;
 import com.example.auction.session.entity.GameMode;
 import com.example.auction.session.entity.SessionStatus;
+import com.example.auction.bidding.entity.RoundStatus;
+import com.example.auction.session.redis.ActiveBid;
 import com.example.auction.session.redis.ActivePlayer;
+import com.example.auction.session.redis.ActiveRound;
 import com.example.auction.session.redis.ActiveSession;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -25,6 +30,59 @@ class AuctionRulesTest {
         assertThat(AuctionRules.nextTurnUserId(session, u2)).isEqualTo(u3);
         assertThat(AuctionRules.nextTurnUserId(session, u3)).isEqualTo(u4);
         assertThat(AuctionRules.nextTurnUserId(session, u4)).isEqualTo(u1);
+    }
+
+    @Test
+    void turnOpensEarlyWhenRoundHasAtMostFifteenSecondsLeft() {
+        Instant now = Instant.now();
+        ActiveRound round = new ActiveRound(
+            UUID.randomUUID(), UUID.randomUUID(), now, now.plus(30, ChronoUnit.SECONDS),
+            UUID.randomUUID(), RoundStatus.OPEN
+        );
+        // Recent bid would normally open turn in 15s; round ends in 10s → open now.
+        round.registerBid(UUID.randomUUID(), 1L, now.plus(10, ChronoUnit.SECONDS), UUID.randomUUID());
+
+        assertThat(AuctionRules.computeTurnOpenAt(round)).isBeforeOrEqualTo(now.plus(1, ChronoUnit.SECONDS));
+        assertThat(AuctionRules.isTurnOpen(round)).isTrue();
+    }
+
+    @Test
+    void turnOpenAtIsEarlierOfExclusiveWindowAndFinalFifteenSeconds() {
+        Instant now = Instant.now();
+        ActiveRound round = new ActiveRound(
+            UUID.randomUUID(), UUID.randomUUID(), now, now.plus(30, ChronoUnit.SECONDS),
+            UUID.randomUUID(), RoundStatus.OPEN
+        );
+        round.setTurnStartedAt(now);
+        round.setCurrentTurnUserId(UUID.randomUUID());
+
+        Instant openAt = AuctionRules.computeTurnOpenAt(round);
+        assertThat(openAt).isEqualTo(now.plus(15, ChronoUnit.SECONDS));
+    }
+
+    @Test
+    void allNonWinnersHavePassedRequiresEveryOtherPlayerToPass() {
+        UUID u1 = UUID.randomUUID();
+        UUID u2 = UUID.randomUUID();
+        UUID u3 = UUID.randomUUID();
+        UUID u4 = UUID.randomUUID();
+        ActiveSession session = fourPlayerSession(List.of(u1, u2, u3, u4));
+        ActivePlayer winner = session.findPlayerByUserId(u1).orElseThrow();
+        ActiveRound round = new ActiveRound(
+            UUID.randomUUID(), UUID.randomUUID(), Instant.now(), Instant.now().plus(30, ChronoUnit.SECONDS),
+            u1, RoundStatus.OPEN
+        );
+        round.getBids().add(new ActiveBid(UUID.randomUUID(), winner.getId(), 5L, UUID.randomUUID(), Instant.now()));
+        round.registerBid(winner.getId(), 5L, round.getEndsAt(), u2);
+
+        assertThat(AuctionRules.allNonWinnersHavePassed(session, round)).isFalse();
+
+        round.registerPass(u2);
+        assertThat(AuctionRules.allNonWinnersHavePassed(session, round)).isFalse();
+
+        round.registerPass(u3);
+        round.registerPass(u4);
+        assertThat(AuctionRules.allNonWinnersHavePassed(session, round)).isTrue();
     }
 
     @Test
@@ -54,6 +112,7 @@ class AuctionRulesTest {
 
     private static ActivePlayer player(UUID userId, String nick) {
         ActivePlayer p = new ActivePlayer();
+        p.setId(UUID.randomUUID());
         p.setUserId(userId);
         p.setNickname(nick);
         p.setFormation(Formation.FOUR_FOUR_TWO);

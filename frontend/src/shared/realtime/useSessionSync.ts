@@ -10,6 +10,7 @@ import {
   pickSharedFields,
   processEventBatch,
   RefreshKind,
+  RoundEndedPayload,
   sortBySeq,
 } from "./eventDispatch";
 import { RealtimeEnvelope } from "./types";
@@ -38,7 +39,15 @@ export interface SessionSyncState {
   isRefreshing: boolean;
 }
 
-export function useSessionSync(sessionId: string | null, spectator = false): SessionSyncState {
+export interface SessionSyncOptions {
+  onRoundEnded?: (payload: RoundEndedPayload) => void;
+}
+
+export function useSessionSync(
+  sessionId: string | null,
+  spectator = false,
+  options?: SessionSyncOptions
+): SessionSyncState {
   const [snapshot, setSnapshot] = useState<SessionSnapshotResponse | null>(null);
   const [auctionState, setAuctionState] = useState<AuctionStateResponse | null>(null);
   const [round, setRound] = useState<AuctionRoundResponse | null>(null);
@@ -58,6 +67,8 @@ export function useSessionSync(sessionId: string | null, spectator = false): Ses
   const roundRef = useRef<AuctionRoundResponse | null>(null);
   const lastMutationVersionRef = useRef(0);
   const seenEventIdsRef = useRef(new Set<string>());
+  const onRoundEndedRef = useRef(options?.onRoundEnded);
+  onRoundEndedRef.current = options?.onRoundEnded;
 
   const noteTransportActivity = useCallback(() => {
     lastHeartbeatRef.current = Date.now();
@@ -201,6 +212,7 @@ export function useSessionSync(sessionId: string | null, spectator = false): Ses
           setRound(r);
         },
         onMatchCompleted: () => setMatchCompleted(true),
+        onRoundEnded: (payload) => onRoundEndedRef.current?.(payload),
       });
 
       if (lastSeq > lastServerSeqRef.current) {

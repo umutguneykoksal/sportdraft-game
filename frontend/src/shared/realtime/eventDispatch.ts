@@ -78,6 +78,13 @@ export interface DispatchResult {
  * Process realtime envelopes and return what REST refresh (if any) is needed.
  * Caller applies round patches via returned side effects in callbacks.
  */
+export type RoundEndedPayload = {
+  result?: string;
+  reason?: string;
+  winnerUserId?: string;
+  round?: AuctionRoundResponse;
+};
+
 export function processEventBatch(
   envs: RealtimeEnvelope[],
   lastServerSeq: number,
@@ -86,6 +93,8 @@ export function processEventBatch(
     clearRound: () => void;
     setRound: (round: AuctionRoundResponse) => void;
     onMatchCompleted: () => void;
+    /** Fired once per round_ended envelope (not overwritten by round_started in the same batch). */
+    onRoundEnded?: (payload: RoundEndedPayload) => void;
   },
   options?: { spectate?: boolean }
 ): { result: DispatchResult; lastSeq: number } {
@@ -123,7 +132,8 @@ export function processEventBatch(
       }
 
       case "round_ended": {
-        const endedPayload = env.payload as { result?: string };
+        const endedPayload = (env.payload ?? {}) as RoundEndedPayload;
+        handlers.onRoundEnded?.(endedPayload);
         if (endedPayload?.result === "SOLD") {
           refreshKind = maxRefresh(refreshKind, spectate ? "full" : "state");
         } else {

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   AuctionRoundResponse,
@@ -15,14 +15,12 @@ import { useSessionSync } from "../../../shared/realtime/useSessionSync";
 import type { Formation } from "../../../shared/api/contracts";
 import { deriveViewerFlags } from "../deriveViewerFlags";
 import { buildDuelTurnOrderEntries, buildTurnOrderEntries, type TurnOrderEntry } from "../AuctionTurnOrderBar";
-import {
-  buildRoundOutcomeNotice,
-  type RoundEndedPayload,
-  type RoundOutcomeNotice,
-} from "../buildRoundOutcomeNotice";
+import { buildRoundOutcomeNotice, type RoundOutcomeNotice } from "../buildRoundOutcomeNotice";
+import type { RoundEndedPayload } from "../../../shared/realtime/eventDispatch";
 import { getOrCreateClientSession } from "../../../shared/session";
 
 export const BID_UI_GRACE_MS = 2000;
+export const ROUND_OUTCOME_TOAST_MS = 5000;
 
 export const POSITION_COLORS: Record<string, string> = {
   GK: "bg-yellow-500",
@@ -66,6 +64,31 @@ export function useAuctionPageState(sessionId: string | undefined) {
   const [roundOutcomeNotice, setRoundOutcomeNotice] = useState<RoundOutcomeNotice | null>(null);
   const lastOutcomeRoundIdRef = useRef<string | null>(null);
   const outcomeDismissRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const playerNicksRef = useRef<{ userId: string; nickname: string }[]>([]);
+
+  const showRoundOutcome = useCallback(
+    (payload: RoundEndedPayload) => {
+      const notice = buildRoundOutcomeNotice(
+        payload,
+        myUserId,
+        getOrCreateClientSession().nickname,
+        playerNicksRef.current
+      );
+      if (!notice || notice.roundId === lastOutcomeRoundIdRef.current) return;
+
+      lastOutcomeRoundIdRef.current = notice.roundId;
+      setRoundOutcomeNotice(notice);
+
+      if (outcomeDismissRef.current) {
+        clearTimeout(outcomeDismissRef.current);
+      }
+      outcomeDismissRef.current = setTimeout(() => {
+        setRoundOutcomeNotice(null);
+        outcomeDismissRef.current = null;
+      }, ROUND_OUTCOME_TOAST_MS);
+    },
+    [myUserId]
+  );
 
   const {
     snapshot: sessionSnap,
@@ -77,7 +100,7 @@ export function useAuctionPageState(sessionId: string | undefined) {
     error: syncError,
     sessionNotFound,
     matchCompleted,
-  } = useSessionSync(sessionId ?? null);
+  } = useSessionSync(sessionId ?? null, false, { onRoundEnded: showRoundOutcome });
 
   const multiPlayerMode = (sessionSnap?.maxPlayers ?? 2) > 2;
   const playerViews = auctionState?.players ?? [];
@@ -160,10 +183,15 @@ export function useAuctionPageState(sessionId: string | undefined) {
     if (controlsLocked) return loading ? "Submitting…" : "Settling round…";
     if (inTimerGrace) return couldBid ? "Time's up — bids locked" : "Time's up — resolving turn…";
     if (waitingOnOpponent) {
-      if (secondsUntilTurnOpen != null && secondsUntilTurnOpen > 0) {
+      if (secondsUntilTurnOpen != null && secondsUntilTurnOpen > 0 && !turnIsOpen) {
+        const finalPhase = secondsLeft <= 15;
         return multiPlayerMode
-          ? `Exclusive turn — open to all in ${secondsUntilTurnOpen}s`
-          : `Open bidding in ${secondsUntilTurnOpen}s`;
+          ? finalPhase
+            ? `Final ${secondsLeft}s — open to all with a slot`
+            : `Exclusive turn — open to all in ${secondsUntilTurnOpen}s`
+          : finalPhase
+            ? `Final ${secondsLeft}s — both can bid`
+            : `Open bidding in ${secondsUntilTurnOpen}s`;
       }
       if (iAmHighestBidder && opponentHasBid) {
         return multiPlayerMode
@@ -252,40 +280,25 @@ export function useAuctionPageState(sessionId: string | undefined) {
   }, [lastEvent]);
 
   useEffect(() => {
-    if (!lastEvent || lastEvent.eventType !== "round_ended") return;
+    const fromAuction = auctionState?.players?.map((p) => ({
+      userId: p.userId,
+      nickname: p.nickname,
+    }));
+    const fromLobby = sessionSnap?.players?.map((p) => ({
+      userId: p.userId,
+      nickname: p.nickname,
+    }));
+    playerNicksRef.current = fromAuction?.length ? fromAuction : fromLobby ?? [];
+  }, [auctionState?.players, sessionSnap?.players]);
 
-    const notice = buildRoundOutcomeNotice(
-      lastEvent.payload as RoundEndedPayload,
-      myUserId,
-      getOrCreateClientSession().nickname
-    );
-    if (!notice || notice.roundId === lastOutcomeRoundIdRef.current) return;
-
-    lastOutcomeRoundIdRef.current = notice.roundId;
-    setRoundOutcomeNotice(notice);
-
-    if (outcomeDismissRef.current) {
-      clearTimeout(outcomeDismissRef.current);
-    }
-    const ms = notice.kind === "sold" ? 4500 : 3200;
-    outcomeDismissRef.current = setTimeout(() => {
-      setRoundOutcomeNotice(null);
-      outcomeDismissRef.current = null;
-    }, ms);
-
+  useEffect(() => {
     return () => {
       if (outcomeDismissRef.current) {
         clearTimeout(outcomeDismissRef.current);
         outcomeDismissRef.current = null;
       }
     };
-  }, [lastEvent, myUserId]);
-
-  useEffect(() => {
-    if (lastEvent?.eventType === "round_started") {
-      setRoundOutcomeNotice(null);
-    }
-  }, [lastEvent]);
+  }, []);
 
   useEffect(() => {
     if (!round || round.status !== "OPEN") {

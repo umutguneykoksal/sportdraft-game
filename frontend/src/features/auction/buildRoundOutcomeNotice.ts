@@ -1,4 +1,5 @@
 import type { AuctionRoundResponse } from "../../shared/api/contracts";
+import type { RoundEndedPayload } from "../../shared/realtime/eventDispatch";
 
 export type RoundOutcomeNotice = {
   roundId: string;
@@ -12,12 +13,21 @@ export type RoundOutcomeNotice = {
   detail?: string;
 };
 
-export type RoundEndedPayload = {
-  result?: string;
-  reason?: string;
-  winnerUserId?: string;
-  round?: AuctionRoundResponse;
-};
+type PlayerNick = { userId: string; nickname: string };
+
+export function resolveWinnerLabel(
+  winnerUserId: string | null | undefined,
+  myUserId: string | null,
+  myNickname: string,
+  players?: PlayerNick[]
+): string {
+  if (!winnerUserId) return "Unknown";
+  if (myUserId && winnerUserId === myUserId) {
+    return myNickname.trim() || "You";
+  }
+  const other = players?.find((p) => p.userId === winnerUserId);
+  return other?.nickname?.trim() || "Opponent";
+}
 
 const PASSED_REASON_LABELS: Record<string, string> = {
   both_passed: "both players passed",
@@ -30,7 +40,8 @@ const PASSED_REASON_LABELS: Record<string, string> = {
 export function buildRoundOutcomeNotice(
   payload: RoundEndedPayload,
   myUserId: string | null,
-  myNickname: string
+  myNickname: string,
+  players?: PlayerNick[]
 ): RoundOutcomeNotice | null {
   const round = payload.round;
   if (!round?.roundId || !round.cardName) {
@@ -40,9 +51,7 @@ export function buildRoundOutcomeNotice(
   if (payload.result === "SOLD") {
     const winnerId = payload.winnerUserId ?? round.highestBidderUserId;
     const isMine = !!myUserId && winnerId === myUserId;
-    const winnerLabel = isMine
-      ? (myNickname.trim() || "You")
-      : "Opponent";
+    const winnerLabel = resolveWinnerLabel(winnerId, myUserId, myNickname, players);
     return {
       roundId: round.roundId,
       kind: "sold",

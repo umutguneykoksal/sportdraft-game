@@ -101,24 +101,55 @@ final class AuctionRules {
         return session.playerCount() >= session.getMaxPlayers();
     }
 
+    /** After a bid, round ends only when every non-winning player has passed (4p+). */
+    static boolean allNonWinnersHavePassed(ActiveSession session, ActiveRound round) {
+        if (round.getHighestBidderId() == null) {
+            return false;
+        }
+        UUID winnerUserId = session.getPlayers().stream()
+            .filter(p -> p.getId().equals(round.getHighestBidderId()))
+            .map(ActivePlayer::getUserId)
+            .findFirst()
+            .orElse(null);
+        if (winnerUserId == null) {
+            return false;
+        }
+        return session.getPlayers().stream()
+            .map(ActivePlayer::getUserId)
+            .filter(uid -> !uid.equals(winnerUserId))
+            .allMatch(round::hasUserPassed);
+    }
+
     static long minimumBidForRound(ActiveRound round) {
         return round.getHighestBidCents() == 0
             ? AuctionTiming.STARTING_BID
             : round.getHighestBidCents() + AuctionTiming.MIN_INCREMENT;
     }
 
+    /**
+     * Exclusive turn ends after {@link AuctionTiming#TURN_OPEN_AFTER_SECONDS}, or earlier when the
+     * round clock has at most that many seconds left (so late bids cannot reset the window forever).
+     */
     static boolean isTurnOpen(ActiveRound round) {
-        if (round.getCurrentTurnUserId() == null || round.getTurnStartedAt() == null) {
-            return false;
-        }
-        return Instant.now().isAfter(round.getTurnStartedAt().plusSeconds(AuctionTiming.TURN_OPEN_AFTER_SECONDS));
+        Instant now = Instant.now();
+        Instant openAt = computeTurnOpenAt(round);
+        return openAt != null && !now.isBefore(openAt);
     }
 
     static Instant computeTurnOpenAt(ActiveRound round) {
-        if (round.getTurnStartedAt() == null) {
-            return null;
+        Instant fromTurn = round.getTurnStartedAt() != null
+            ? round.getTurnStartedAt().plusSeconds(AuctionTiming.TURN_OPEN_AFTER_SECONDS)
+            : null;
+        Instant fromRoundEnd = round.getEndsAt() != null
+            ? round.getEndsAt().minusSeconds(AuctionTiming.TURN_OPEN_AFTER_SECONDS)
+            : null;
+        if (fromTurn == null) {
+            return fromRoundEnd;
         }
-        return round.getTurnStartedAt().plusSeconds(AuctionTiming.TURN_OPEN_AFTER_SECONDS);
+        if (fromRoundEnd == null) {
+            return fromTurn;
+        }
+        return fromTurn.isBefore(fromRoundEnd) ? fromTurn : fromRoundEnd;
     }
 
     static boolean canPlayerBidRound(ActivePlayer player, Card roundCard, long amountCents, Map<UUID, Card> cardMap) {
