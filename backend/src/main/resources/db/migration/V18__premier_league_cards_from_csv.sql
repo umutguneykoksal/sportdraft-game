@@ -1,5 +1,5 @@
 -- Premier League card pool from data/raw/player-data-full-2025-june.csv
--- League: Premier League, min overall: 70, players: 514
+-- League: Premier League, min overall: 70, players: 509
 -- Regenerate: python scripts/generate_premier_league_cards.py
 
 DELETE FROM competition_match;
@@ -292,8 +292,6 @@ INSERT INTO card (id, name, position, rating, pace, shooting, passing, defending
 ('16c59fab-799a-5d15-8736-995219d3c730', 'Altay Bayındır', 'GK', 76, 76, 76, 76, 76, 76),
 ('6424e471-91fc-578d-82aa-b1c12b8ac590', 'Artem Bondarenko', 'CAM', 76, 76, 76, 76, 76, 76),
 ('4aa1be60-b84c-59da-a024-058e1304adcc', 'Beto', 'FWD', 76, 76, 76, 76, 76, 76),
-('4aa1be60-b84c-59da-a024-058e1304adcc', 'Beto', 'FWD', 76, 76, 76, 76, 76, 76),
-('15e53e2f-77eb-5773-a67f-da5dc3af826b', 'Bilal El Khannouss', 'CAM', 76, 76, 76, 76, 76, 76),
 ('15e53e2f-77eb-5773-a67f-da5dc3af826b', 'Bilal El Khannouss', 'CAM', 76, 76, 76, 76, 76, 76),
 ('7a3f7b66-83e5-547a-b156-5526654e3eb9', 'Christopher Jeffrey Richards', 'DEF', 76, 76, 76, 76, 76, 76),
 ('8b717c17-dc41-5d4b-800c-c34fd232ab45', 'Crysencio Jilbert Sylverio Summerville', 'CM', 76, 76, 76, 76, 76, 76),
@@ -314,13 +312,10 @@ INSERT INTO card (id, name, position, rating, pace, shooting, passing, defending
 ('cdb0e32d-01ef-56f2-8688-1339d651269f', 'Mateus Fernandes', 'CAM', 76, 76, 76, 76, 76, 76),
 ('24cc1714-c061-577e-9470-4189d12aeb14', 'Morato', 'DEF', 76, 76, 76, 76, 76, 76),
 ('224b06f5-903e-5b58-884e-fdb2cf53946b', 'Rico Antonio Henry', 'DEF', 76, 76, 76, 76, 76, 76),
-('224b06f5-903e-5b58-884e-fdb2cf53946b', 'Rico Antonio Henry', 'DEF', 76, 76, 76, 76, 76, 76),
-('17e4621a-3f0d-5af4-975d-d805a767c897', 'Samuel Joseph Szmodics', 'FWD', 76, 76, 76, 76, 76, 76),
 ('17e4621a-3f0d-5af4-975d-d805a767c897', 'Samuel Joseph Szmodics', 'FWD', 76, 76, 76, 76, 76, 76),
 ('498c5f4d-8dbf-5f28-affa-d123674d9899', 'Samuel Luke Johnstone', 'GK', 76, 76, 76, 76, 76, 76),
 ('9f12e854-e12e-54ab-869c-b458ec00ab0f', 'Santiago Ignacio Bueno Sciutto', 'DEF', 76, 76, 76, 76, 76, 76),
 ('620092e6-59f8-53dd-9aca-56aadd9fe330', 'Simon Adingra', 'CM', 76, 76, 76, 76, 76, 76),
-('043c365b-78c9-5757-afd7-1a92430a4c5a', 'Stephy Alvaro Mavididi', 'CAM', 76, 76, 76, 76, 76, 76),
 ('043c365b-78c9-5757-afd7-1a92430a4c5a', 'Stephy Alvaro Mavididi', 'CAM', 76, 76, 76, 76, 76, 76),
 ('26705dc4-6318-588f-8c9b-144f88365015', 'Timothy Castagne', 'DEF', 76, 76, 76, 76, 76, 76),
 ('fe36d4c5-7d60-5df2-9efb-951d255e6abb', 'Victor Jörgen Nilsson Lindelöf', 'DEF', 76, 76, 76, 76, 76, 76),
@@ -942,8 +937,6 @@ INSERT INTO card_eligible_position (card_id, position) VALUES
 ('6424e471-91fc-578d-82aa-b1c12b8ac590', 'CM'),
 ('6424e471-91fc-578d-82aa-b1c12b8ac590', 'CDM'),
 ('4aa1be60-b84c-59da-a024-058e1304adcc', 'FWD'),
-('4aa1be60-b84c-59da-a024-058e1304adcc', 'FWD'),
-('15e53e2f-77eb-5773-a67f-da5dc3af826b', 'CAM'),
 ('15e53e2f-77eb-5773-a67f-da5dc3af826b', 'CAM'),
 ('7a3f7b66-83e5-547a-b156-5526654e3eb9', 'DEF'),
 ('8b717c17-dc41-5d4b-800c-c34fd232ab45', 'CM'),
@@ -972,18 +965,12 @@ INSERT INTO card_eligible_position (card_id, position) VALUES
 ('cdb0e32d-01ef-56f2-8688-1339d651269f', 'CAM'),
 ('24cc1714-c061-577e-9470-4189d12aeb14', 'DEF'),
 ('224b06f5-903e-5b58-884e-fdb2cf53946b', 'DEF'),
-('224b06f5-903e-5b58-884e-fdb2cf53946b', 'DEF'),
-('17e4621a-3f0d-5af4-975d-d805a767c897', 'CM'),
-('17e4621a-3f0d-5af4-975d-d805a767c897', 'CAM'),
-('17e4621a-3f0d-5af4-975d-d805a767c897', 'FWD'),
 ('17e4621a-3f0d-5af4-975d-d805a767c897', 'CM'),
 ('17e4621a-3f0d-5af4-975d-d805a767c897', 'CAM'),
 ('17e4621a-3f0d-5af4-975d-d805a767c897', 'FWD'),
 ('498c5f4d-8dbf-5f28-affa-d123674d9899', 'GK'),
 ('9f12e854-e12e-54ab-869c-b458ec00ab0f', 'DEF'),
 ('620092e6-59f8-53dd-9aca-56aadd9fe330', 'CM'),
-('043c365b-78c9-5757-afd7-1a92430a4c5a', 'CM'),
-('043c365b-78c9-5757-afd7-1a92430a4c5a', 'CAM'),
 ('043c365b-78c9-5757-afd7-1a92430a4c5a', 'CM'),
 ('043c365b-78c9-5757-afd7-1a92430a4c5a', 'CAM'),
 ('26705dc4-6318-588f-8c9b-144f88365015', 'DEF'),
