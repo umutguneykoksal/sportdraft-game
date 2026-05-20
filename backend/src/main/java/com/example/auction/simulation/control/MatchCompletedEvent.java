@@ -12,6 +12,9 @@ public record MatchCompletedEvent(
     int homeScore,
     int awayScore,
     long seed,
-    List<MatchEvent> timeline
+    List<MatchEvent> timeline,
+    int homePenaltyGoals,
+    int awayPenaltyGoals,
+    UUID winnerUserId
 ) {
 }

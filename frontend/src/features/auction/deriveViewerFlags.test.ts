@@ -40,6 +40,24 @@ describe("deriveViewerFlags", () => {
     expect(flags.viewerCanBid).toBe(true);
   });
 
+  it("blocks bid for the current highest bidder during open bidding", () => {
+    const flags = deriveViewerFlags(
+      baseRound({
+        highestBidCents: 12,
+        highestBidderUserId: "me",
+        currentTurnUserId: "other",
+      }),
+      "me",
+      [],
+      "FOUR_FOUR_TWO",
+      95,
+      0,
+      true
+    );
+    expect(flags.viewerCanBid).toBe(false);
+    expect(flags.viewerCanPass).toBe(true);
+  });
+
   it("blocks bid when budget is wrongly scaled down (old /100 bug)", () => {
     const flags = deriveViewerFlags(
       baseRound({ highestBidCents: 5, currentTurnUserId: "me" }),

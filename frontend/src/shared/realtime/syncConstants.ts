@@ -1,4 +1,5 @@
 /** Shared REST poll / reconnect intervals for session and spectate sync hooks. */
+export const LOBBY_PHASE_POLL_MS = 2_000;
 export const POLL_INTERVAL_IDLE_MS = 30_000;
 export const POLL_INTERVAL_ROUND_OPEN_MS = 5_000;
 export const POLL_INTERVAL_DISCONNECTED_MS = 2_000;

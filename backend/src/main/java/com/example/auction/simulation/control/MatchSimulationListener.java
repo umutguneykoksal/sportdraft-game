@@ -62,7 +62,10 @@ public class MatchSimulationListener {
                 result.homeGoals(),
                 result.awayGoals(),
                 event.seed(),
-                result.timeline()
+                result.timeline(),
+                result.homePenaltyGoals(),
+                result.awayPenaltyGoals(),
+                result.resolveWinner(event.homePlayerId(), event.awayPlayerId())
             )
         );
     }

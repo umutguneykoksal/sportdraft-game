@@ -167,7 +167,11 @@ export function useAuctionPageState(sessionId: string | undefined) {
   const canFillCard = viewerCanFillCard;
   const iAmHighestBidder = !!myUserId && round?.highestBidderUserId === myUserId;
   const opponentHasBid = (round?.highestBidCents ?? 0) > 0;
-  const waitingOnOpponent = roundIsOpen && !isMyTurn && !turnIsOpen;
+  const waitingOnOpponent =
+    roundIsOpen &&
+    (iAmHighestBidder && opponentHasBid
+      ? true
+      : !isMyTurn && !turnIsOpen);
   const showNoSlotBanner =
     roundIsOpen && !canFillCard && !showTakePanel && (isMyTurn || turnIsOpen || canPass);
   const isResolvingRound = !!round && resolvingRoundId === round.roundId;
@@ -207,6 +211,11 @@ export function useAuctionPageState(sessionId: string | undefined) {
     if (!canFillCard && canPass) return "No slot for this card — pass to skip";
     if (!canFillCard) return "No slot for this card — watching";
     if (turnIsOpen) {
+      if (iAmHighestBidder && opponentHasBid) {
+        return multiPlayerMode
+          ? `You're leading at ${round!.highestBidCents} cr — waiting for others to pass or outbid`
+          : `You're leading at ${round!.highestBidCents} cr — waiting for opponent`;
+      }
       return multiPlayerMode
         ? "Bidding open to all players with a slot for this card!"
         : "Bidding open to both players!";
@@ -247,7 +256,11 @@ export function useAuctionPageState(sessionId: string | undefined) {
 
   useEffect(() => {
     if (!sessionId || !lastEvent) return;
-    if (lastEvent.eventType === "tournament_completed") {
+    if (
+      lastEvent.eventType === "tournament_started"
+      || lastEvent.eventType === "tournament_updated"
+      || lastEvent.eventType === "tournament_completed"
+    ) {
       navigate(`/tournament/${sessionId}`);
       return;
     }

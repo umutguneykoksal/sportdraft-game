@@ -51,9 +51,11 @@ export function deriveViewerFlags(
 
   const mayAct = (isMyTurn || turnIsOpen) && !hasPassed;
   const hasBudget = budget >= minimumBid;
+  const isLeadingBidder =
+    round.highestBidCents > 0 && round.highestBidderUserId === myUserId;
 
   const viewerCanFillCard = canFillCard;
-  const viewerCanBid = mayAct && canFillCard && hasBudget;
+  const viewerCanBid = mayAct && canFillCard && hasBudget && !isLeadingBidder;
   const viewerCanPass = mayAct;
   // Take = my exclusive turn + opponent cannot bid on this card + I can fill + I have budget
   const viewerCanTake =

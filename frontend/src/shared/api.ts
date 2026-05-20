@@ -24,4 +24,9 @@ export { getSessionSnapshot, selectFormation, confirmFormationReady, confirmMatc
 export type { EventSyncResponse } from "./api/sessionClient";
 export { startRound, placeBid, readyNextRound, passRound, getAuctionState } from "./api/auctionClient";
 export { getMatchResult, getMatchTimeline } from "./api/matchClient";
-export { getCompetitionBySession } from "./api/competitionClient";
+export {
+  getCompetitionBySession,
+  openTournamentMatch,
+  ackTournamentMatchWatch,
+} from "./api/competitionClient";
+export type { CompetitionMatchOpenResponse } from "./api/contracts";

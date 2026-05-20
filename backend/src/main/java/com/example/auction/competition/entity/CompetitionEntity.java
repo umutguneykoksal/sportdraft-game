@@ -33,6 +33,9 @@ public class CompetitionEntity {
     @Column(name = "created_at", nullable = false)
     private Instant createdAt = Instant.now();
 
+    @Column(name = "draft_snapshot", columnDefinition = "jsonb")
+    private String draftSnapshotJson;
+
     public UUID getId() { return id; }
     public void setId(UUID id) { this.id = id; }
     public UUID getSessionId() { return sessionId; }
@@ -45,4 +48,6 @@ public class CompetitionEntity {
     public void setChampionUserId(UUID championUserId) { this.championUserId = championUserId; }
     public Instant getCreatedAt() { return createdAt; }
     public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }
+    public String getDraftSnapshotJson() { return draftSnapshotJson; }
+    public void setDraftSnapshotJson(String draftSnapshotJson) { this.draftSnapshotJson = draftSnapshotJson; }
 }

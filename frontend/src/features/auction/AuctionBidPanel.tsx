@@ -192,6 +192,21 @@ export function AuctionBidPanel(props: AuctionBidPanelProps) {
                     Pass
                   </button>
                 </>
+              ) : iAmHighestBidder && opponentHasBid && canPass && !couldBid ? (
+                <>
+                  <div className="bg-accent/10 border border-accent/30 rounded-lg px-3 py-2 text-center">
+                    <p className="text-accent text-sm font-medium">
+                      You lead at {round.highestBidCents} cr — waiting for others
+                    </p>
+                  </div>
+                  <button
+                    onClick={onPass}
+                    disabled={controlsLocked}
+                    className="w-full bg-slate-700/50 border border-slate-500/30 text-slate-300 hover:bg-slate-700/70 disabled:opacity-40 py-2 rounded-lg transition-colors text-sm font-medium"
+                  >
+                    End Turn
+                  </button>
+                </>
               ) : couldBid ? (
                 <>
                   <div className="flex gap-2">

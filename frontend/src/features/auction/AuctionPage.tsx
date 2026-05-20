@@ -68,7 +68,7 @@ export function AuctionPage() {
         <div className="bg-accent-green/10 border-b border-accent-green/30 px-4 py-4 text-center">
           <p className="text-lg font-bold text-accent-green animate-pulse">
             {state.gameMode === "TOURNAMENT"
-              ? "All squads complete! Running tournament bracket..."
+              ? "All squads complete! Opening tournament bracket..."
               : state.gameMode === "LEAGUE"
                 ? "All squads complete! League coming soon..."
                 : "All squads complete! Starting match..."}

@@ -4,6 +4,7 @@ import { AuctionPage } from "./features/auction/AuctionPage";
 import { MatchPage } from "./features/match/MatchPage";
 import { SpectatePage } from "./features/spectate/SpectatePage";
 import { TournamentBracketPage } from "./features/tournament/TournamentBracketPage";
+import { TournamentMatchPage } from "./features/tournament/TournamentMatchPage";
 import { LeaguePendingPage } from "./features/tournament/LeaguePendingPage";
 
 export function App() {
@@ -17,6 +18,7 @@ export function App() {
       <Route path="/auction/:sessionId" element={<AuctionPage />} />
       <Route path="/match/:sessionId" element={<MatchPage />} />
       <Route path="/tournament/:sessionId" element={<TournamentBracketPage />} />
+      <Route path="/tournament/:sessionId/match/:matchId" element={<TournamentMatchPage />} />
       <Route path="/league-pending/:sessionId" element={<LeaguePendingPage />} />
       <Route path="/spectate/:sessionId" element={<SpectatePage />} />
     </Routes>

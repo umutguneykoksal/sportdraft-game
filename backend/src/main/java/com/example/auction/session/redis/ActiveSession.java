@@ -37,6 +37,9 @@ public class ActiveSession {
     private long version;
     private Integer homeScore;
     private Integer awayScore;
+    private Integer homePenaltyScore;
+    private Integer awayPenaltyScore;
+    private UUID matchWinnerUserId;
     private List<ActivePlayer> players = new ArrayList<>();
     private List<ActiveRound> rounds = new ArrayList<>();
     private List<UUID> cardPool = new ArrayList<>();
@@ -268,6 +271,12 @@ public class ActiveSession {
     public void setHomeScore(Integer homeScore) { this.homeScore = homeScore; }
     public Integer getAwayScore() { return awayScore; }
     public void setAwayScore(Integer awayScore) { this.awayScore = awayScore; }
+    public Integer getHomePenaltyScore() { return homePenaltyScore; }
+    public void setHomePenaltyScore(Integer homePenaltyScore) { this.homePenaltyScore = homePenaltyScore; }
+    public Integer getAwayPenaltyScore() { return awayPenaltyScore; }
+    public void setAwayPenaltyScore(Integer awayPenaltyScore) { this.awayPenaltyScore = awayPenaltyScore; }
+    public UUID getMatchWinnerUserId() { return matchWinnerUserId; }
+    public void setMatchWinnerUserId(UUID matchWinnerUserId) { this.matchWinnerUserId = matchWinnerUserId; }
     public List<ActivePlayer> getPlayers() { return players; }
     public void setPlayers(List<ActivePlayer> players) { this.players = players; }
     public List<ActiveRound> getRounds() { return rounds; }

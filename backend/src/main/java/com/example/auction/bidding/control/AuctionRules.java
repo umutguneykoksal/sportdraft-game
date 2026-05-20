@@ -73,9 +73,49 @@ final class AuctionRules {
                 continue;
             }
             ActivePlayer player = session.findPlayerByUserId(candidate).orElse(null);
-            if (player != null && canPlayerBidRound(player, roundCard, minimum, cardMap)) {
+            if (player == null) {
+                continue;
+            }
+            if (round.getHighestBidderId() != null && player.getId().equals(round.getHighestBidderId())) {
+                continue;
+            }
+            if (canPlayerBidRound(player, roundCard, minimum, cardMap)) {
                 return Optional.of(candidate);
             }
+        }
+        return Optional.empty();
+    }
+
+    /** Next player who has not passed (may need to pass even if they cannot raise the bid). */
+    static Optional<UUID> findNextNonPassedParticipant(
+        ActiveSession session,
+        ActiveRound round,
+        UUID afterUserId,
+        boolean skipLeadingBidder
+    ) {
+        session.ensureTurnOrder();
+        List<UUID> order = session.getTurnOrder();
+        UUID winnerUserId = null;
+        if (skipLeadingBidder && round.getHighestBidderId() != null) {
+            winnerUserId = session.getPlayers().stream()
+                .filter(p -> p.getId().equals(round.getHighestBidderId()))
+                .map(ActivePlayer::getUserId)
+                .findFirst()
+                .orElse(null);
+        }
+        int start = afterUserId != null ? order.indexOf(afterUserId) : -1;
+        if (start < 0) {
+            start = 0;
+        }
+        for (int step = 1; step <= order.size(); step++) {
+            UUID candidate = order.get((start + step) % order.size());
+            if (round.hasUserPassed(candidate)) {
+                continue;
+            }
+            if (winnerUserId != null && winnerUserId.equals(candidate)) {
+                continue;
+            }
+            return Optional.of(candidate);
         }
         return Optional.empty();
     }
@@ -99,6 +139,14 @@ final class AuctionRules {
 
     static boolean hasFullLobby(ActiveSession session) {
         return session.playerCount() >= session.getMaxPlayers();
+    }
+
+    /** 2p: one opponent pass ends the round; 4p+: every non-winner must pass. */
+    static boolean maySettleLeadingRound(ActiveSession session, ActiveRound round) {
+        if (round.getHighestBidderId() == null) {
+            return false;
+        }
+        return session.getMaxPlayers() <= 2 || allNonWinnersHavePassed(session, round);
     }
 
     /** After a bid, round ends only when every non-winning player has passed (4p+). */
@@ -181,6 +229,15 @@ final class AuctionRules {
         } catch (Exception ex) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, message);
         }
+    }
+
+    static boolean viewerIsLeadingBidder(ActiveSession session, ActiveRound round, UUID viewerUserId) {
+        if (viewerUserId == null || round.getHighestBidderId() == null || round.getHighestBidCents() <= 0) {
+            return false;
+        }
+        return session.findPlayerByUserId(viewerUserId)
+            .map(p -> p.getId().equals(round.getHighestBidderId()))
+            .orElse(false);
     }
 
     static boolean viewerMayActOnTurn(ActiveRound round, UUID viewerUserId) {

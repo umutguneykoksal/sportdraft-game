@@ -43,6 +43,18 @@ public class CompetitionMatchEntity {
     @Column(name = "sort_order", nullable = false)
     private int sortOrder;
 
+    @Column(name = "winner_user_id")
+    private UUID winnerUserId;
+
+    @Column(name = "replay_data", columnDefinition = "jsonb")
+    private String replayDataJson;
+
+    @Column(name = "home_penalty_score")
+    private Integer homePenaltyScore;
+
+    @Column(name = "away_penalty_score")
+    private Integer awayPenaltyScore;
+
     public UUID getId() { return id; }
     public void setId(UUID id) { this.id = id; }
     public UUID getCompetitionId() { return competitionId; }
@@ -63,4 +75,12 @@ public class CompetitionMatchEntity {
     public void setSeed(long seed) { this.seed = seed; }
     public int getSortOrder() { return sortOrder; }
     public void setSortOrder(int sortOrder) { this.sortOrder = sortOrder; }
+    public UUID getWinnerUserId() { return winnerUserId; }
+    public void setWinnerUserId(UUID winnerUserId) { this.winnerUserId = winnerUserId; }
+    public String getReplayDataJson() { return replayDataJson; }
+    public void setReplayDataJson(String replayDataJson) { this.replayDataJson = replayDataJson; }
+    public Integer getHomePenaltyScore() { return homePenaltyScore; }
+    public void setHomePenaltyScore(Integer homePenaltyScore) { this.homePenaltyScore = homePenaltyScore; }
+    public Integer getAwayPenaltyScore() { return awayPenaltyScore; }
+    public void setAwayPenaltyScore(Integer awayPenaltyScore) { this.awayPenaltyScore = awayPenaltyScore; }
 }

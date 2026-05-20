@@ -72,12 +72,24 @@ public class MatchResultRecoveryService {
         long vBefore = session.getVersion();
         session.setHomeScore(result.homeGoals());
         session.setAwayScore(result.awayGoals());
+        session.setHomePenaltyScore(result.decidedOnPenalties() ? result.homePenaltyGoals() : null);
+        session.setAwayPenaltyScore(result.decidedOnPenalties() ? result.awayPenaltyGoals() : null);
+        session.setMatchWinnerUserId(result.resolveWinner(home.getUserId(), away.getUserId()));
+        session.setMatchTimeline(result.timeline());
         session.moveToFinished();
         sessionStore.saveIfVersionMatch(session, vBefore);
 
         publisher.publishEvent(new MatchCompletedEvent(
-            UUID.randomUUID(), Instant.now(), sessionId, 
-            result.homeGoals(), result.awayGoals(), seed, result.timeline()
+            UUID.randomUUID(),
+            Instant.now(),
+            sessionId,
+            result.homeGoals(),
+            result.awayGoals(),
+            seed,
+            result.timeline(),
+            result.homePenaltyGoals(),
+            result.awayPenaltyGoals(),
+            result.resolveWinner(home.getUserId(), away.getUserId())
         ));
         return true;
     }

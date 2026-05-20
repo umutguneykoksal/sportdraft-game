@@ -11,6 +11,13 @@ public record CompetitionMatchResponse(
     String awayNickname,
     Integer homeScore,
     Integer awayScore,
-    String status
+    Integer homePenaltyScore,
+    Integer awayPenaltyScore,
+    String status,
+    boolean playable,
+    boolean watchedByMe,
+    boolean allPlayersWatched,
+    long watchCount,
+    int requiredWatchers
 ) {
 }

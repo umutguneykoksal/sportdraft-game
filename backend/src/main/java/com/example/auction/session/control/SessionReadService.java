@@ -134,6 +134,12 @@ public class SessionReadService {
         AuctionService.TeamSnapshot teams = auctionService.buildTeamSnapshot(session, userId);
         int[] stats = calculateStats(session.getMatchTimeline(), userId);
 
+        int sessionHomePens = session.getHomePenaltyScore() != null ? session.getHomePenaltyScore() : 0;
+        int sessionAwayPens = session.getAwayPenaltyScore() != null ? session.getAwayPenaltyScore() : 0;
+        int myPens = isHome ? sessionHomePens : sessionAwayPens;
+        int oppPens = isHome ? sessionAwayPens : sessionHomePens;
+        UUID winnerId = session.getMatchWinnerUserId();
+
         return new MatchResultResponse(
             myScore, oppScore,
             teams.myTeam(), teams.opponentTeam(),
@@ -143,7 +149,10 @@ public class SessionReadService {
             stats[0], stats[1], stats[2], stats[3],
             homeUserId.toString(), awayUserId.toString(),
             homeNick, awayNick,
-            session.getHomeScore(), session.getAwayScore()
+            session.getHomeScore(), session.getAwayScore(),
+            sessionHomePens, sessionAwayPens,
+            myPens, oppPens,
+            winnerId != null ? winnerId.toString() : homeUserId.toString()
         );
     }
 
@@ -200,6 +209,11 @@ public class SessionReadService {
             String oppNickname = isHome ? awayNick : homeNick;
             AuctionService.TeamSnapshot teams = auctionService.buildTeamSnapshot(archived, userId);
             int[] stats = calculateStats(archived.getMatchTimeline(), userId);
+            int sessionHomePens = archived.getHomePenaltyScore() != null ? archived.getHomePenaltyScore() : 0;
+            int sessionAwayPens = archived.getAwayPenaltyScore() != null ? archived.getAwayPenaltyScore() : 0;
+            int myPens = isHome ? sessionHomePens : sessionAwayPens;
+            int oppPens = isHome ? sessionAwayPens : sessionHomePens;
+            UUID winnerId = archived.getMatchWinnerUserId();
 
             return ResponseEntity.ok(new MatchResultResponse(
                 myScore, oppScore,
@@ -210,7 +224,10 @@ public class SessionReadService {
                 stats[0], stats[1], stats[2], stats[3],
                 h.getHomeUserId().toString(), h.getAwayUserId().toString(),
                 homeNick, awayNick,
-                h.getHomeScore(), h.getAwayScore()
+                h.getHomeScore(), h.getAwayScore(),
+                sessionHomePens, sessionAwayPens,
+                myPens, oppPens,
+                winnerId != null ? winnerId.toString() : h.getHomeUserId().toString()
             ));
         } catch (Exception e) {
             log.warn("Failed to deserialize replay_data for session {}, returning scores only", h.getSessionId(), e);
@@ -224,7 +241,9 @@ public class SessionReadService {
                 0, 0, 0, 0,
                 h.getHomeUserId().toString(), h.getAwayUserId().toString(),
                 "Home", "Away",
-                h.getHomeScore(), h.getAwayScore()
+                h.getHomeScore(), h.getAwayScore(),
+                0, 0, 0, 0,
+                myScore > oppScore ? userId.toString() : h.getAwayUserId().toString()
             ));
         }
     }

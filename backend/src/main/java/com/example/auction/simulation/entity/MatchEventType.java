@@ -11,7 +11,11 @@ public enum MatchEventType {
     GOAL("Goal!"),
     FOUL("Foul"),
     HALF_TIME("Half-time"),
-    FULL_TIME("Full-time");
+    FULL_TIME("Full-time"),
+    PENALTIES_START("Penalty shoot-out"),
+    PENALTY_SCORED("Penalty scored"),
+    PENALTY_MISSED("Penalty missed"),
+    PENALTIES_END("Penalties decided");
 
     private final String displayName;
 

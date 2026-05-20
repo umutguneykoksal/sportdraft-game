@@ -35,6 +35,9 @@ public class MatchCompletedListener {
             long vBefore = session.getVersion();
             session.setHomeScore(event.homeScore());
             session.setAwayScore(event.awayScore());
+            session.setHomePenaltyScore(event.homePenaltyGoals() > 0 ? event.homePenaltyGoals() : null);
+            session.setAwayPenaltyScore(event.awayPenaltyGoals() > 0 ? event.awayPenaltyGoals() : null);
+            session.setMatchWinnerUserId(event.winnerUserId());
             if (event.timeline() != null) {
                 session.setMatchTimeline(event.timeline());
             }

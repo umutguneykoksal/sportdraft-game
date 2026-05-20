@@ -132,6 +132,9 @@ final class AuctionRoundResponses {
         if (round.hasUserPassed(viewerUserId)) {
             return false;
         }
+        if (AuctionRules.viewerIsLeadingBidder(session, round, viewerUserId)) {
+            return false;
+        }
         ActivePlayer viewer = session.findPlayerByUserId(viewerUserId).orElse(null);
         if (viewer == null) {
             return false;

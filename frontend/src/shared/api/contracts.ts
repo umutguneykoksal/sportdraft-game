@@ -151,6 +151,11 @@ export interface MatchResultResponse {
   sessionAwayNickname: string;
   sessionHomeScore: number;
   sessionAwayScore: number;
+  sessionHomePenaltyScore: number;
+  sessionAwayPenaltyScore: number;
+  myPenaltyScore: number;
+  opponentPenaltyScore: number;
+  winnerUserId: string;
 }
 
 export interface LobbyRoomResponse {
@@ -173,7 +178,34 @@ export interface CompetitionMatchResponse {
   awayNickname: string;
   homeScore: number | null;
   awayScore: number | null;
+  homePenaltyScore: number | null;
+  awayPenaltyScore: number | null;
   status: string;
+  playable: boolean;
+  watchedByMe: boolean;
+  allPlayersWatched: boolean;
+  watchCount: number;
+  requiredWatchers: number;
+}
+
+export interface CompetitionMatchOpenResponse {
+  matchId: string;
+  roundKey: string;
+  homeUserId: string;
+  homeNickname: string;
+  awayUserId: string;
+  awayNickname: string;
+  homeFormation: string;
+  awayFormation: string;
+  timeline: MatchEvent[];
+  homeScore: number | null;
+  awayScore: number | null;
+  homePenaltyScore: number | null;
+  awayPenaltyScore: number | null;
+  watchedByMe: boolean;
+  allPlayersWatched: boolean;
+  watchCount: number;
+  requiredWatchers: number;
 }
 
 export interface CompetitionResponse {
@@ -211,7 +243,11 @@ export type MatchEventType =
   | "GOAL"
   | "FOUL"
   | "HALF_TIME"
-  | "FULL_TIME";
+  | "FULL_TIME"
+  | "PENALTIES_START"
+  | "PENALTY_SCORED"
+  | "PENALTY_MISSED"
+  | "PENALTIES_END";
 
 export interface MatchEvent {
   minute: number;

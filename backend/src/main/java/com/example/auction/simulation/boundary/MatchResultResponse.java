@@ -23,6 +23,11 @@ public record MatchResultResponse(
     String sessionHomeNickname,
     String sessionAwayNickname,
     int sessionHomeScore,
-    int sessionAwayScore
+    int sessionAwayScore,
+    int sessionHomePenaltyScore,
+    int sessionAwayPenaltyScore,
+    int myPenaltyScore,
+    int opponentPenaltyScore,
+    String winnerUserId
 ) {
 }

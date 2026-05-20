@@ -21,6 +21,10 @@ const EVENT_ICONS: Record<string, string> = {
   FOUL: "🟨",
   HALF_TIME: "⏸️",
   FULL_TIME: "🏁",
+  PENALTIES_START: "🎯",
+  PENALTY_SCORED: "✅",
+  PENALTY_MISSED: "❌",
+  PENALTIES_END: "🏆",
 };
 
 const EVENT_COLORS: Record<string, string> = {
@@ -31,6 +35,10 @@ const EVENT_COLORS: Record<string, string> = {
   FOUL: "text-orange-400",
   HALF_TIME: "text-purple-400",
   FULL_TIME: "text-purple-400",
+  PENALTIES_START: "text-cyan-400",
+  PENALTY_SCORED: "text-green-400",
+  PENALTY_MISSED: "text-red-400",
+  PENALTIES_END: "text-amber-400",
 };
 
 function getCommentary(event: MatchEvent, isHome: boolean, homeNickname: string, awayNickname: string): string {
@@ -54,6 +62,14 @@ function getCommentary(event: MatchEvent, isHome: boolean, homeNickname: string,
       return "The referee blows for half time. Teams head to the dressing rooms.";
     case "FULL_TIME":
       return "Full time! The match is over!";
+    case "PENALTIES_START":
+      return "Penalties! The shoot-out decides who goes through.";
+    case "PENALTY_SCORED":
+      return `${player} scores from the spot for ${team}!`;
+    case "PENALTY_MISSED":
+      return `${player} misses! ${team} fail to convert.`;
+    case "PENALTIES_END":
+      return event.detail || "Penalty shoot-out complete!";
     default:
       return event.detail || "";
   }
@@ -74,6 +90,9 @@ export function MatchCommentary({
   const [speed, setSpeed] = useState<CommentarySpeed>(2);
   const [homeScore, setHomeScore] = useState(0);
   const [awayScore, setAwayScore] = useState(0);
+  const [homePens, setHomePens] = useState(0);
+  const [awayPens, setAwayPens] = useState(0);
+  const [inPenalties, setInPenalties] = useState(false);
   const [isComplete, setIsComplete] = useState(false);
   
   const feedRef = useRef<HTMLDivElement>(null);
@@ -89,12 +108,21 @@ export function MatchCommentary({
     const event = timeline[currentIndex];
     setDisplayedEvents(prev => [...prev, event]);
 
-    // Update score on goals
+    if (event.type === "PENALTIES_START") {
+      setInPenalties(true);
+    }
     if (event.type === "GOAL") {
       if (event.teamId === homeTeamId) {
-        setHomeScore(s => s + 1);
+        setHomeScore((s) => s + 1);
       } else {
-        setAwayScore(s => s + 1);
+        setAwayScore((s) => s + 1);
+      }
+    }
+    if (event.type === "PENALTY_SCORED") {
+      if (event.teamId === homeTeamId) {
+        setHomePens((s) => s + 1);
+      } else {
+        setAwayPens((s) => s + 1);
       }
     }
 
@@ -152,14 +180,20 @@ export function MatchCommentary({
           <div className="text-center">
             <p className="text-xs text-blue-300 mb-1 truncate max-w-24">{homeNickname}</p>
             <p className="text-4xl font-black text-white">{homeScore}</p>
+            {inPenalties && (
+              <p className="text-xs text-cyan-300 mt-1">Pens {homePens}</p>
+            )}
           </div>
           <div className="flex flex-col items-center">
             <span className="text-2xl font-bold text-slate-400">-</span>
-            <span className="text-xs text-slate-500 mt-1">{currentMinute}'</span>
+            <span className="text-xs text-slate-500 mt-1">{currentMinute}&apos;</span>
           </div>
           <div className="text-center">
             <p className="text-xs text-red-300 mb-1 truncate max-w-24">{awayNickname}</p>
             <p className="text-4xl font-black text-white">{awayScore}</p>
+            {inPenalties && (
+              <p className="text-xs text-cyan-300 mt-1">Pens {awayPens}</p>
+            )}
           </div>
         </div>
       </div>

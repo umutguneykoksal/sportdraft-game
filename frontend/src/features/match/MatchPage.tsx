@@ -5,7 +5,7 @@ import { TeamPitch } from "../../shared/components/TeamPitch";
 import { MatchCommentary } from "./components/MatchCommentary";
 import { FORMATION_LABELS } from "../../shared/formations";
 import { clearActiveSessionId } from "../../shared/session";
-import { getMatchTimeline, MatchEvent } from "../../shared/api";
+import { getClientUserId, getMatchTimeline, MatchEvent } from "../../shared/api";
 
 type ViewState = "loading" | "commentary" | "result";
 
@@ -18,8 +18,11 @@ export function MatchPage() {
     myNickname, opponentNickname,
     homeUserId, sessionHomeNickname, sessionAwayNickname,
     sessionHomeScore, sessionAwayScore,
+    sessionHomePenaltyScore, sessionAwayPenaltyScore,
+    myPenaltyScore, opponentPenaltyScore, winnerUserId,
     myShots, opponentShots, myFouls, opponentFouls,
   } = useMatchFlow(sessionId);
+  const myUserId = getClientUserId();
 
   const [viewState, setViewState] = useState<ViewState>("loading");
   const [timeline, setTimeline] = useState<MatchEvent[]>([]);
@@ -43,8 +46,20 @@ export function MatchPage() {
     }
   }, [ready, sessionId, timeline.length, timelineLoading]);
 
-  const isWin = ready && homeScore !== null && awayScore !== null && homeScore > awayScore;
-  const isLoss = ready && homeScore !== null && awayScore !== null && homeScore < awayScore;
+  const decidedOnPens =
+    ready &&
+    sessionHomeScore === sessionAwayScore &&
+    (myPenaltyScore > 0 || opponentPenaltyScore > 0);
+  const isWin =
+    ready &&
+    (winnerUserId && myUserId
+      ? winnerUserId === myUserId
+      : homeScore !== null && awayScore !== null && homeScore > awayScore);
+  const isLoss =
+    ready &&
+    (winnerUserId && myUserId
+      ? winnerUserId !== myUserId
+      : homeScore !== null && awayScore !== null && homeScore < awayScore);
 
   const handleCommentaryComplete = () => {
     setViewState("result");
@@ -113,6 +128,12 @@ export function MatchPage() {
                   </p>
                 </div>
               </div>
+
+              {decidedOnPens && (
+                <p className="text-slate-400 text-sm mt-2">
+                  Penalties {sessionHomePenaltyScore}–{sessionAwayPenaltyScore}
+                </p>
+              )}
 
               <div className={`mt-4 inline-block px-6 py-2 rounded-full font-bold text-lg ${
                 isWin

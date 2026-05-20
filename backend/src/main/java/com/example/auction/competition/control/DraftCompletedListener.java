@@ -59,15 +59,14 @@ public class DraftCompletedListener {
         }
 
         if (event.gameMode() == GameMode.TOURNAMENT) {
-            CompetitionEntity competition = tournamentBracketService.runTournament(event);
+            CompetitionEntity competition = tournamentBracketService.initializeTournament(event);
             finishSession(event.sessionId());
             sseEmitterRegistry.broadcast(
                 event.sessionId(),
-                "tournament_completed",
+                "tournament_started",
                 Map.of(
                     "sessionId", event.sessionId(),
-                    "competitionId", competition.getId(),
-                    "championUserId", competition.getChampionUserId()
+                    "competitionId", competition.getId()
                 )
             );
             return;

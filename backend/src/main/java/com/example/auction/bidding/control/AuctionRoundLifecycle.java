@@ -196,6 +196,9 @@ public class AuctionRoundLifecycle {
         if (!turnOpen && round.getCurrentTurnUserId() != null && !round.getCurrentTurnUserId().equals(userId)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Not your turn to bid");
         }
+        if (AuctionRules.viewerIsLeadingBidder(session, round, userId)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "You already hold the highest bid; wait for others");
+        }
 
         long minimumAllowed = round.getHighestBidCents() == 0
             ? AuctionTiming.STARTING_BID
@@ -398,7 +401,27 @@ public class AuctionRoundLifecycle {
         }
 
         if (round.getHighestBidderId() != null) {
-            settlement.settleRoundInline(round, session, cardMap);
+            if (AuctionRules.maySettleLeadingRound(session, round)) {
+                settlement.settleRoundInline(round, session, cardMap);
+                return round.getStatus() != RoundStatus.OPEN;
+            }
+            Optional<UUID> nextBidder = AuctionRules.findNextEligibleBidder(
+                session, round, roundCard, cardMap, currentTurnUserId
+            );
+            if (nextBidder.isPresent()) {
+                round.setCurrentTurnUserId(nextBidder.get());
+                return false;
+            }
+            Optional<UUID> nextActor = AuctionRules.findNextNonPassedParticipant(
+                session, round, currentTurnUserId, true
+            );
+            if (nextActor.isPresent()) {
+                round.setCurrentTurnUserId(nextActor.get());
+                return false;
+            }
+            if (AuctionRules.maySettleLeadingRound(session, round)) {
+                settlement.settleRoundInline(round, session, cardMap);
+            }
             return round.getStatus() != RoundStatus.OPEN;
         }
 

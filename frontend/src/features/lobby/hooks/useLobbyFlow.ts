@@ -20,7 +20,10 @@ import {
   setActiveSessionId,
 } from "../../../shared/session";
 import { useSessionStream } from "../../../shared/sse";
+import { drainUnseenEvents } from "../../../shared/realtime/eventDispatch";
+import { LOBBY_PHASE_POLL_MS } from "../../../shared/realtime/syncConstants";
 import { ALL_FORMATIONS } from "../../../shared/formations";
+import { shouldPollLobbyPhase, shouldRefetchLobbySnapshot } from "./lobbySnapshotSync";
 
 const LOBBY_POLL_INTERVAL_MS = 3000;
 
@@ -37,10 +40,23 @@ export function useLobbyFlow() {
   const { events, isConnected } = useSessionStream(sessionId);
   const restoredRef = useRef(false);
   const prevConnectedRef = useRef(false);
-  const lastProcessedEventIdx = useRef(-1);
+  const seenEventIdsRef = useRef(new Set<string>());
   const sessionIdRef = useRef(sessionId);
   sessionIdRef.current = sessionId;
   const syncSeqRef = useRef(0);
+
+  const refetchSnapshot = useCallback((sid: string) => {
+    const seq = ++syncSeqRef.current;
+    return getSessionSnapshot(sid).then((snap) => {
+      if (seq === syncSeqRef.current && sessionIdRef.current === sid) {
+        setSnapshot(snap);
+      }
+    });
+  }, []);
+
+  useEffect(() => {
+    seenEventIdsRef.current.clear();
+  }, [sessionId]);
 
   // 1. Restore session on mount
   useEffect(() => {
@@ -95,36 +111,45 @@ export function useLobbyFlow() {
     prevConnectedRef.current = isConnected;
     const sid = sessionIdRef.current;
     if (!sid || !isConnected || !wasConnected) return;
-    const seq = ++syncSeqRef.current;
-    getSessionSnapshot(sid).then((snap) => {
-      if (seq === syncSeqRef.current) setSnapshot(snap);
-    }).catch(() => {});
-  }, [isConnected]);
+    refetchSnapshot(sid).catch(() => {});
+  }, [isConnected, refetchSnapshot]);
 
-  // 5. SSE event handler — guard with syncSeq to discard stale fetches
+  // 5. SSE — drain all unseen events (not only the last buffer index)
   useEffect(() => {
     if (events.length === 0) return;
-    const idx = events.length - 1;
-    if (idx <= lastProcessedEventIdx.current) return;
-    lastProcessedEventIdx.current = idx;
+    const fresh = drainUnseenEvents(events, seenEventIdsRef.current);
+    if (fresh.length === 0) return;
 
     const sid = sessionIdRef.current;
-    if (!sid) return;
+    if (!sid || !shouldRefetchLobbySnapshot(fresh)) return;
 
-    const latest = events[idx];
-    const refetchEvents = [
-      "lobby_updated", "countdown_started", "countdown_cancelled",
-      "formation_phase_started", "formation_ready", "auctioning_started",
-    ];
-    if (refetchEvents.includes(latest.eventType)) {
-      const seq = ++syncSeqRef.current;
-      getSessionSnapshot(sid).then((snap) => {
-        if (seq === syncSeqRef.current && sessionIdRef.current === sid) {
-          setSnapshot(snap);
-        }
-      }).catch(() => {});
-    }
-  }, [events]);
+    refetchSnapshot(sid).catch(() => {});
+  }, [events, refetchSnapshot]);
+
+  // 5b. Poll snapshot while in lobby phases (catches missed auctioning_started)
+  useEffect(() => {
+    const sid = snapshot?.sessionId;
+    const status = snapshot?.status;
+    if (!sid || !shouldPollLobbyPhase(status)) return;
+
+    refetchSnapshot(sid).catch(() => {});
+    const interval = window.setInterval(() => {
+      refetchSnapshot(sid).catch(() => {});
+    }, LOBBY_PHASE_POLL_MS);
+    return () => window.clearInterval(interval);
+  }, [snapshot?.sessionId, snapshot?.status, refetchSnapshot]);
+
+  // 5c. Tab focus — catch up after background / flaky transport
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState !== "visible") return;
+      const sid = sessionIdRef.current;
+      if (!sid) return;
+      refetchSnapshot(sid).catch(() => {});
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [refetchSnapshot]);
 
   // 6. Countdown timer
   useEffect(() => {
