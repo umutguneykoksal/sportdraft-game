@@ -22,4 +22,4 @@ frontend/build/
 docs/
 *.md
 data/
-.scripts/
+scripts/
