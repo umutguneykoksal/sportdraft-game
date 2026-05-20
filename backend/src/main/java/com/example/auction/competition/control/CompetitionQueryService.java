@@ -26,19 +26,22 @@ public class CompetitionQueryService {
     private final CompetitionMatchViewRepository viewRepository;
     private final ActiveSessionStore sessionStore;
     private final TournamentBracketService bracketService;
+    private final TournamentCompetitionRecoveryService competitionRecoveryService;
 
     public CompetitionQueryService(
         CompetitionRepository competitionRepository,
         CompetitionMatchRepository matchRepository,
         CompetitionMatchViewRepository viewRepository,
         ActiveSessionStore sessionStore,
-        TournamentBracketService bracketService
+        TournamentBracketService bracketService,
+        TournamentCompetitionRecoveryService competitionRecoveryService
     ) {
         this.competitionRepository = competitionRepository;
         this.matchRepository = matchRepository;
         this.viewRepository = viewRepository;
         this.sessionStore = sessionStore;
         this.bracketService = bracketService;
+        this.competitionRecoveryService = competitionRecoveryService;
     }
 
     public CompetitionResponse getBySessionId(UUID sessionId) {
@@ -47,7 +50,13 @@ public class CompetitionQueryService {
 
     public CompetitionResponse getBySessionId(UUID sessionId, UUID viewerUserId) {
         CompetitionEntity competition = competitionRepository.findBySessionId(sessionId)
-            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Competition not found"));
+            .orElseGet(() -> {
+                competitionRecoveryService.recoverIfMissing(sessionId);
+                return competitionRepository.findBySessionId(sessionId).orElse(null);
+            });
+        if (competition == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Competition not found");
+        }
 
         ActiveSession session = sessionStore.findById(sessionId).orElse(null);
         TournamentDraftSnapshot snapshot = bracketService.readSnapshot(competition);

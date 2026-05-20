@@ -8,6 +8,8 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.UUID;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 @Entity
 @Table(name = "competition")
@@ -33,6 +35,7 @@ public class CompetitionEntity {
     @Column(name = "created_at", nullable = false)
     private Instant createdAt = Instant.now();
 
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "draft_snapshot", columnDefinition = "jsonb")
     private String draftSnapshotJson;
 

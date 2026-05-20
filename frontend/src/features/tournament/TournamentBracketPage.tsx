@@ -97,14 +97,25 @@ export function TournamentBracketPage() {
 
   const refresh = useCallback(async () => {
     if (!sessionId) return;
-    try {
-      const data = await getCompetitionBySession(sessionId);
-      setCompetition(data);
-      setError(null);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load bracket");
-    } finally {
-      setLoading(false);
+    const maxAttempts = 8;
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      try {
+        const data = await getCompetitionBySession(sessionId);
+        setCompetition(data);
+        setError(null);
+        setLoading(false);
+        return;
+      } catch (e) {
+        const message = e instanceof Error ? e.message : "Failed to load bracket";
+        const retryable = message.toLowerCase().includes("not found") && attempt < maxAttempts - 1;
+        if (retryable) {
+          await new Promise((resolve) => setTimeout(resolve, 500 * (attempt + 1)));
+          continue;
+        }
+        setError(message);
+        setLoading(false);
+        return;
+      }
     }
   }, [sessionId]);
 

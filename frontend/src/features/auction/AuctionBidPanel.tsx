@@ -24,10 +24,7 @@ export type AuctionBidPanelProps = {
   canFillCard: boolean;
   showTakePanel: boolean;
   showNoSlotBanner: boolean;
-  iAmHighestBidder: boolean;
-  opponentHasBid: boolean;
   mySquadFull: boolean;
-  myUserId: string | null;
   turnIsOpen: boolean;
   isMyTurn: boolean;
   inTimerGrace: boolean;
@@ -59,10 +56,7 @@ export function AuctionBidPanel(props: AuctionBidPanelProps) {
     canFillCard,
     showTakePanel,
     showNoSlotBanner,
-    iAmHighestBidder,
-    opponentHasBid,
     mySquadFull,
-    myUserId,
     turnIsOpen,
     isMyTurn,
     inTimerGrace,
@@ -185,14 +179,6 @@ export function AuctionBidPanel(props: AuctionBidPanelProps) {
                     Pass
                   </button>
                 </>
-              ) : iAmHighestBidder && opponentHasBid && canPass && !couldBid ? (
-                <button
-                  onClick={onPass}
-                  disabled={controlsLocked}
-                  className="w-full bg-slate-700/50 border border-slate-500/30 text-slate-300 hover:bg-slate-700/70 disabled:opacity-40 py-2 rounded-lg transition-colors text-sm font-medium"
-                >
-                  End Turn
-                </button>
               ) : couldBid ? (
                 <>
                   <div className="flex gap-2">
@@ -237,23 +223,13 @@ export function AuctionBidPanel(props: AuctionBidPanelProps) {
                   >
                     Place Bid
                   </button>
-                  {myUserId && round.highestBidderUserId === myUserId ? (
-                    <button
-                      onClick={onPass}
-                      disabled={controlsLocked || (!canBid && !controlsLocked)}
-                      className="w-full bg-slate-700/50 border border-slate-500/30 text-slate-300 hover:bg-slate-700/70 disabled:opacity-40 py-2 rounded-lg transition-colors text-sm font-medium"
-                    >
-                      End Turn
-                    </button>
-                  ) : (
-                    <button
-                      onClick={onPass}
-                      disabled={controlsLocked || (!canBid && !controlsLocked)}
-                      className="w-full bg-red-900/30 border border-red-500/30 text-red-400 hover:bg-red-900/50 disabled:opacity-40 py-2 rounded-lg transition-colors text-sm font-medium"
-                    >
-                      Pass
-                    </button>
-                  )}
+                  <button
+                    onClick={onPass}
+                    disabled={controlsLocked || (!canBid && !controlsLocked)}
+                    className="w-full bg-red-900/30 border border-red-500/30 text-red-400 hover:bg-red-900/50 disabled:opacity-40 py-2 rounded-lg transition-colors text-sm font-medium"
+                  >
+                    Pass
+                  </button>
                 </>
               ) : canPass ? (
                 <button

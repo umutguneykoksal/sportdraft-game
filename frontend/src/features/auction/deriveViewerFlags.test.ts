@@ -55,7 +55,7 @@ describe("deriveViewerFlags", () => {
       true
     );
     expect(flags.viewerCanBid).toBe(false);
-    expect(flags.viewerCanPass).toBe(true);
+    expect(flags.viewerCanPass).toBe(false);
   });
 
   it("blocks bid when budget is wrongly scaled down (old /100 bug)", () => {

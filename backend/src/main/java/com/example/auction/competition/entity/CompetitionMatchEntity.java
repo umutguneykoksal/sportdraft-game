@@ -7,6 +7,8 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.util.UUID;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 @Entity
 @Table(name = "competition_match")
@@ -46,6 +48,7 @@ public class CompetitionMatchEntity {
     @Column(name = "winner_user_id")
     private UUID winnerUserId;
 
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "replay_data", columnDefinition = "jsonb")
     private String replayDataJson;
 

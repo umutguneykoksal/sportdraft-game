@@ -127,10 +127,7 @@ export function AuctionPage() {
               canFillCard={state.canFillCard}
               showTakePanel={state.showTakePanel}
               showNoSlotBanner={state.showNoSlotBanner}
-              iAmHighestBidder={state.iAmHighestBidder}
-              opponentHasBid={state.opponentHasBid}
               mySquadFull={state.mySquadFull}
-              myUserId={state.myUserId}
               turnIsOpen={state.turnIsOpen}
               isMyTurn={state.isMyTurn}
               inTimerGrace={state.inTimerGrace}
@@ -171,10 +168,7 @@ export function AuctionPage() {
               canFillCard={state.canFillCard}
               showTakePanel={state.showTakePanel}
               showNoSlotBanner={state.showNoSlotBanner}
-              iAmHighestBidder={state.iAmHighestBidder}
-              opponentHasBid={state.opponentHasBid}
               mySquadFull={state.mySquadFull}
-              myUserId={state.myUserId}
               turnIsOpen={state.turnIsOpen}
               isMyTurn={state.isMyTurn}
               inTimerGrace={state.inTimerGrace}

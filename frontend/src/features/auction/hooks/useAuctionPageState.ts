@@ -193,7 +193,7 @@ export function useAuctionPageState(sessionId: string | undefined) {
         return multiPlayerMode
           ? finalPhase
             ? `Final ${secondsLeft}s — open to all with a slot`
-            : `Exclusive turn — open to all in ${secondsUntilTurnOpen}s`
+            : `Bids open to all in ${secondsUntilTurnOpen}s`
           : finalPhase
             ? `Final ${secondsLeft}s — both can bid`
             : `Open bidding in ${secondsUntilTurnOpen}s`;

@@ -4,6 +4,7 @@ import com.example.auction.bidding.control.CardCatalogService;
 import com.example.auction.bidding.control.RosterSlotAssignment;
 import com.example.auction.bidding.entity.Card;
 import com.example.auction.bidding.entity.Position;
+import com.example.auction.session.entity.GameMode;
 import com.example.auction.session.entity.SessionStatus;
 import com.example.auction.session.redis.ActivePlayer;
 import com.example.auction.session.redis.ActiveSession;
@@ -44,6 +45,9 @@ public class MatchResultRecoveryService {
         ActiveSession session = sessionStore.findById(sessionId).orElse(null);
         if (session == null) return false;
         if (session.getHomeScore() != null) return true;
+        if (session.getGameMode() != GameMode.DUEL) {
+            return false;
+        }
 
         if (session.getStatus() != SessionStatus.FINALIZING
             && session.getStatus() != SessionStatus.AWAITING_RESULT) {

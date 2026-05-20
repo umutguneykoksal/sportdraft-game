@@ -12,14 +12,19 @@ import com.example.auction.simulation.control.DraftCompletedEvent;
 import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.context.event.EventListener;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 @Component
 public class DraftCompletedListener {
+
+    private static final Logger log = LoggerFactory.getLogger(DraftCompletedListener.class);
 
     private final ProcessedEventRepository processedEventRepository;
     private final TournamentBracketService tournamentBracketService;
@@ -46,45 +51,60 @@ public class DraftCompletedListener {
             return;
         }
 
-        if (event.gameMode() == GameMode.TOURNAMENT) {
-            CompetitionEntity competition = competitionRepository.findBySessionId(event.sessionId())
-                .orElseGet(() -> tournamentBracketService.initializeTournament(event));
-            sseEmitterRegistry.broadcast(
-                event.sessionId(),
-                "tournament_started",
-                Map.of(
-                    "sessionId", event.sessionId(),
-                    "competitionId", competition.getId()
-                )
-            );
-        } else if (event.gameMode() == GameMode.LEAGUE) {
-            CompetitionEntity competition = competitionRepository.findBySessionId(event.sessionId())
-                .orElseGet(() -> {
-                    CompetitionEntity created = new CompetitionEntity();
-                    created.setId(UUID.randomUUID());
-                    created.setSessionId(event.sessionId());
-                    created.setType(CompetitionType.LEAGUE);
-                    created.setStatus(CompetitionStatus.PENDING);
-                    created.setCreatedAt(Instant.now());
-                    return competitionRepository.save(created);
-                });
-            sseEmitterRegistry.broadcast(
-                event.sessionId(),
-                "league_pending",
-                Map.of(
-                    "sessionId", event.sessionId(),
-                    "competitionId", competition.getId(),
-                    "message", "League mode coming in a future update"
-                )
-            );
-        }
-
         try {
+            if (event.gameMode() == GameMode.TOURNAMENT) {
+                CompetitionEntity competition = competitionRepository.findBySessionId(event.sessionId())
+                    .orElseGet(() -> tournamentBracketService.initializeTournament(event));
+                broadcastAfterCommit(
+                    event.sessionId(),
+                    "tournament_started",
+                    Map.of(
+                        "sessionId", event.sessionId(),
+                        "competitionId", competition.getId()
+                    )
+                );
+            } else if (event.gameMode() == GameMode.LEAGUE) {
+                CompetitionEntity competition = competitionRepository.findBySessionId(event.sessionId())
+                    .orElseGet(() -> {
+                        CompetitionEntity created = new CompetitionEntity();
+                        created.setId(UUID.randomUUID());
+                        created.setSessionId(event.sessionId());
+                        created.setType(CompetitionType.LEAGUE);
+                        created.setStatus(CompetitionStatus.PENDING);
+                        created.setCreatedAt(Instant.now());
+                        return competitionRepository.save(created);
+                    });
+                broadcastAfterCommit(
+                    event.sessionId(),
+                    "league_pending",
+                    Map.of(
+                        "sessionId", event.sessionId(),
+                        "competitionId", competition.getId(),
+                        "message", "League mode coming in a future update"
+                    )
+                );
+            }
+
             processedEventRepository.save(
                 new ProcessedEvent(event.eventId(), "DraftCompletedEvent", Instant.now())
             );
-        } catch (DataIntegrityViolationException duplicate) {
-            // Another worker handled this event.
+        } catch (Exception ex) {
+            log.error(
+                "Failed to initialize competition for session {} (gameMode={})",
+                event.sessionId(),
+                event.gameMode(),
+                ex
+            );
+            throw ex;
         }
+    }
+
+    private void broadcastAfterCommit(UUID sessionId, String eventType, Map<String, Object> payload) {
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                sseEmitterRegistry.broadcast(sessionId, eventType, payload);
+            }
+        });
     }
 }
