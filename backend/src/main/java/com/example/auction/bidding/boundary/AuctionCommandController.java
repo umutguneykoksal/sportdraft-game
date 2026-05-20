@@ -32,8 +32,11 @@ public class AuctionCommandController {
     }
 
     @PostMapping("/auction/rounds/start")
-    public AuctionRoundResponse startRound(@PathVariable UUID sessionId) {
-        return auctionEngine.startRound(sessionId);
+    public AuctionRoundResponse startRound(
+        @PathVariable UUID sessionId,
+        @RequestHeader("Authorization") String authorization
+    ) {
+        return auctionEngine.startRound(sessionId, authTokenResolver.resolveUserId(authorization));
     }
 
     @GetMapping("/auction/state")

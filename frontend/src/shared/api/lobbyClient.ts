@@ -1,4 +1,4 @@
-import { LobbyRoomResponse, SessionSnapshotResponse, SpectateStateResponse } from "./contracts";
+import { LobbyRoomResponse, MatchEvent, SessionSnapshotResponse, SpectateStateResponse } from "./contracts";
 import { authHeaders, getApiBase, parseOrThrow } from "./httpClient";
 
 export async function listLobbies(): Promise<LobbyRoomResponse[]> {
@@ -49,4 +49,14 @@ export async function getSpectateState(sessionId: string): Promise<SpectateState
     headers: authHeaders(),
   });
   return parseOrThrow<SpectateStateResponse>(response, `getSpectateState failed: ${response.status}`);
+}
+
+export async function getSpectateMatchTimeline(sessionId: string): Promise<MatchEvent[]> {
+  const response = await fetch(`${getApiBase()}/api/sessions/${sessionId}/spectate/match-timeline`, {
+    method: "GET",
+  });
+  if (response.status === 404) {
+    return [];
+  }
+  return parseOrThrow<MatchEvent[]>(response, `getSpectateMatchTimeline failed: ${response.status}`);
 }

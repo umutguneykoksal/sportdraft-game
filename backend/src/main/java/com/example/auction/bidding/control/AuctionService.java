@@ -109,8 +109,14 @@ public class AuctionService {
         }
     }
 
-    public AuctionRoundResponse startRound(UUID sessionId) {
-        return mutationGuard.mutate(sessionId, () -> startRoundInternal(sessionStore.getById(sessionId)));
+    public AuctionRoundResponse startRound(UUID sessionId, UUID userId) {
+        return mutationGuard.mutate(sessionId, () -> {
+            ActiveSession session = sessionStore.getById(sessionId);
+            if (!session.hasPlayerWithUserId(userId)) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Player not found in session");
+            }
+            return startRoundInternal(session);
+        });
     }
 
     private AuctionRoundResponse startRoundInternal(ActiveSession session) {
@@ -517,6 +523,8 @@ public class AuctionService {
             buildTeamCards(away, cardMap, soldAmountByCardId, draftOrderByCardId),
             home.getFormation().name(),
             away.getFormation().name(),
+            home.getUserId(),
+            away.getUserId(),
             home.getNickname(),
             away.getNickname(),
             home.getRemainingBudgetCents(),
@@ -533,6 +541,8 @@ public class AuctionService {
         List<AuctionTeamCardResponse> awayTeam,
         String homeFormation,
         String awayFormation,
+        UUID homeUserId,
+        UUID awayUserId,
         String homeNickname,
         String awayNickname,
         long homeBudget,

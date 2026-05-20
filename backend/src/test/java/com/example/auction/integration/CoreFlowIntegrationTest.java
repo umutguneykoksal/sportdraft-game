@@ -99,7 +99,7 @@ class CoreFlowIntegrationTest {
         SessionSnapshotResponse auctioning = lobbyService.getSnapshot(sessionId, user1);
         assertThat(auctioning.status()).isEqualTo(SessionStatus.AUCTIONING);
 
-        AuctionRoundResponse round = auctionService.startRound(sessionId);
+        AuctionRoundResponse round = auctionService.startRound(sessionId, user1);
         auctionService.placeBid(
             sessionId, user1, UUID.randomUUID().toString(),
             new PlaceBidRequest(round.roundId(), 2)

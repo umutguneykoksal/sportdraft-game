@@ -11,17 +11,19 @@ import java.util.Map;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
 /**
  * Redis-backed ordered event log for each active session.
  * Provides monotonically increasing sequence numbers and a bounded ring buffer
- * so reconnecting clients can catch up on missed events.
+ * so reconnecting clients can catch up on missed events during long sessions.
+ * Keys are deleted when the session is archived ({@link #forget}).
  *
  * Key layout:
  *   session-events:{id}:seq    — INCR counter (monoton seq)
- *   session-events:{id}:log    — LIST head=newest, trimmed to RING_SIZE
+ *   session-events:{id}:log    — LIST head=newest, trimmed to ringSize
  *
  * Race guarantee: append MUST happen before hub publish so that a reconnecting
  * client who requests afterSeq=N can always find the event in the log.
@@ -33,16 +35,23 @@ public class SessionEventLog {
     private static final String SEQ_PREFIX = "session-events:";
     private static final String SEQ_SUFFIX = ":seq";
     private static final String LOG_SUFFIX = ":log";
-    private static final int RING_SIZE = 100;
-    private static final Duration LOG_TTL = Duration.ofMinutes(30);
     private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {};
 
     private final StringRedisTemplate redis;
     private final ObjectMapper objectMapper;
+    private final int ringSize;
+    private final Duration logTtl;
 
-    public SessionEventLog(StringRedisTemplate redis, ObjectMapper objectMapper) {
+    public SessionEventLog(
+        StringRedisTemplate redis,
+        ObjectMapper objectMapper,
+        @Value("${app.realtime.event-log-ring-size:10000}") int ringSize,
+        @Value("${app.realtime.event-log-ttl-hours:6}") long logTtlHours
+    ) {
         this.redis = redis;
         this.objectMapper = objectMapper;
+        this.ringSize = Math.max(100, ringSize);
+        this.logTtl = Duration.ofHours(Math.max(1, logTtlHours));
     }
 
     /**
@@ -52,7 +61,7 @@ public class SessionEventLog {
     public long nextSeq(UUID sessionId) {
         Long seq = redis.opsForValue().increment(seqKey(sessionId));
         if (seq == null) seq = 1L;
-        redis.expire(seqKey(sessionId), LOG_TTL);
+        redis.expire(seqKey(sessionId), logTtl);
         return seq;
     }
 
@@ -67,8 +76,8 @@ public class SessionEventLog {
             String json = objectMapper.writeValueAsString(envelope);
             String logKey = logKey(sessionId);
             redis.opsForList().leftPush(logKey, json);
-            redis.opsForList().trim(logKey, 0, RING_SIZE - 1);
-            redis.expire(logKey, LOG_TTL);
+            redis.opsForList().trim(logKey, 0, ringSize - 1);
+            redis.expire(logKey, logTtl);
             return true;
         } catch (JsonProcessingException e) {
             log.warn("Failed to append event to log for session={}: {}", sessionId, e.getMessage());
@@ -82,9 +91,19 @@ public class SessionEventLog {
      */
     public List<Map<String, Object>> since(UUID sessionId, long afterSeq) {
         String logKey = logKey(sessionId);
-        List<String> all = redis.opsForList().range(logKey, 0, RING_SIZE - 1);
+        List<String> all = redis.opsForList().range(logKey, 0, ringSize - 1);
         if (all == null || all.isEmpty()) {
             return List.of();
+        }
+        long currentSeq = currentSeq(sessionId);
+        if (currentSeq > afterSeq && afterSeq > 0 && currentSeq - afterSeq > ringSize) {
+            log.debug(
+                "Event log gap for session={}: afterSeq={} currentSeq={} ringSize={}",
+                sessionId,
+                afterSeq,
+                currentSeq,
+                ringSize
+            );
         }
         List<Map<String, Object>> result = new ArrayList<>();
         for (String json : all) {

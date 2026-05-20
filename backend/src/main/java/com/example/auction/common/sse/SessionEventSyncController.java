@@ -13,7 +13,8 @@ import org.springframework.web.bind.annotation.RestController;
 
 /**
  * Allows clients to replay events they may have missed during a connection gap.
- * The event log is a bounded ring buffer (last 100 events) with a 30-minute TTL.
+ * The event log is a bounded ring buffer (default 10_000 events, configurable) with TTL;
+ * cleared when the session is archived.
  *
  * Response contains events ordered ascending by seq, or an empty list if the
  * requested seq is too old (client should fall back to a full snapshot fetch).

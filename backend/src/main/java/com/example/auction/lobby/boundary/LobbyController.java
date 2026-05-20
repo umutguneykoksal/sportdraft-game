@@ -1,10 +1,10 @@
 package com.example.auction.lobby.boundary;
 
+import com.example.auction.common.web.AuthTokenResolver;
 import com.example.auction.lobby.control.LobbyService;
 import jakarta.validation.Valid;
 import java.util.List;
 import java.util.UUID;
-import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -13,16 +13,17 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.server.ResponseStatusException;
 
 @RestController
 @RequestMapping("/api")
 public class LobbyController {
 
     private final LobbyService lobbyService;
+    private final AuthTokenResolver authTokenResolver;
 
-    public LobbyController(LobbyService lobbyService) {
+    public LobbyController(LobbyService lobbyService, AuthTokenResolver authTokenResolver) {
         this.lobbyService = lobbyService;
+        this.authTokenResolver = authTokenResolver;
     }
 
     @GetMapping("/lobbies")
@@ -36,7 +37,7 @@ public class LobbyController {
         @RequestHeader("Authorization") String authorization
     ) {
         String nickname = request != null ? request.nickname() : null;
-        return lobbyService.createRoom(extractUserId(authorization), nickname);
+        return lobbyService.createRoom(authTokenResolver.resolveUserId(authorization), nickname);
     }
 
     @PostMapping("/lobbies/{sessionId}/join")
@@ -46,7 +47,7 @@ public class LobbyController {
         @RequestHeader("Authorization") String authorization
     ) {
         String nickname = request != null ? request.nickname() : null;
-        return lobbyService.joinRoom(sessionId, extractUserId(authorization), nickname);
+        return lobbyService.joinRoom(sessionId, authTokenResolver.resolveUserId(authorization), nickname);
     }
 
     @PostMapping("/lobbies/join")
@@ -56,7 +57,7 @@ public class LobbyController {
         @RequestHeader("Authorization") String authorization
     ) {
         String nickname = request != null ? request.nickname() : null;
-        return lobbyService.joinLobby(extractUserId(authorization), nickname);
+        return lobbyService.joinLobby(authTokenResolver.resolveUserId(authorization), nickname);
     }
 
     @DeleteMapping("/sessions/{sessionId}/players/me")
@@ -64,17 +65,6 @@ public class LobbyController {
         @PathVariable UUID sessionId,
         @RequestHeader("Authorization") String authorization
     ) {
-        return lobbyService.leaveLobby(sessionId, extractUserId(authorization));
-    }
-
-    private UUID extractUserId(String authorization) {
-        if (authorization == null || !authorization.startsWith("Bearer ")) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Missing Authorization: Bearer <uuid>");
-        }
-        try {
-            return UUID.fromString(authorization.substring("Bearer ".length()).trim());
-        } catch (IllegalArgumentException ex) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid bearer token format");
-        }
+        return lobbyService.leaveLobby(sessionId, authTokenResolver.resolveUserId(authorization));
     }
 }

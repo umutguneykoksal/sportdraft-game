@@ -15,8 +15,8 @@ public class AuctionEngine {
         this.auctionService = auctionService;
     }
 
-    public AuctionRoundResponse startRound(UUID sessionId) {
-        return auctionService.startRound(sessionId);
+    public AuctionRoundResponse startRound(UUID sessionId, UUID userId) {
+        return auctionService.startRound(sessionId, userId);
     }
 
     public AuctionRoundResponse placeBid(UUID sessionId, UUID userId, String idempotencyKey, PlaceBidRequest request) {

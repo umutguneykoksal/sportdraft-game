@@ -15,7 +15,9 @@ export function MatchPage() {
   const {
     ready, homeScore, awayScore,
     myTeam, opponentTeam, myFormation, opponentFormation,
-    myNickname, opponentNickname, myTeamId,
+    myNickname, opponentNickname,
+    homeUserId, sessionHomeNickname, sessionAwayNickname,
+    sessionHomeScore, sessionAwayScore,
     myShots, opponentShots, myFouls, opponentFouls,
   } = useMatchFlow(sessionId);
 
@@ -40,9 +42,6 @@ export function MatchPage() {
         .finally(() => setTimelineLoading(false));
     }
   }, [ready, sessionId, timeline.length, timelineLoading]);
-
-  // Use actual team ID from backend for timeline event matching
-  const homeTeamId = myTeamId;
 
   const isWin = ready && homeScore !== null && awayScore !== null && homeScore > awayScore;
   const isLoss = ready && homeScore !== null && awayScore !== null && homeScore < awayScore;
@@ -83,12 +82,12 @@ export function MatchPage() {
         <div className="flex-1 max-w-3xl mx-auto px-4 py-6 w-full">
           <MatchCommentary
             timeline={timeline}
-            homeTeamId={homeTeamId}
+            homeTeamId={homeUserId}
             onComplete={handleCommentaryComplete}
-            finalHomeScore={homeScore ?? 0}
-            finalAwayScore={awayScore ?? 0}
-            myNickname={myNickname}
-            opponentNickname={opponentNickname}
+            finalHomeScore={sessionHomeScore}
+            finalAwayScore={sessionAwayScore}
+            homeNickname={sessionHomeNickname}
+            awayNickname={sessionAwayNickname}
           />
         </div>
       )}

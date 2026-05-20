@@ -26,6 +26,7 @@ class AuctionEngineTest {
     @Test
     void startRoundDelegatesToAuctionService() {
         UUID sessionId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
         AuctionRoundResponse round = new AuctionRoundResponse(
             UUID.randomUUID(),
             sessionId,
@@ -52,11 +53,11 @@ class AuctionEngineTest {
             true,
             List.of()
         );
-        when(auctionService.startRound(sessionId)).thenReturn(round);
+        when(auctionService.startRound(sessionId, userId)).thenReturn(round);
 
-        AuctionRoundResponse response = auctionEngine.startRound(sessionId);
+        AuctionRoundResponse response = auctionEngine.startRound(sessionId, userId);
 
-        verify(auctionService).startRound(sessionId);
+        verify(auctionService).startRound(sessionId, userId);
         assertThat(response).isEqualTo(round);
     }
 }

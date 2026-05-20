@@ -89,7 +89,7 @@ class AuctionServiceTest {
 
         when(sessionStore.getById(sessionId)).thenReturn(session);
 
-        assertThatThrownBy(() -> auctionService.startRound(sessionId))
+        assertThatThrownBy(() -> auctionService.startRound(sessionId, session.getPlayers().get(0).getUserId()))
             .isInstanceOf(ResponseStatusException.class)
             .satisfies(ex -> {
                 ResponseStatusException rse = (ResponseStatusException) ex;
@@ -100,14 +100,30 @@ class AuctionServiceTest {
     @Test
     void startRoundRejectsWhenNotAuctioning() {
         UUID sessionId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
         ActiveSession session = new ActiveSession(sessionId, SessionStatus.WAITING, Instant.now());
+        session.getPlayers().add(new ActivePlayer(UUID.randomUUID(), userId, "P1", Formation.FOUR_FOUR_TWO, 100));
         when(sessionStore.getById(sessionId)).thenReturn(session);
 
-        assertThatThrownBy(() -> auctionService.startRound(sessionId))
+        assertThatThrownBy(() -> auctionService.startRound(sessionId, userId))
             .isInstanceOf(ResponseStatusException.class)
             .satisfies(ex -> {
                 ResponseStatusException rse = (ResponseStatusException) ex;
                 assertThat(rse.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+            });
+    }
+
+    @Test
+    void startRoundRejectsNonMember() {
+        UUID sessionId = UUID.randomUUID();
+        ActiveSession session = new ActiveSession(sessionId, SessionStatus.AUCTIONING, Instant.now());
+        when(sessionStore.getById(sessionId)).thenReturn(session);
+
+        assertThatThrownBy(() -> auctionService.startRound(sessionId, UUID.randomUUID()))
+            .isInstanceOf(ResponseStatusException.class)
+            .satisfies(ex -> {
+                ResponseStatusException rse = (ResponseStatusException) ex;
+                assertThat(rse.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
             });
     }
 }

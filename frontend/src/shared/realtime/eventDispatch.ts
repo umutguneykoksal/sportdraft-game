@@ -1,5 +1,6 @@
 import { AuctionRoundResponse } from "../api/contracts";
 import { RealtimeEnvelope } from "./types";
+import { MAX_SEEN_EVENT_IDS } from "./constants";
 
 export type RefreshKind = "none" | "state" | "full";
 
@@ -193,7 +194,7 @@ export function maxRefresh(current: RefreshKind, next: RefreshKind): RefreshKind
   return "none";
 }
 
-const MAX_SEEN_EVENT_IDS = 300;
+const MAX_SEEN_EVENT_IDS_CAP = MAX_SEEN_EVENT_IDS;
 
 /** Drain envelopes not yet processed (stable across ring-buffer truncation). */
 export function drainUnseenEvents(
@@ -207,7 +208,7 @@ export function drainUnseenEvents(
     seen.add(id);
     fresh.push(env);
   }
-  while (seen.size > MAX_SEEN_EVENT_IDS) {
+  while (seen.size > MAX_SEEN_EVENT_IDS_CAP) {
     const oldest = seen.values().next().value;
     if (oldest === undefined) break;
     seen.delete(oldest);

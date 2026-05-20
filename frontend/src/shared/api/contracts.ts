@@ -120,6 +120,12 @@ export interface MatchResultResponse {
   opponentShots: number;
   myFouls: number;
   opponentFouls: number;
+  homeUserId: string;
+  awayUserId: string;
+  sessionHomeNickname: string;
+  sessionAwayNickname: string;
+  sessionHomeScore: number;
+  sessionAwayScore: number;
 }
 
 export interface LobbyRoomResponse {
@@ -138,6 +144,8 @@ export interface SpectateStateResponse {
   awayTeam: AuctionTeamCardResponse[];
   homeFormation: string;
   awayFormation: string;
+  homeUserId: string;
+  awayUserId: string;
   homeNickname: string;
   awayNickname: string;
   homeBudget: number;

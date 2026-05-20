@@ -1,9 +1,9 @@
 package com.example.auction.bidding.boundary;
 
 import com.example.auction.bidding.control.AuctionService;
+import com.example.auction.common.web.AuthTokenResolver;
 import jakarta.validation.Valid;
 import java.util.UUID;
-import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -11,21 +11,25 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.server.ResponseStatusException;
 
 @RestController
 @RequestMapping("/api/sessions/{sessionId}")
 public class AuctionController {
 
     private final AuctionService auctionService;
+    private final AuthTokenResolver authTokenResolver;
 
-    public AuctionController(AuctionService auctionService) {
+    public AuctionController(AuctionService auctionService, AuthTokenResolver authTokenResolver) {
         this.auctionService = auctionService;
+        this.authTokenResolver = authTokenResolver;
     }
 
     @PostMapping("/auction/rounds/start")
-    public AuctionRoundResponse startRound(@PathVariable UUID sessionId) {
-        return auctionService.startRound(sessionId);
+    public AuctionRoundResponse startRound(
+        @PathVariable UUID sessionId,
+        @RequestHeader("Authorization") String authorization
+    ) {
+        return auctionService.startRound(sessionId, authTokenResolver.resolveUserId(authorization));
     }
 
     @GetMapping("/auction/state")
@@ -33,8 +37,7 @@ public class AuctionController {
         @PathVariable UUID sessionId,
         @RequestHeader("Authorization") String authorization
     ) {
-        UUID userId = extractUserId(authorization);
-        return auctionService.getAuctionState(sessionId, userId);
+        return auctionService.getAuctionState(sessionId, authTokenResolver.resolveUserId(authorization));
     }
 
     @PostMapping("/bids")
@@ -44,8 +47,12 @@ public class AuctionController {
         @RequestHeader("Idempotency-Key") String idempotencyKey,
         @Valid @RequestBody PlaceBidRequest request
     ) {
-        UUID userId = extractUserId(authorization);
-        return auctionService.placeBid(sessionId, userId, idempotencyKey, request);
+        return auctionService.placeBid(
+            sessionId,
+            authTokenResolver.resolveUserId(authorization),
+            idempotencyKey,
+            request
+        );
     }
 
     @PostMapping("/auction/rounds/{roundId}/ready-next")
@@ -54,8 +61,7 @@ public class AuctionController {
         @PathVariable UUID roundId,
         @RequestHeader("Authorization") String authorization
     ) {
-        UUID userId = extractUserId(authorization);
-        return auctionService.readyNext(sessionId, userId, roundId);
+        return auctionService.readyNext(sessionId, authTokenResolver.resolveUserId(authorization), roundId);
     }
 
     @PostMapping("/auction/rounds/{roundId}/pass")
@@ -64,18 +70,6 @@ public class AuctionController {
         @PathVariable UUID roundId,
         @RequestHeader("Authorization") String authorization
     ) {
-        UUID userId = extractUserId(authorization);
-        return auctionService.passRound(sessionId, userId, roundId);
-    }
-
-    private UUID extractUserId(String authorization) {
-        if (authorization == null || !authorization.startsWith("Bearer ")) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Missing Authorization: Bearer <uuid>");
-        }
-        try {
-            return UUID.fromString(authorization.substring("Bearer ".length()).trim());
-        } catch (IllegalArgumentException ex) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid bearer token format");
-        }
+        return auctionService.passRound(sessionId, authTokenResolver.resolveUserId(authorization), roundId);
     }
 }

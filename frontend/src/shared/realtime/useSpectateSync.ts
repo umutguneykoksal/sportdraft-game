@@ -13,12 +13,13 @@ import {
 } from "./eventDispatch";
 import { RealtimeEnvelope } from "./types";
 import { useRealtimeSession } from "./useRealtimeSession";
-
-const POLL_INTERVAL_IDLE_MS = 30_000;
-const POLL_INTERVAL_ROUND_OPEN_MS = 5_000;
-const POLL_INTERVAL_DISCONNECTED_MS = 2_000;
-const VISIBILITY_REFRESH_THRESHOLD_MS = 10_000;
-const HEARTBEAT_TIMEOUT_MS = 90_000;
+import {
+  HEARTBEAT_TIMEOUT_MS,
+  POLL_INTERVAL_DISCONNECTED_MS,
+  POLL_INTERVAL_IDLE_MS,
+  POLL_INTERVAL_ROUND_OPEN_MS,
+  VISIBILITY_REFRESH_THRESHOLD_MS,
+} from "./syncConstants";
 
 export function useSpectateSync(sessionId: string | null) {
   const [state, setState] = useState<SpectateStateResponse | null>(null);

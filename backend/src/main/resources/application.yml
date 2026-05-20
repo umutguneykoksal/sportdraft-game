@@ -53,7 +53,16 @@ spring.task:
       size: 4
 
 app:
+  admin:
+    api-key: ${APP_ADMIN_API_KEY:}
   cors:
     allowed-origins: ${APP_CORS_ALLOWED_ORIGINS:http://localhost:3000}
   session:
     disconnect-timeout-seconds: ${APP_SESSION_DISCONNECT_TIMEOUT_SECONDS:60}
+  realtime:
+    event-log-ring-size: ${APP_REALTIME_EVENT_LOG_RING_SIZE:10000}
+    event-log-ttl-hours: ${APP_REALTIME_EVENT_LOG_TTL_HOURS:6}
+  match-history:
+    cleanup-enabled: ${APP_MATCH_HISTORY_CLEANUP_ENABLED:true}
+    retention-days: ${APP_MATCH_HISTORY_RETENTION_DAYS:7}
+    cleanup-cron: ${APP_MATCH_HISTORY_CLEANUP_CRON:0 0 4 * * *}

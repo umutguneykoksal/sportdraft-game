@@ -1,10 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { getApiBase } from "../api";
 import { createTransport } from "./transportFactory";
+import { WS_FAILOVER_ATTEMPTS, MAX_BUFFERED_EVENTS } from "./constants";
 import { RealtimeEnvelope } from "./types";
-
-const WS_FAILOVER_ATTEMPTS = 3;
-const MAX_BUFFERED_EVENTS = 120;
 
 export function useRealtimeSession(
   sessionId: string | null,
@@ -100,7 +98,15 @@ export function useRealtimeSession(
             }
             setEvents((prev) => {
               const next = [...prev, parsed];
-              return next.length > MAX_BUFFERED_EVENTS ? next.slice(-MAX_BUFFERED_EVENTS) : next;
+              if (next.length > MAX_BUFFERED_EVENTS) {
+                if (process.env.NODE_ENV === "development") {
+                  console.warn(
+                    `[realtime] client event buffer truncated to ${MAX_BUFFERED_EVENTS} events`
+                  );
+                }
+                return next.slice(-MAX_BUFFERED_EVENTS);
+              }
+              return next;
             });
           } catch {
             // ignore malformed payload

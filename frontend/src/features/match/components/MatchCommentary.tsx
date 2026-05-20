@@ -7,8 +7,8 @@ interface MatchCommentaryProps {
   onComplete: () => void;
   finalHomeScore: number;
   finalAwayScore: number;
-  myNickname: string;
-  opponentNickname: string;
+  homeNickname: string;
+  awayNickname: string;
 }
 
 type CommentarySpeed = 1 | 2 | 4;
@@ -33,8 +33,8 @@ const EVENT_COLORS: Record<string, string> = {
   FULL_TIME: "text-purple-400",
 };
 
-function getCommentary(event: MatchEvent, isHome: boolean, myNickname: string, opponentNickname: string): string {
-  const team = isHome ? myNickname : opponentNickname;
+function getCommentary(event: MatchEvent, isHome: boolean, homeNickname: string, awayNickname: string): string {
+  const team = isHome ? homeNickname : awayNickname;
   const player = event.playerName || "A player";
   
   switch (event.type) {
@@ -65,8 +65,8 @@ export function MatchCommentary({
   onComplete,
   finalHomeScore,
   finalAwayScore,
-  myNickname,
-  opponentNickname,
+  homeNickname,
+  awayNickname,
 }: MatchCommentaryProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [displayedEvents, setDisplayedEvents] = useState<MatchEvent[]>([]);
@@ -150,7 +150,7 @@ export function MatchCommentary({
       <div className="bg-gradient-to-r from-blue-900/50 to-red-900/50 px-6 py-4">
         <div className="flex items-center justify-center gap-8">
           <div className="text-center">
-            <p className="text-xs text-blue-300 mb-1 truncate max-w-24">{myNickname}</p>
+            <p className="text-xs text-blue-300 mb-1 truncate max-w-24">{homeNickname}</p>
             <p className="text-4xl font-black text-white">{homeScore}</p>
           </div>
           <div className="flex flex-col items-center">
@@ -158,7 +158,7 @@ export function MatchCommentary({
             <span className="text-xs text-slate-500 mt-1">{currentMinute}'</span>
           </div>
           <div className="text-center">
-            <p className="text-xs text-red-300 mb-1 truncate max-w-24">{opponentNickname}</p>
+            <p className="text-xs text-red-300 mb-1 truncate max-w-24">{awayNickname}</p>
             <p className="text-4xl font-black text-white">{awayScore}</p>
           </div>
         </div>
@@ -195,12 +195,12 @@ export function MatchCommentary({
               {/* Commentary text */}
               <div className={`flex-1 ${isGoal ? "bg-yellow-500/10 -mx-2 px-2 py-1 rounded" : ""}`}>
                 <p className={`text-sm ${colorClass} ${isGoal ? "font-bold text-base" : ""}`}>
-                  {getCommentary(event, isHome, myNickname, opponentNickname)}
+                  {getCommentary(event, isHome, homeNickname, awayNickname)}
                 </p>
                 {isGoal && (
                   <div className="mt-1 flex items-center gap-2">
                     <span className={`text-xs px-2 py-0.5 rounded ${isHome ? "bg-blue-500/30 text-blue-300" : "bg-red-500/30 text-red-300"}`}>
-                      {isHome ? myNickname : opponentNickname}
+                      {isHome ? homeNickname : awayNickname}
                     </span>
                     {event.playerName && (
                       <span className="text-xs text-yellow-400">Scorer: {event.playerName}</span>

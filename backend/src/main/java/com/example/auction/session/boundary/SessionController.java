@@ -1,6 +1,8 @@
 package com.example.auction.session.boundary;
 
 import com.example.auction.bidding.control.AuctionService;
+import com.example.auction.common.web.AdminApiKeyGuard;
+import com.example.auction.common.web.AuthTokenResolver;
 import com.example.auction.common.sse.SseEmitterRegistry;
 import com.example.auction.lobby.boundary.SessionSnapshotResponse;
 import com.example.auction.lobby.control.LobbyService;
@@ -49,6 +51,8 @@ public class SessionController {
     private final MatchResultRecoveryService matchResultRecoveryService;
     private final SseEmitterRegistry sseEmitterRegistry;
     private final ObjectMapper redisObjectMapper;
+    private final AdminApiKeyGuard adminApiKeyGuard;
+    private final AuthTokenResolver authTokenResolver;
 
     public SessionController(
         LobbyService lobbyService,
@@ -58,6 +62,8 @@ public class SessionController {
         MatchHistoryRepository matchHistoryRepository,
         MatchResultRecoveryService matchResultRecoveryService,
         SseEmitterRegistry sseEmitterRegistry,
+        AdminApiKeyGuard adminApiKeyGuard,
+        AuthTokenResolver authTokenResolver,
         @Qualifier("redisObjectMapper") ObjectMapper redisObjectMapper
     ) {
         this.lobbyService = lobbyService;
@@ -67,6 +73,8 @@ public class SessionController {
         this.matchHistoryRepository = matchHistoryRepository;
         this.matchResultRecoveryService = matchResultRecoveryService;
         this.sseEmitterRegistry = sseEmitterRegistry;
+        this.adminApiKeyGuard = adminApiKeyGuard;
+        this.authTokenResolver = authTokenResolver;
         this.redisObjectMapper = redisObjectMapper;
     }
 
@@ -75,7 +83,7 @@ public class SessionController {
         @PathVariable UUID sessionId,
         @RequestHeader("Authorization") String authorization
     ) {
-        return lobbyService.getSnapshot(sessionId, extractUserId(authorization));
+        return lobbyService.getSnapshot(sessionId, authTokenResolver.resolveUserId(authorization));
     }
 
     @PostMapping("/{sessionId}/formation")
@@ -84,7 +92,7 @@ public class SessionController {
         @Valid @RequestBody SelectFormationRequest request,
         @RequestHeader("Authorization") String authorization
     ) {
-        return lobbyService.selectFormation(sessionId, extractUserId(authorization), request.formation());
+        return lobbyService.selectFormation(sessionId, authTokenResolver.resolveUserId(authorization), request.formation());
     }
 
     @PostMapping("/{sessionId}/confirm-formation-ready")
@@ -92,7 +100,7 @@ public class SessionController {
         @PathVariable UUID sessionId,
         @RequestHeader("Authorization") String authorization
     ) {
-        return lobbyService.confirmFormationReady(sessionId, extractUserId(authorization));
+        return lobbyService.confirmFormationReady(sessionId, authTokenResolver.resolveUserId(authorization));
     }
 
     @PostMapping("/{sessionId}/confirm-match-start")
@@ -100,7 +108,7 @@ public class SessionController {
         @PathVariable UUID sessionId,
         @RequestHeader("Authorization") String authorization
     ) {
-        UUID userId = extractUserId(authorization);
+        UUID userId = authTokenResolver.resolveUserId(authorization);
         auctionService.confirmMatchStart(sessionId, userId);
         return lobbyService.getSnapshot(sessionId, userId);
     }
@@ -114,10 +122,44 @@ public class SessionController {
             snap.status(), snap.currentRound(),
             snap.homeTeam(), snap.awayTeam(),
             snap.homeFormation(), snap.awayFormation(),
+            snap.homeUserId(), snap.awayUserId(),
             snap.homeNickname(), snap.awayNickname(),
             snap.homeBudget(), snap.awayBudget(),
             snap.homeScore(), snap.awayScore()
         );
+    }
+
+    @GetMapping("/{sessionId}/spectate/match-timeline")
+    public ResponseEntity<List<MatchEvent>> getSpectateMatchTimeline(@PathVariable UUID sessionId) {
+        ActiveSession session = sessionStore.findById(sessionId).orElse(null);
+        if (session != null) {
+            matchResultRecoveryService.recoverIfMissing(sessionId);
+            session = sessionStore.findById(sessionId).orElse(null);
+            if (session != null) {
+                List<MatchEvent> timeline = session.getMatchTimeline();
+                if (timeline != null && !timeline.isEmpty()) {
+                    return ResponseEntity.ok(timeline);
+                }
+            }
+        }
+
+        return matchHistoryRepository.findBySessionId(sessionId)
+            .map(this::extractTimelineFromArchiveForSpectate)
+            .orElse(ResponseEntity.notFound().build());
+    }
+
+    private ResponseEntity<List<MatchEvent>> extractTimelineFromArchiveForSpectate(MatchHistory h) {
+        try {
+            ActiveSession archived = redisObjectMapper.readValue(h.getReplayData(), ActiveSession.class);
+            List<MatchEvent> timeline = archived.getMatchTimeline();
+            if (timeline != null && !timeline.isEmpty()) {
+                return ResponseEntity.ok(timeline);
+            }
+            return ResponseEntity.ok(List.of());
+        } catch (Exception e) {
+            log.warn("Failed to deserialize replay_data for spectate timeline, session {}", h.getSessionId(), e);
+            return ResponseEntity.ok(List.of());
+        }
     }
 
     @GetMapping("/{sessionId}/match-result")
@@ -125,7 +167,7 @@ public class SessionController {
         @PathVariable UUID sessionId,
         @RequestHeader("Authorization") String authorization
     ) {
-        UUID userId = extractUserId(authorization);
+        UUID userId = authTokenResolver.resolveUserId(authorization);
 
         // Try active Redis session first
         ActiveSession session = sessionStore.findById(sessionId).orElse(null);
@@ -144,6 +186,8 @@ public class SessionController {
                 String awayNick = sorted.size() > 1 ? sorted.get(1).getNickname() : "Away";
                 String myNickname = isHome ? homeNick : awayNick;
                 String oppNickname = isHome ? awayNick : homeNick;
+                UUID homeUserId = sorted.isEmpty() ? userId : sorted.get(0).getUserId();
+                UUID awayUserId = sorted.size() > 1 ? sorted.get(1).getUserId() : userId;
                 AuctionService.TeamSnapshot teams = auctionService.buildTeamSnapshot(session, userId);
                 
                 // Calculate stats from timeline
@@ -156,7 +200,10 @@ public class SessionController {
                     teams.myFormation(), teams.opponentFormation(),
                     myNickname, oppNickname,
                     userId.toString(),
-                    stats[0], stats[1], stats[2], stats[3]
+                    stats[0], stats[1], stats[2], stats[3],
+                    homeUserId.toString(), awayUserId.toString(),
+                    homeNick, awayNick,
+                    session.getHomeScore(), session.getAwayScore()
                 ));
             }
         }
@@ -215,7 +262,10 @@ public class SessionController {
                 teams.myFormation(), teams.opponentFormation(),
                 myNickname, oppNickname,
                 userId.toString(),
-                stats[0], stats[1], stats[2], stats[3]
+                stats[0], stats[1], stats[2], stats[3],
+                h.getHomeUserId().toString(), h.getAwayUserId().toString(),
+                homeNick, awayNick,
+                h.getHomeScore(), h.getAwayScore()
             ));
         } catch (Exception e) {
             log.warn("Failed to deserialize replay_data for session {}, returning scores only", h.getSessionId(), e);
@@ -226,7 +276,10 @@ public class SessionController {
                 isHome ? h.getAwayFormation() : h.getHomeFormation(),
                 null, null,
                 userId.toString(),
-                0, 0, 0, 0
+                0, 0, 0, 0,
+                h.getHomeUserId().toString(), h.getAwayUserId().toString(),
+                "Home", "Away",
+                h.getHomeScore(), h.getAwayScore()
             ));
         }
     }
@@ -236,7 +289,7 @@ public class SessionController {
         @PathVariable UUID sessionId,
         @RequestHeader("Authorization") String authorization
     ) {
-        UUID userId = extractUserId(authorization);
+        UUID userId = authTokenResolver.resolveUserId(authorization);
         sseEmitterRegistry.recordPlayerPing(sessionId, userId);
         return ResponseEntity.noContent().build();
     }
@@ -249,7 +302,7 @@ public class SessionController {
         @PathVariable UUID sessionId,
         @RequestHeader("Authorization") String authorization
     ) {
-        UUID userId = extractUserId(authorization);
+        UUID userId = authTokenResolver.resolveUserId(authorization);
 
         // Try active Redis session first
         ActiveSession session = sessionStore.findById(sessionId).orElse(null);
@@ -287,23 +340,19 @@ public class SessionController {
     }
 
     @DeleteMapping("/{sessionId}")
-    public void deleteSession(@PathVariable UUID sessionId) {
+    public void deleteSession(
+        @PathVariable UUID sessionId,
+        @RequestHeader(value = AdminApiKeyGuard.HEADER_NAME, required = false) String adminKey
+    ) {
+        adminApiKeyGuard.requireAdmin(adminKey);
         sessionAdminService.deleteSession(sessionId);
     }
 
     @DeleteMapping
-    public Map<String, Integer> deleteActiveSessions() {
+    public Map<String, Integer> deleteActiveSessions(
+        @RequestHeader(value = AdminApiKeyGuard.HEADER_NAME, required = false) String adminKey
+    ) {
+        adminApiKeyGuard.requireAdmin(adminKey);
         return sessionAdminService.deleteActiveSessions();
-    }
-
-    private UUID extractUserId(String authorization) {
-        if (authorization == null || !authorization.startsWith("Bearer ")) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Missing Authorization: Bearer <uuid>");
-        }
-        try {
-            return UUID.fromString(authorization.substring("Bearer ".length()).trim());
-        } catch (IllegalArgumentException ex) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid bearer token format");
-        }
     }
 }

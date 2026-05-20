@@ -4,6 +4,7 @@ import com.example.auction.bidding.boundary.AuctionTeamCardResponse;
 import java.util.List;
 
 public record MatchResultResponse(
+    /** Viewer-relative score (legacy field names). */
     int homeScore,
     int awayScore,
     List<AuctionTeamCardResponse> myTeam,
@@ -16,6 +17,12 @@ public record MatchResultResponse(
     int myShots,
     int opponentShots,
     int myFouls,
-    int opponentFouls
+    int opponentFouls,
+    String homeUserId,
+    String awayUserId,
+    String sessionHomeNickname,
+    String sessionAwayNickname,
+    int sessionHomeScore,
+    int sessionAwayScore
 ) {
 }
