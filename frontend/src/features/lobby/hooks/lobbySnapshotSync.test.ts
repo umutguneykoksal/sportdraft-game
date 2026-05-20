@@ -31,8 +31,8 @@ describe("lobbySnapshotSync", () => {
   });
 
   it("covers all documented refetch event types", () => {
-    for (const type of LOBBY_SNAPSHOT_REFETCH_EVENTS) {
+    LOBBY_SNAPSHOT_REFETCH_EVENTS.forEach((type) => {
       expect(shouldRefetchLobbySnapshot([env(type)])).toBe(true);
-    }
+    });
   });
 });
