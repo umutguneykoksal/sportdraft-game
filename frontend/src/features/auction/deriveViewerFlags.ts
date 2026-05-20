@@ -20,7 +20,9 @@ export function deriveViewerFlags(
   myTeam: AuctionTeamCardResponse[],
   myFormation: Formation,
   budget: number,
-  serverClockOffsetMs: number
+  serverClockOffsetMs: number,
+  /** When set (from timed hook), keeps canBid in sync with UI turn-open phase. */
+  turnIsOpenKnown?: boolean
 ): ViewerFlags {
   const none: ViewerFlags = {
     viewerCanBid: false,
@@ -44,7 +46,8 @@ export function deriveViewerFlags(
 
   const adjustedNow = Date.now() + serverClockOffsetMs;
   const turnIsOpen =
-    round.turnOpenAt != null && adjustedNow >= new Date(round.turnOpenAt).getTime();
+    turnIsOpenKnown ??
+    (round.turnOpenAt != null && adjustedNow >= new Date(round.turnOpenAt).getTime());
 
   const mayAct = (isMyTurn || turnIsOpen) && !hasPassed;
   const hasBudget = budget >= minimumBid;

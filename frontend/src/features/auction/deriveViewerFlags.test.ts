@@ -34,7 +34,8 @@ describe("deriveViewerFlags", () => {
       [],
       "FOUR_FOUR_TWO",
       95,
-      0
+      0,
+      true
     );
     expect(flags.viewerCanBid).toBe(true);
   });

@@ -61,6 +61,7 @@ export function useAuctionPageState(sessionId: string | undefined) {
   const serverClockOffsetMsRef = useRef<number>(0);
   const roundTotalSecondsRef = useRef<number>(30);
   const [turnIsOpen, setTurnIsOpen] = useState(false);
+  const [secondsUntilTurnOpen, setSecondsUntilTurnOpen] = useState<number | null>(null);
   const [resolvingRoundId, setResolvingRoundId] = useState<string | null>(null);
   const [roundOutcomeNotice, setRoundOutcomeNotice] = useState<RoundOutcomeNotice | null>(null);
   const lastOutcomeRoundIdRef = useRef<string | null>(null);
@@ -134,7 +135,8 @@ export function useAuctionPageState(sessionId: string | undefined) {
     myTeam,
     myFormation,
     budget,
-    serverClockOffsetMsRef.current
+    serverClockOffsetMsRef.current,
+    turnIsOpen
   );
   const showTakePanel = viewerCanTake;
   const couldBid = viewerCanBid;
@@ -158,16 +160,29 @@ export function useAuctionPageState(sessionId: string | undefined) {
     if (controlsLocked) return loading ? "Submitting…" : "Settling round…";
     if (inTimerGrace) return couldBid ? "Time's up — bids locked" : "Time's up — resolving turn…";
     if (waitingOnOpponent) {
-      if (iAmHighestBidder && opponentHasBid) {
-        return `You're leading at ${round!.highestBidCents} cr — opponent's turn`;
+      if (secondsUntilTurnOpen != null && secondsUntilTurnOpen > 0) {
+        return multiPlayerMode
+          ? `Exclusive turn — open to all in ${secondsUntilTurnOpen}s`
+          : `Open bidding in ${secondsUntilTurnOpen}s`;
       }
-      if (iAmHighestBidder) return "Waiting for opponent to bid";
+      if (iAmHighestBidder && opponentHasBid) {
+        return multiPlayerMode
+          ? `You're leading at ${round!.highestBidCents} cr — next player's turn`
+          : `You're leading at ${round!.highestBidCents} cr — opponent's turn`;
+      }
+      if (iAmHighestBidder) {
+        return multiPlayerMode ? "Waiting for next player to bid" : "Waiting for opponent to bid";
+      }
       if (!canFillCard) return "No slot for this card — watching";
-      return "Waiting for opponent…";
+      return multiPlayerMode ? "Waiting for turn or open bidding…" : "Waiting for opponent…";
     }
     if (!canFillCard && canPass) return "No slot for this card — pass to skip";
     if (!canFillCard) return "No slot for this card — watching";
-    if (turnIsOpen) return "Bidding open to both players!";
+    if (turnIsOpen) {
+      return multiPlayerMode
+        ? "Bidding open to all players with a slot for this card!"
+        : "Bidding open to both players!";
+    }
     if (isMyTurn) {
       if (opponentHasBid && !iAmHighestBidder) {
         return `Opponent leads at ${round!.highestBidCents} cr — your turn to bid`;
@@ -366,22 +381,20 @@ export function useAuctionPageState(sessionId: string | undefined) {
   useEffect(() => {
     if (!round || !round.turnOpenAt) {
       setTurnIsOpen(false);
+      setSecondsUntilTurnOpen(null);
       return;
     }
-    const check = () => {
+    const openAtMs = new Date(round.turnOpenAt).getTime();
+    const tick = () => {
       const adjustedNow = Date.now() + serverClockOffsetMsRef.current;
-      return adjustedNow >= new Date(round.turnOpenAt!).getTime();
+      const open = adjustedNow >= openAtMs;
+      setTurnIsOpen(open);
+      setSecondsUntilTurnOpen(open ? null : Math.max(0, Math.ceil((openAtMs - adjustedNow) / 1000)));
+      return open;
     };
-    if (check()) {
-      setTurnIsOpen(true);
-      return;
-    }
-    setTurnIsOpen(false);
+    if (tick()) return;
     const timer = setInterval(() => {
-      if (check()) {
-        setTurnIsOpen(true);
-        clearInterval(timer);
-      }
+      if (tick()) clearInterval(timer);
     }, 250);
     return () => clearInterval(timer);
   }, [round?.roundId, round?.turnOpenAt]);
@@ -559,5 +572,6 @@ export function useAuctionPageState(sessionId: string | undefined) {
     turnOrderEntries,
     currentTurnNickname,
     gameMode,
+    secondsUntilTurnOpen,
   };
 }

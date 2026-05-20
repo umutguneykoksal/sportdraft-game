@@ -4,6 +4,7 @@ import { AuctionTurnOrderBar } from "./AuctionTurnOrderBar";
 import { openEligibleHighlights } from "../../shared/positions";
 import { AuctionBidPanel } from "./AuctionBidPanel";
 import { AuctionRosterPanel } from "./AuctionRosterPanel";
+import { AuctionTeamsTabs } from "./AuctionTeamsTabs";
 import { useAuctionPageState } from "./hooks/useAuctionPageState";
 import { AuctionRoundOutcomeToast } from "./AuctionRoundOutcomeToast";
 
@@ -76,7 +77,7 @@ export function AuctionPage() {
       )}
 
       {state.turnOrderEntries.length >= 2 && (
-        <AuctionTurnOrderBar entries={state.turnOrderEntries} />
+        <AuctionTurnOrderBar entries={state.turnOrderEntries} turnIsOpen={state.turnIsOpen} />
       )}
 
       {(state.sessionSnap?.status === "AWAITING_RESULT" || state.sessionSnap?.status === "FINALIZING") && (
@@ -91,14 +92,22 @@ export function AuctionPage() {
       <div className="max-w-7xl mx-auto px-4 py-6">
         {state.multiPlayerMode ? (
           <div className="grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-6">
-            <AuctionRosterPanel
-              title="My Team"
-              formation={state.myFormation}
-              cards={state.myTeam}
-              teamColor="#3b82f6"
-              teamBorderColor="#60a5fa"
-              highlightPositions={pitchHighlights}
-            />
+            {state.playerViews.length > 0 ? (
+              <AuctionTeamsTabs
+                players={state.playerViews}
+                myUserId={state.myUserId}
+                myHighlightPositions={pitchHighlights}
+              />
+            ) : (
+              <AuctionRosterPanel
+                title="My Team"
+                formation={state.myFormation}
+                cards={state.myTeam}
+                teamColor="#3b82f6"
+                teamBorderColor="#60a5fa"
+                highlightPositions={pitchHighlights}
+              />
+            )}
             <AuctionBidPanel
               round={state.round}
               auctionPhaseActive={state.auctionPhaseActive}

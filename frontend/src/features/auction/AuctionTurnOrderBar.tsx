@@ -60,12 +60,23 @@ export function buildDuelTurnOrderEntries(
   });
 }
 
-export function AuctionTurnOrderBar({ entries }: { entries: TurnOrderEntry[] }) {
+export function AuctionTurnOrderBar({
+  entries,
+  turnIsOpen = false,
+}: {
+  entries: TurnOrderEntry[];
+  turnIsOpen?: boolean;
+}) {
   if (entries.length < 2) return null;
 
   return (
     <div className="border-b border-white/10 bg-surface-card px-4 py-3">
       <div className="max-w-7xl mx-auto">
+        {turnIsOpen && (
+          <p className="text-xs text-amber-300 bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-1.5 mb-2 text-center">
+            Open bidding — any player with a slot for this card may bid
+          </p>
+        )}
         <p className="text-[10px] uppercase tracking-wider text-slate-500 mb-2">Bid order</p>
         <div className="flex items-center gap-1 sm:gap-2 overflow-x-auto pb-1">
           {entries.map((entry, index) => (
