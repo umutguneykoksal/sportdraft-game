@@ -8,6 +8,7 @@ import com.example.auction.lobby.boundary.SessionSnapshotResponse;
 import com.example.auction.lobby.control.LobbyService;
 import com.example.auction.session.entity.Formation;
 import com.example.auction.session.entity.GameMode;
+import com.example.auction.session.entity.PoolLeague;
 import com.example.auction.session.entity.SessionStatus;
 import java.util.List;
 import com.example.auction.bidding.control.AuctionService;
@@ -35,7 +36,7 @@ class SessionOrchestratorTest {
         SessionSnapshotResponse snap = new SessionSnapshotResponse(
             UUID.randomUUID(), SessionStatus.WAITING, Instant.now(), 1, true,
             Formation.FOUR_FOUR_TWO, null, 0, false, 0L, 0L,
-            GameMode.DUEL, 2, List.of()
+            GameMode.DUEL, 2, 70, PoolLeague.PREMIER_LEAGUE, List.of()
         );
         when(lobbyService.createRoom(userId, "nick")).thenReturn(snap);
 
@@ -61,6 +62,8 @@ class SessionOrchestratorTest {
             0L,
             GameMode.DUEL,
             2,
+            70,
+            PoolLeague.PREMIER_LEAGUE,
             List.of()
         );
         when(lobbyService.getSnapshot(sessionId, userId)).thenReturn(snap);

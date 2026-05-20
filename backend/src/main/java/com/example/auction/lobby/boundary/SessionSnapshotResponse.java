@@ -2,6 +2,7 @@ package com.example.auction.lobby.boundary;
 
 import com.example.auction.session.entity.Formation;
 import com.example.auction.session.entity.GameMode;
+import com.example.auction.session.entity.PoolLeague;
 import com.example.auction.session.entity.SessionStatus;
 import java.time.Instant;
 import java.util.List;
@@ -21,6 +22,8 @@ public record SessionSnapshotResponse(
     long lastSeq,
     GameMode gameMode,
     int maxPlayers,
+    int minPoolRating,
+    PoolLeague poolLeague,
     List<LobbyPlayerView> players
 ) {
 }

@@ -97,8 +97,10 @@ class AuctionRulesTest {
         ActiveSession session = fourPlayerSession(List.of(u1, u2, u3, u4));
         ActivePlayer p3 = session.findPlayerByUserId(u3).orElseThrow();
         ActivePlayer p4 = session.findPlayerByUserId(u4).orElseThrow();
+        Card card = new Card(UUID.randomUUID(), "Striker", Position.FWD, 80);
+        Map<UUID, Card> cardMap = Map.of(card.getId(), card);
         ActiveRound round = new ActiveRound(
-            UUID.randomUUID(), UUID.randomUUID(), Instant.now(), Instant.now().plus(30, ChronoUnit.SECONDS),
+            UUID.randomUUID(), card.getId(), Instant.now(), Instant.now().plus(30, ChronoUnit.SECONDS),
             u1, RoundStatus.OPEN
         );
         round.registerPass(u1);
@@ -108,10 +110,44 @@ class AuctionRulesTest {
         round.getBids().add(new ActiveBid(UUID.randomUUID(), p4.getId(), 4L, UUID.randomUUID(), Instant.now()));
         round.registerBid(p4.getId(), 4L, round.getEndsAt(), u1);
 
-        assertThat(AuctionRules.maySettleLeadingRound(session, round)).isFalse();
+        assertThat(AuctionRules.maySettleLeadingRound(session, round, card, cardMap)).isFalse();
 
         round.registerPass(u3);
-        assertThat(AuctionRules.maySettleLeadingRound(session, round)).isTrue();
+        assertThat(AuctionRules.maySettleLeadingRound(session, round, card, cardMap)).isTrue();
+    }
+
+    @Test
+    void maySettleLeadingRoundSettlesImmediatelyWhenNoCounterBidPossible() {
+        UUID u1 = UUID.randomUUID();
+        UUID u2 = UUID.randomUUID();
+        UUID u3 = UUID.randomUUID();
+        UUID u4 = UUID.randomUUID();
+        ActiveSession session = fourPlayerSession(List.of(u1, u2, u3, u4));
+        ActivePlayer winner = session.findPlayerByUserId(u1).orElseThrow();
+        ActivePlayer p2 = session.findPlayerByUserId(u2).orElseThrow();
+        ActivePlayer p3 = session.findPlayerByUserId(u3).orElseThrow();
+        ActivePlayer p4 = session.findPlayerByUserId(u4).orElseThrow();
+
+        Map<UUID, Card> cardMap = new java.util.HashMap<>();
+        for (ActivePlayer blocked : List.of(p2, p3, p4)) {
+            for (int i = 0; i < 4; i++) {
+                Card defCard = new Card(UUID.randomUUID(), "Def " + blocked.getNickname() + i, Position.DEF, 70);
+                cardMap.put(defCard.getId(), defCard);
+                blocked.addCard(defCard.getId(), Position.DEF);
+            }
+        }
+        Card auctionCard = new Card(UUID.randomUUID(), "Solo DEF", Position.DEF, 80);
+        cardMap.put(auctionCard.getId(), auctionCard);
+
+        ActiveRound round = new ActiveRound(
+            UUID.randomUUID(), auctionCard.getId(), Instant.now(), Instant.now().plus(30, ChronoUnit.SECONDS),
+            u1, RoundStatus.OPEN
+        );
+        round.getBids().add(new ActiveBid(UUID.randomUUID(), winner.getId(), 1L, UUID.randomUUID(), Instant.now()));
+        round.registerBid(winner.getId(), 1L, round.getEndsAt(), u2);
+
+        assertThat(AuctionRules.anyOtherPlayerCanBid(session, round, auctionCard, cardMap, u1)).isFalse();
+        assertThat(AuctionRules.maySettleLeadingRound(session, round, auctionCard, cardMap)).isTrue();
     }
 
     @Test

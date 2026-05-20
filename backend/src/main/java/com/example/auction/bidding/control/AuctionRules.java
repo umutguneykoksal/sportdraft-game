@@ -141,12 +141,31 @@ final class AuctionRules {
         return session.playerCount() >= session.getMaxPlayers();
     }
 
-    /** 2p: one opponent pass ends the round; 4p+: every non-winner must pass. */
-    static boolean maySettleLeadingRound(ActiveSession session, ActiveRound round) {
+    /** 2p: one opponent pass ends the round; 4p+: every non-winner must pass unless no one can counter-bid. */
+    static boolean maySettleLeadingRound(
+        ActiveSession session,
+        ActiveRound round,
+        Card card,
+        Map<UUID, Card> cardMap
+    ) {
         if (round.getHighestBidderId() == null) {
             return false;
         }
-        return session.getMaxPlayers() <= 2 || allNonWinnersHavePassed(session, round);
+        if (session.getMaxPlayers() <= 2) {
+            return true;
+        }
+        UUID winnerUserId = session.getPlayers().stream()
+            .filter(p -> p.getId().equals(round.getHighestBidderId()))
+            .map(ActivePlayer::getUserId)
+            .findFirst()
+            .orElse(null);
+        if (winnerUserId == null) {
+            return false;
+        }
+        if (card != null && !anyOtherPlayerCanBid(session, round, card, cardMap, winnerUserId)) {
+            return true;
+        }
+        return allNonWinnersHavePassed(session, round);
     }
 
     /** After a bid, round ends only when every non-winning player has passed (4p+). */

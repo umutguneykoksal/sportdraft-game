@@ -47,6 +47,27 @@ export const GAME_MODE_LABELS: Record<GameMode, string> = {
   LEAGUE: "League (4 players)",
 };
 
+export const POOL_MIN_RATING_OPTIONS = [70, 75, 80] as const;
+export type PoolMinRating = (typeof POOL_MIN_RATING_OPTIONS)[number];
+
+export type PoolLeagueId = "PREMIER_LEAGUE" | "LA_LIGA" | "SERIE_A" | "BUNDESLIGA";
+
+export const POOL_LEAGUE_OPTIONS: ReadonlyArray<{
+  id: PoolLeagueId;
+  label: string;
+  enabled: boolean;
+}> = [
+  { id: "PREMIER_LEAGUE", label: "Premier League", enabled: true },
+  { id: "LA_LIGA", label: "La Liga", enabled: false },
+  { id: "SERIE_A", label: "Serie A", enabled: false },
+  { id: "BUNDESLIGA", label: "Bundesliga", enabled: false },
+];
+
+export function poolLeagueLabel(id?: string | null): string {
+  if (!id) return POOL_LEAGUE_OPTIONS[0].label;
+  return POOL_LEAGUE_OPTIONS.find((o) => o.id === id)?.label ?? id;
+}
+
 export interface LobbyPlayerView {
   userId: string;
   nickname: string;
@@ -67,6 +88,8 @@ export interface SessionSnapshotResponse {
   lastSeq?: number;
   gameMode?: GameMode;
   maxPlayers?: number;
+  minPoolRating?: number;
+  poolLeague?: PoolLeagueId | string;
   players?: LobbyPlayerView[];
 }
 
@@ -77,6 +100,7 @@ export interface AuctionRoundResponse {
   version?: number;
   cardId: string;
   cardName: string;
+  cardClubName?: string | null;
   position: string;
   eligiblePositions?: string[];
   cardRating: number;
@@ -106,6 +130,7 @@ export interface AuctionRoundResponse {
 export interface AuctionTeamCardResponse {
   cardId: string;
   cardName: string;
+  clubName?: string | null;
   position: string;
   rating: number;
   amountCents: number;
@@ -164,6 +189,8 @@ export interface LobbyRoomResponse {
   playerCount: number;
   maxPlayers?: number;
   gameMode?: GameMode;
+  minPoolRating?: number;
+  poolLeague?: PoolLeagueId | string;
   playerNicknames: string[];
   createdAt: string;
   spectatorCount: number;

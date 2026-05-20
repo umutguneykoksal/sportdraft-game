@@ -33,6 +33,7 @@ class AuctionEngineTest {
             1L,
             UUID.randomUUID(),
             "Card",
+            "Manchester City",
             Position.CM.name(),
             List.of(Position.CM.name()),
             80,

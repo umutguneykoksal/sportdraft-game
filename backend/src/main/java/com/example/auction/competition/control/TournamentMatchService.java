@@ -12,7 +12,6 @@ import com.example.auction.competition.entity.CompetitionRepository;
 import com.example.auction.competition.entity.CompetitionStatus;
 import com.example.auction.common.sse.SseEmitterRegistry;
 import com.example.auction.session.control.SessionAccess;
-import com.example.auction.session.redis.ActiveSession;
 import com.example.auction.session.redis.ActiveSessionStore;
 import com.example.auction.simulation.entity.SimulationResult;
 import java.time.Instant;
@@ -55,8 +54,7 @@ public class TournamentMatchService {
     @Transactional
     public CompetitionMatchOpenResponse openMatch(UUID sessionId, UUID matchId, UUID userId) {
         CompetitionEntity competition = loadCompetition(sessionId);
-        ActiveSession session = requireSession(sessionId);
-        SessionAccess.requireMember(session, userId);
+        requireParticipant(competition, sessionId, userId);
 
         CompetitionMatchEntity match = loadMatch(competition.getId(), matchId);
         if (!bracketService.isMatchPlayable(competition, match)) {
@@ -94,8 +92,7 @@ public class TournamentMatchService {
     @Transactional
     public CompetitionResponse acknowledgeWatch(UUID sessionId, UUID matchId, UUID userId) {
         CompetitionEntity competition = loadCompetition(sessionId);
-        ActiveSession session = requireSession(sessionId);
-        SessionAccess.requireMember(session, userId);
+        requireParticipant(competition, sessionId, userId);
 
         CompetitionMatchEntity match = loadMatch(competition.getId(), matchId);
         if (match.getStatus() != CompetitionMatchStatus.COMPLETED) {
@@ -114,6 +111,7 @@ public class TournamentMatchService {
         CompetitionEntity updated = bracketService.tryCompleteTournament(competition);
 
         if (updated.getStatus() == CompetitionStatus.COMPLETED) {
+            finishSessionIfPresent(sessionId);
             sseEmitterRegistry.broadcast(
                 sessionId,
                 "tournament_completed",
@@ -134,8 +132,27 @@ public class TournamentMatchService {
         return competitionQueryService.getBySessionId(sessionId, userId);
     }
 
-    private ActiveSession requireSession(UUID sessionId) {
-        return sessionStore.getById(sessionId);
+    private void requireParticipant(CompetitionEntity competition, UUID sessionId, UUID userId) {
+        sessionStore.findById(sessionId).ifPresentOrElse(
+            session -> SessionAccess.requireMember(session, userId),
+            () -> requireSnapshotMember(competition, userId)
+        );
+    }
+
+    private void requireSnapshotMember(CompetitionEntity competition, UUID userId) {
+        boolean member = bracketService.readSnapshot(competition).players().stream()
+            .anyMatch(p -> p.userId().equals(userId));
+        if (!member) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Player not found in session");
+        }
+    }
+
+    private void finishSessionIfPresent(UUID sessionId) {
+        sessionStore.findById(sessionId).ifPresent(session -> {
+            long vBefore = session.getVersion();
+            session.moveToFinished();
+            sessionStore.saveIfVersionMatch(session, vBefore);
+        });
     }
 
     private CompetitionEntity loadCompetition(UUID sessionId) {

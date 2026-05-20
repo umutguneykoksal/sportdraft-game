@@ -1,4 +1,5 @@
 import { TeamPitch } from "../../shared/components/TeamPitch";
+import { CardClubLabel } from "../../shared/components/CardClubLabel";
 import type { Formation, Position } from "../../shared/api/contracts";
 import type { AuctionTeamCardResponse } from "../../shared/api";
 import { POSITION_COLORS } from "./hooks/useAuctionPageState";
@@ -52,6 +53,7 @@ export function AuctionRosterPanel({
                     {c.position}
                   </span>
                   <span className="text-white">{c.cardName}</span>
+                  <CardClubLabel clubName={c.clubName} />
                   <span className="text-slate-500">{c.rating}</span>
                 </div>
                 <span className="text-slate-400">{c.amountCents} cr</span>

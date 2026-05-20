@@ -9,6 +9,8 @@ import com.example.auction.lobby.boundary.SessionSnapshotResponse;
 import com.example.auction.lobby.boundary.LobbyPlayerView;
 import com.example.auction.session.entity.Formation;
 import com.example.auction.session.entity.GameMode;
+import com.example.auction.session.entity.PoolLeague;
+import com.example.auction.session.entity.PoolMinRating;
 import com.example.auction.session.entity.SessionStatus;
 import com.example.auction.session.redis.ActivePlayer;
 import com.example.auction.session.control.SessionAccess;
@@ -61,6 +63,8 @@ public class LobbyService {
                 s.playerCount(),
                 s.getMaxPlayers(),
                 s.getGameMode(),
+                s.getMinPoolRating(),
+                s.getPoolLeague(),
                 s.getPlayers().stream().map(ActivePlayer::getNickname).toList(),
                 s.getCreatedAt(),
                 sseEmitterRegistry.spectatorCount(s.getId())
@@ -69,12 +73,32 @@ public class LobbyService {
     }
 
     public SessionSnapshotResponse createRoom(UUID userId, String nickname, GameMode gameMode) {
+        return createRoom(userId, nickname, gameMode, PoolMinRating.DEFAULT);
+    }
+
+    public SessionSnapshotResponse createRoom(UUID userId, String nickname, GameMode gameMode, Integer minPoolRating) {
+        return createRoom(userId, nickname, gameMode, minPoolRating, null);
+    }
+
+    public SessionSnapshotResponse createRoom(
+        UUID userId,
+        String nickname,
+        GameMode gameMode,
+        Integer minPoolRating,
+        String poolLeague
+    ) {
         if (sessionStore.findAllActiveIds().size() >= MAX_CONCURRENT_ROOMS) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                 "Maximum %d concurrent rooms reached. Try again later.".formatted(MAX_CONCURRENT_ROOMS));
         }
         GameMode mode = gameMode != null ? gameMode : GameMode.DUEL;
+        int minRating = PoolMinRating.resolve(minPoolRating);
+        PoolLeague league = PoolLeague.resolve(poolLeague);
+        ensurePoolHasCards(league, minRating);
+
         ActiveSession session = new ActiveSession(UUID.randomUUID(), SessionStatus.WAITING, Instant.now(), mode);
+        session.setMinPoolRating(minRating);
+        session.setPoolLeague(league);
         String safeName = sanitizeNickname(nickname, userId);
         ActivePlayer player = new ActivePlayer(
             UUID.randomUUID(), userId, safeName, Formation.FOUR_FOUR_TWO, STARTING_BUDGET_CENTS
@@ -278,7 +302,7 @@ public class LobbyService {
                 long vBefore = session.getVersion();
                 if (session.playerCount() == session.getMaxPlayers()) {
                     session.getPlayers().forEach(ActivePlayer::confirmDefaultFormationIfMissing);
-                    session.moveToAuctioning(buildShuffledCardPool());
+                    session.moveToAuctioning(buildShuffledCardPool(session));
                     sessionStore.saveIfVersionMatch(session, vBefore);
                     sseEmitterRegistry.broadcast(
                         session.getId(), "auctioning_started",
@@ -293,10 +317,21 @@ public class LobbyService {
         }
     }
 
-    private List<UUID> buildShuffledCardPool() {
-        List<UUID> pool = new ArrayList<>(cardCatalog.getAllCardIds());
+    private List<UUID> buildShuffledCardPool(ActiveSession session) {
+        List<UUID> pool = new ArrayList<>(
+            cardCatalog.getCardIdsForPool(session.getPoolLeague(), session.getMinPoolRating())
+        );
         Collections.shuffle(pool);
         return pool;
+    }
+
+    private void ensurePoolHasCards(PoolLeague league, int minRating) {
+        if (cardCatalog.getCardIdsForPool(league, minRating).isEmpty()) {
+            throw new ResponseStatusException(
+                HttpStatus.UNPROCESSABLE_ENTITY,
+                "No cards available for %s at minimum rating %d".formatted(league.displayName(), minRating)
+            );
+        }
     }
 
     private SessionSnapshotResponse snapshot(ActiveSession session, UUID userId) {
@@ -338,6 +373,8 @@ public class LobbyService {
             eventLog.currentSeq(session.getId()),
             session.getGameMode(),
             session.getMaxPlayers(),
+            session.getMinPoolRating(),
+            session.getPoolLeague(),
             players
         );
     }

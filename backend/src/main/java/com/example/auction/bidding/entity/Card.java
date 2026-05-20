@@ -1,5 +1,6 @@
 package com.example.auction.bidding.entity;
 
+import com.example.auction.session.entity.PoolLeague;
 import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
 import jakarta.persistence.ElementCollection;
@@ -50,6 +51,13 @@ public class Card {
     @Column(nullable = false)
     private int physical;
 
+    @Column(name = "club_name", length = 120)
+    private String clubName;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "pool_league", nullable = false, length = 32)
+    private PoolLeague poolLeague = PoolLeague.PREMIER_LEAGUE;
+
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "card_eligible_position", joinColumns = @JoinColumn(name = "card_id"))
     @Enumerated(EnumType.STRING)
@@ -87,6 +95,14 @@ public class Card {
 
     public String getName() {
         return name;
+    }
+
+    public String getClubName() {
+        return clubName;
+    }
+
+    public PoolLeague getPoolLeague() {
+        return poolLeague != null ? poolLeague : PoolLeague.PREMIER_LEAGUE;
     }
 
     public Position getPosition() {

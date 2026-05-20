@@ -1,5 +1,6 @@
 package com.example.auction.bidding.control;
 
+import com.example.auction.session.entity.PoolLeague;
 import com.example.auction.bidding.entity.Card;
 import com.example.auction.bidding.entity.CardRepository;
 import jakarta.annotation.PostConstruct;
@@ -46,6 +47,18 @@ public class CardCatalogService {
 
     public List<UUID> getAllCardIds() {
         return allCards.stream().map(Card::getId).toList();
+    }
+
+    public List<UUID> getCardIdsWithMinRating(int minRating) {
+        return getCardIdsForPool(PoolLeague.PREMIER_LEAGUE, minRating);
+    }
+
+    public List<UUID> getCardIdsForPool(PoolLeague league, int minRating) {
+        PoolLeague effectiveLeague = PoolLeague.effective(league);
+        return allCards.stream()
+            .filter(card -> card.getPoolLeague() == effectiveLeague && card.getRating() >= minRating)
+            .map(Card::getId)
+            .toList();
     }
 
     public Card getCard(UUID cardId) {

@@ -8,8 +8,6 @@ import com.example.auction.competition.entity.CompetitionRepository;
 import com.example.auction.competition.entity.CompetitionStatus;
 import com.example.auction.competition.entity.CompetitionType;
 import com.example.auction.session.entity.GameMode;
-import com.example.auction.session.redis.ActiveSession;
-import com.example.auction.session.redis.ActiveSessionStore;
 import com.example.auction.simulation.control.DraftCompletedEvent;
 import java.time.Instant;
 import java.util.Map;
@@ -26,20 +24,17 @@ public class DraftCompletedListener {
     private final ProcessedEventRepository processedEventRepository;
     private final TournamentBracketService tournamentBracketService;
     private final CompetitionRepository competitionRepository;
-    private final ActiveSessionStore sessionStore;
     private final SseEmitterRegistry sseEmitterRegistry;
 
     public DraftCompletedListener(
         ProcessedEventRepository processedEventRepository,
         TournamentBracketService tournamentBracketService,
         CompetitionRepository competitionRepository,
-        ActiveSessionStore sessionStore,
         SseEmitterRegistry sseEmitterRegistry
     ) {
         this.processedEventRepository = processedEventRepository;
         this.tournamentBracketService = tournamentBracketService;
         this.competitionRepository = competitionRepository;
-        this.sessionStore = sessionStore;
         this.sseEmitterRegistry = sseEmitterRegistry;
     }
 
@@ -50,17 +45,10 @@ public class DraftCompletedListener {
         if (processedEventRepository.existsById(event.eventId())) {
             return;
         }
-        try {
-            processedEventRepository.save(
-                new ProcessedEvent(event.eventId(), "DraftCompletedEvent", Instant.now())
-            );
-        } catch (DataIntegrityViolationException duplicate) {
-            return;
-        }
 
         if (event.gameMode() == GameMode.TOURNAMENT) {
-            CompetitionEntity competition = tournamentBracketService.initializeTournament(event);
-            finishSession(event.sessionId());
+            CompetitionEntity competition = competitionRepository.findBySessionId(event.sessionId())
+                .orElseGet(() -> tournamentBracketService.initializeTournament(event));
             sseEmitterRegistry.broadcast(
                 event.sessionId(),
                 "tournament_started",
@@ -69,17 +57,17 @@ public class DraftCompletedListener {
                     "competitionId", competition.getId()
                 )
             );
-            return;
-        }
-
-        if (event.gameMode() == GameMode.LEAGUE) {
-            CompetitionEntity competition = new CompetitionEntity();
-            competition.setId(UUID.randomUUID());
-            competition.setSessionId(event.sessionId());
-            competition.setType(CompetitionType.LEAGUE);
-            competition.setStatus(CompetitionStatus.PENDING);
-            competition.setCreatedAt(Instant.now());
-            competitionRepository.save(competition);
+        } else if (event.gameMode() == GameMode.LEAGUE) {
+            CompetitionEntity competition = competitionRepository.findBySessionId(event.sessionId())
+                .orElseGet(() -> {
+                    CompetitionEntity created = new CompetitionEntity();
+                    created.setId(UUID.randomUUID());
+                    created.setSessionId(event.sessionId());
+                    created.setType(CompetitionType.LEAGUE);
+                    created.setStatus(CompetitionStatus.PENDING);
+                    created.setCreatedAt(Instant.now());
+                    return competitionRepository.save(created);
+                });
             sseEmitterRegistry.broadcast(
                 event.sessionId(),
                 "league_pending",
@@ -90,13 +78,13 @@ public class DraftCompletedListener {
                 )
             );
         }
-    }
 
-    private void finishSession(UUID sessionId) {
-        sessionStore.findById(sessionId).ifPresent(session -> {
-            long vBefore = session.getVersion();
-            session.moveToFinished();
-            sessionStore.saveIfVersionMatch(session, vBefore);
-        });
+        try {
+            processedEventRepository.save(
+                new ProcessedEvent(event.eventId(), "DraftCompletedEvent", Instant.now())
+            );
+        } catch (DataIntegrityViolationException duplicate) {
+            // Another worker handled this event.
+        }
     }
 }

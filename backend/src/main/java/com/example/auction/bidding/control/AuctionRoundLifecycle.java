@@ -73,7 +73,9 @@ public class AuctionRoundLifecycle {
         java.util.Set<UUID> sold = session.soldCardIds();
 
         if (pool.isEmpty()) {
-            pool = new java.util.ArrayList<>(cardMap.keySet());
+            pool = new java.util.ArrayList<>(
+                cardCatalog.getCardIdsForPool(session.getPoolLeague(), session.getMinPoolRating())
+            );
             Collections.shuffle(pool);
             session.setCardPool(pool);
             session.setCardPoolIndex(0);
@@ -338,9 +340,7 @@ public class AuctionRoundLifecycle {
         round.registerPass(userId);
 
         if (round.getHighestBidderId() != null) {
-            boolean closeAfterPass = session.getMaxPlayers() <= 2
-                || AuctionRules.allNonWinnersHavePassed(session, round);
-            if (closeAfterPass) {
+            if (AuctionRules.maySettleLeadingRound(session, round, roundCard, cardMap)) {
                 settlement.closeRound(round, session, vBefore, cardMap);
                 return session.findOpenRound()
                     .map(r -> AuctionRoundResponses.toResponseWithContext(r, cardMap.get(r.getCardId()), session, cardMap, userId))
@@ -401,7 +401,7 @@ public class AuctionRoundLifecycle {
         }
 
         if (round.getHighestBidderId() != null) {
-            if (AuctionRules.maySettleLeadingRound(session, round)) {
+            if (AuctionRules.maySettleLeadingRound(session, round, roundCard, cardMap)) {
                 settlement.settleRoundInline(round, session, cardMap);
                 return round.getStatus() != RoundStatus.OPEN;
             }
@@ -419,7 +419,7 @@ public class AuctionRoundLifecycle {
                 round.setCurrentTurnUserId(nextActor.get());
                 return false;
             }
-            if (AuctionRules.maySettleLeadingRound(session, round)) {
+            if (AuctionRules.maySettleLeadingRound(session, round, roundCard, cardMap)) {
                 settlement.settleRoundInline(round, session, cardMap);
             }
             return round.getStatus() != RoundStatus.OPEN;

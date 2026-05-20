@@ -2,6 +2,8 @@ export type {
   SessionStatus,
   Formation,
   GameMode,
+  PoolMinRating,
+  PoolLeagueId,
   LobbyPlayerView,
   SessionSnapshotResponse,
   AuctionRoundResponse,
@@ -16,7 +18,7 @@ export type {
   MatchEvent,
   MatchEventType,
 } from "./api/contracts";
-export { SESSION_STATUS_LABELS, ROUND_STATUS_LABELS, GAME_MODE_LABELS } from "./api/contracts";
+export { SESSION_STATUS_LABELS, ROUND_STATUS_LABELS, GAME_MODE_LABELS, POOL_MIN_RATING_OPTIONS, POOL_LEAGUE_OPTIONS, poolLeagueLabel } from "./api/contracts";
 export { ApiError } from "./api/errors";
 export { getApiBase, getApiPrefix, getClientUserId } from "./api/httpClient";
 export { joinLobby, leaveLobby, listLobbies, createRoom, joinRoom, getSpectateState, getSpectateMatchTimeline } from "./api/lobbyClient";

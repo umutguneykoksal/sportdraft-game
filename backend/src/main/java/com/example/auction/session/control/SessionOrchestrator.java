@@ -25,6 +25,20 @@ public class SessionOrchestrator {
         return lobbyService.listRooms();
     }
 
+    public SessionSnapshotResponse createRoom(
+        UUID userId,
+        String nickname,
+        GameMode gameMode,
+        Integer minPoolRating,
+        String poolLeague
+    ) {
+        return lobbyService.createRoom(userId, nickname, gameMode, minPoolRating, poolLeague);
+    }
+
+    public SessionSnapshotResponse createRoom(UUID userId, String nickname, GameMode gameMode, Integer minPoolRating) {
+        return lobbyService.createRoom(userId, nickname, gameMode, minPoolRating);
+    }
+
     public SessionSnapshotResponse createRoom(UUID userId, String nickname, GameMode gameMode) {
         return lobbyService.createRoom(userId, nickname, gameMode);
     }

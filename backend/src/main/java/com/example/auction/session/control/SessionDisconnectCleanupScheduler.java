@@ -2,6 +2,7 @@ package com.example.auction.session.control;
 
 import com.example.auction.common.realtime.SessionEventLog;
 import com.example.auction.common.sse.SseEmitterRegistry;
+import com.example.auction.session.entity.GameMode;
 import com.example.auction.session.entity.SessionStatus;
 import com.example.auction.session.redis.ActivePlayer;
 import com.example.auction.session.redis.ActiveSession;
@@ -73,8 +74,9 @@ public class SessionDisconnectCleanupScheduler {
                         sessionId, session.playerCount(), session.getStatus());
                 }
 
-                // Both disconnected — end as 0-0 draw and archive
-                if (sseEmitterRegistry.isDisconnectedLongerThan(sessionId, disconnectTimeout)) {
+                // Do not auto-finish multi-player / post-draft sessions on disconnect.
+                if (!shouldSkipDisconnectDraw(session)
+                    && sseEmitterRegistry.isDisconnectedLongerThan(sessionId, disconnectTimeout)) {
                     log.info("Both players disconnected for session {}, ending as 0-0 draw", sessionId);
                     long vBefore = session.getVersion();
                     session.setHomeScore(0);
@@ -202,5 +204,20 @@ public class SessionDisconnectCleanupScheduler {
         
         // Cleanup stale entries (sessions that were removed outside this scheduler)
         finishedObservedAt.keySet().removeIf(id -> !sessionStore.exists(id));
+    }
+
+    /** Tournament / league sessions must not be ended as 0-0 when SSE drops after draft. */
+    private static boolean shouldSkipDisconnectDraw(ActiveSession session) {
+        if (session.getMaxPlayers() > 2) {
+            return true;
+        }
+        GameMode mode = session.getGameMode();
+        if (mode == GameMode.TOURNAMENT || mode == GameMode.LEAGUE) {
+            return true;
+        }
+        SessionStatus status = session.getStatus();
+        return status == SessionStatus.AWAITING_RESULT
+            || status == SessionStatus.FINALIZING
+            || status == SessionStatus.MATCH_START_PENDING;
     }
 }

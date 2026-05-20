@@ -3,6 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { useMatchFlow } from "./hooks/useMatchFlow";
 import { TeamPitch } from "../../shared/components/TeamPitch";
 import { MatchCommentary } from "./components/MatchCommentary";
+import { CardClubLabel } from "../../shared/components/CardClubLabel";
 import { FORMATION_LABELS } from "../../shared/formations";
 import { clearActiveSessionId } from "../../shared/session";
 import { getClientUserId, getMatchTimeline, MatchEvent } from "../../shared/api";
@@ -209,6 +210,7 @@ export function MatchPage() {
                         <div className="flex items-center gap-2">
                           <span className="text-slate-400 text-xs w-8">{c.position}</span>
                           <span className="text-white">{c.cardName}</span>
+                          <CardClubLabel clubName={c.clubName} />
                           <span className="text-slate-500">{c.rating}</span>
                         </div>
                         <span className="text-slate-400">{c.amountCents} cr</span>
@@ -243,6 +245,7 @@ export function MatchPage() {
                         <div className="flex items-center gap-2">
                           <span className="text-slate-400 text-xs w-8">{c.position}</span>
                           <span className="text-white">{c.cardName}</span>
+                          <CardClubLabel clubName={c.clubName} />
                           <span className="text-slate-500">{c.rating}</span>
                         </div>
                         <span className="text-slate-400">{c.amountCents} cr</span>

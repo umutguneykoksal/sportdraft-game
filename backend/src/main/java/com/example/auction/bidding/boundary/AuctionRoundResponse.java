@@ -11,6 +11,7 @@ public record AuctionRoundResponse(
     long version,
     UUID cardId,
     String cardName,
+    String cardClubName,
     String position,
     List<String> eligiblePositions,
     int cardRating,

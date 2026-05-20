@@ -2,8 +2,8 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useLobbyFlow } from "./hooks/useLobbyFlow";
 import { FORMATION_LABELS, FORMATION_DOTS } from "../../shared/formations";
-import type { Formation, GameMode, LobbyRoomResponse } from "../../shared/api/contracts";
-import { GAME_MODE_LABELS, SESSION_STATUS_LABELS } from "../../shared/api/contracts";
+import type { Formation, GameMode, LobbyRoomResponse, PoolLeagueId, PoolMinRating } from "../../shared/api/contracts";
+import { GAME_MODE_LABELS, POOL_LEAGUE_OPTIONS, POOL_MIN_RATING_OPTIONS, SESSION_STATUS_LABELS, poolLeagueLabel } from "../../shared/api/contracts";
 import { saveNickname } from "../../shared/session";
 
 const STATUS_BADGE_COLORS: Record<string, string> = {
@@ -49,6 +49,16 @@ function RoomCard({
           {room.gameMode && (
             <span className="text-xs font-medium px-2 py-0.5 rounded-full border bg-violet-500/20 text-violet-300 border-violet-500/30">
               {GAME_MODE_LABELS[room.gameMode as GameMode] ?? room.gameMode}
+            </span>
+          )}
+          {room.minPoolRating != null && room.minPoolRating > 0 && (
+            <span className="text-xs font-medium px-2 py-0.5 rounded-full border bg-slate-500/20 text-slate-300 border-slate-500/30">
+              OVR {room.minPoolRating}+
+            </span>
+          )}
+          {room.poolLeague && (
+            <span className="text-xs font-medium px-2 py-0.5 rounded-full border bg-emerald-500/20 text-emerald-300 border-emerald-500/30">
+              {poolLeagueLabel(room.poolLeague)}
             </span>
           )}
           <span className="text-slate-500 text-xs">
@@ -166,6 +176,10 @@ export function LobbyPage() {
     chooseFormation,
     createGameMode,
     setCreateGameMode,
+    createMinPoolRating,
+    setCreateMinPoolRating,
+    createPoolLeague,
+    setCreatePoolLeague,
   } = useLobbyFlow();
 
   const maxPlayers = snapshot?.maxPlayers ?? 2;
@@ -227,6 +241,38 @@ export function LobbyPage() {
                 League standings and fixtures arrive in a future update. Draft works; matches are not played yet.
               </p>
             )}
+            <label className="block text-slate-400 text-sm mb-2">Card pool — league</label>
+            <select
+              value={createPoolLeague}
+              onChange={(e) => setCreatePoolLeague(e.target.value as PoolLeagueId)}
+              className="w-full mb-4 bg-surface-elevated border border-white/10 rounded-lg px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-accent"
+            >
+              {POOL_LEAGUE_OPTIONS.map((option) => (
+                <option key={option.id} value={option.id} disabled={!option.enabled}>
+                  {option.label}{!option.enabled ? " (coming soon)" : ""}
+                </option>
+              ))}
+            </select>
+            <label className="block text-slate-400 text-sm mb-2">Card pool — minimum overall</label>
+            <div className="flex flex-wrap gap-2 mb-4">
+              {POOL_MIN_RATING_OPTIONS.map((rating) => (
+                <button
+                  key={rating}
+                  type="button"
+                  onClick={() => setCreateMinPoolRating(rating)}
+                  className={`text-sm font-medium px-3 py-2 rounded-lg border transition-colors ${
+                    createMinPoolRating === rating
+                      ? "bg-card-gold/20 border-card-gold/50 text-card-gold"
+                      : "bg-surface-elevated border-white/10 text-slate-300 hover:border-white/30"
+                  }`}
+                >
+                  {rating}+ OVR
+                </button>
+              ))}
+            </div>
+            <p className="text-slate-500 text-xs mb-4">
+              Only {poolLeagueLabel(createPoolLeague)} cards rated {createMinPoolRating} or higher appear in the auction.
+            </p>
             <label className="block text-slate-400 text-sm mb-2">Choose your nickname</label>
             <div className="flex gap-3">
               <input
@@ -287,7 +333,7 @@ export function LobbyPage() {
       {isInSession && (
         <div className="w-full max-w-2xl space-y-6">
           {/* Status Bar */}
-          <div className="bg-surface-card rounded-xl border border-white/10 p-4 flex items-center justify-between">
+          <div className="bg-surface-card rounded-xl border border-white/10 p-4 flex flex-wrap items-center justify-between gap-4">
             <div>
               <span className="text-slate-400 text-sm">Status</span>
               <p className="text-white font-semibold">{status ? SESSION_STATUS_LABELS[status] : "—"}</p>
@@ -301,6 +347,14 @@ export function LobbyPage() {
                 )}
               </p>
             </div>
+            {(snapshot.minPoolRating ?? 0) > 0 && (
+              <div className="text-center">
+                <span className="text-slate-400 text-sm">Pool</span>
+                <p className="text-white font-semibold">
+                  {poolLeagueLabel(snapshot.poolLeague)} · {snapshot.minPoolRating}+ OVR
+                </p>
+              </div>
+            )}
             <div className="text-right">
               <span className="text-slate-400 text-sm">Formation</span>
               <p className="text-white font-semibold">

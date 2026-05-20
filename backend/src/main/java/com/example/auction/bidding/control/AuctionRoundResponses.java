@@ -73,7 +73,7 @@ final class AuctionRoundResponses {
                 Card card = cardMap.get(cardId);
                 Position assigned = RosterSlotAssignment.assignedPosition(player, cardId, cardMap);
                 return new AuctionTeamCardResponse(
-                    card.getId(), card.getName(), assigned.name(), card.getRating(),
+                    card.getId(), card.getName(), card.getClubName(), assigned.name(), card.getRating(),
                     soldAmountByCardId.getOrDefault(card.getId(), 0L)
                 );
             })
@@ -90,7 +90,7 @@ final class AuctionRoundResponses {
         Instant turnOpenAt = AuctionRules.computeTurnOpenAt(round);
         return new AuctionRoundResponse(
             round.getId(), sessionId, sessionVersion,
-            card.getId(), card.getName(), card.getPosition().name(), card.orderedEligiblePositionNames(), card.getRating(),
+            card.getId(), card.getName(), card.getClubName(), card.getPosition().name(), card.orderedEligiblePositionNames(), card.getRating(),
             attrs.pace(), attrs.shooting(), attrs.passing(), attrs.defending(), attrs.physical(),
             round.getHighestBidCents(), round.getHighestBidderId(), highestBidderUserId,
             round.getCurrentTurnUserId(), round.getReadyUserOneId(), round.getReadyUserTwoId(),

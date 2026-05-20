@@ -35,6 +35,7 @@ function mapCards(raw: AuctionTeamCardResponse[]): AuctionTeamCardResponse[] {
   return raw.map((c) => ({
     cardId: c.cardId,
     cardName: c.cardName,
+    clubName: c.clubName,
     position: c.position,
     rating: c.rating ?? 0,
     amountCents: c.amountCents,

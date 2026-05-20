@@ -2,6 +2,7 @@ import { ROUND_STATUS_LABELS } from "../../shared/api/contracts";
 import { PositionBadgeRow } from "../../shared/components/PositionBadgeRow";
 import { PlayerAttributeBars } from "../../shared/components/PlayerAttributeBars";
 import { POSITION_COLORS } from "./hooks/useAuctionPageState";
+import { CardClubLabel } from "../../shared/components/CardClubLabel";
 import type { AuctionRoundResponse } from "../../shared/api";
 
 export type AuctionBidPanelProps = {
@@ -23,7 +24,6 @@ export type AuctionBidPanelProps = {
   canFillCard: boolean;
   showTakePanel: boolean;
   showNoSlotBanner: boolean;
-  waitingOnOpponent: boolean;
   iAmHighestBidder: boolean;
   opponentHasBid: boolean;
   mySquadFull: boolean;
@@ -59,7 +59,6 @@ export function AuctionBidPanel(props: AuctionBidPanelProps) {
     canFillCard,
     showTakePanel,
     showNoSlotBanner,
-    waitingOnOpponent,
     iAmHighestBidder,
     opponentHasBid,
     mySquadFull,
@@ -89,6 +88,7 @@ export function AuctionBidPanel(props: AuctionBidPanelProps) {
               colors={POSITION_COLORS}
             />
             <h2 className="text-2xl font-extrabold text-white mt-2">{round.cardName}</h2>
+            <CardClubLabel clubName={round.cardClubName} className="text-xs text-slate-400 mt-0.5 block" />
             <p className="text-4xl font-black text-card-gold mt-1">{round.cardRating ?? "?"}</p>
             <p className="text-xs text-slate-400 mt-1">Overall</p>
             {round.pace != null && (
@@ -165,13 +165,6 @@ export function AuctionBidPanel(props: AuctionBidPanelProps) {
                   </p>
                 </div>
               )}
-              {waitingOnOpponent && canFillCard && iAmHighestBidder && opponentHasBid && (
-                <div className="bg-accent/10 border border-accent/30 rounded-lg px-3 py-2 text-center">
-                  <p className="text-accent text-sm font-medium">
-                    You lead at {round.highestBidCents} cr — waiting for opponent
-                  </p>
-                </div>
-              )}
               {showTakePanel ? (
                 <>
                   <div className="bg-amber-900/20 border border-amber-500/30 rounded-lg px-3 py-2 text-center">
@@ -193,20 +186,13 @@ export function AuctionBidPanel(props: AuctionBidPanelProps) {
                   </button>
                 </>
               ) : iAmHighestBidder && opponentHasBid && canPass && !couldBid ? (
-                <>
-                  <div className="bg-accent/10 border border-accent/30 rounded-lg px-3 py-2 text-center">
-                    <p className="text-accent text-sm font-medium">
-                      You lead at {round.highestBidCents} cr — waiting for others
-                    </p>
-                  </div>
-                  <button
-                    onClick={onPass}
-                    disabled={controlsLocked}
-                    className="w-full bg-slate-700/50 border border-slate-500/30 text-slate-300 hover:bg-slate-700/70 disabled:opacity-40 py-2 rounded-lg transition-colors text-sm font-medium"
-                  >
-                    End Turn
-                  </button>
-                </>
+                <button
+                  onClick={onPass}
+                  disabled={controlsLocked}
+                  className="w-full bg-slate-700/50 border border-slate-500/30 text-slate-300 hover:bg-slate-700/70 disabled:opacity-40 py-2 rounded-lg transition-colors text-sm font-medium"
+                >
+                  End Turn
+                </button>
               ) : couldBid ? (
                 <>
                   <div className="flex gap-2">

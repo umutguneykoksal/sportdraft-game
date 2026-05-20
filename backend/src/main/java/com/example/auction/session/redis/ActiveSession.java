@@ -2,6 +2,8 @@ package com.example.auction.session.redis;
 
 import com.example.auction.bidding.entity.RoundStatus;
 import com.example.auction.session.entity.GameMode;
+import com.example.auction.session.entity.PoolLeague;
+import com.example.auction.session.entity.PoolMinRating;
 import com.example.auction.session.entity.SessionStatus;
 import com.example.auction.simulation.entity.MatchEvent;
 import com.fasterxml.jackson.annotation.JsonIgnore;
@@ -25,6 +27,9 @@ public class ActiveSession {
     private UUID id;
     private GameMode gameMode = GameMode.DUEL;
     private int maxPlayers = 2;
+    /** Minimum card overall included in the shuffled auction pool (70, 75, or 80). */
+    private int minPoolRating = PoolMinRating.DEFAULT;
+    private PoolLeague poolLeague = PoolLeague.PREMIER_LEAGUE;
     private SessionStatus status;
     private Instant countdownEndsAt;
     private Long matchSeed;
@@ -251,6 +256,10 @@ public class ActiveSession {
     }
     public int getMaxPlayers() { return maxPlayers > 0 ? maxPlayers : getGameMode().maxPlayers(); }
     public void setMaxPlayers(int maxPlayers) { this.maxPlayers = maxPlayers; }
+    public int getMinPoolRating() { return PoolMinRating.effective(minPoolRating); }
+    public void setMinPoolRating(int minPoolRating) { this.minPoolRating = minPoolRating; }
+    public PoolLeague getPoolLeague() { return PoolLeague.effective(poolLeague); }
+    public void setPoolLeague(PoolLeague poolLeague) { this.poolLeague = poolLeague; }
     public SessionStatus getStatus() { return status; }
     public void setStatus(SessionStatus status) { this.status = status; }
     public Instant getCountdownEndsAt() { return countdownEndsAt; }

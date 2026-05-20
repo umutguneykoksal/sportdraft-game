@@ -127,7 +127,6 @@ export function AuctionPage() {
               canFillCard={state.canFillCard}
               showTakePanel={state.showTakePanel}
               showNoSlotBanner={state.showNoSlotBanner}
-              waitingOnOpponent={state.waitingOnOpponent}
               iAmHighestBidder={state.iAmHighestBidder}
               opponentHasBid={state.opponentHasBid}
               mySquadFull={state.mySquadFull}
@@ -172,7 +171,6 @@ export function AuctionPage() {
               canFillCard={state.canFillCard}
               showTakePanel={state.showTakePanel}
               showNoSlotBanner={state.showNoSlotBanner}
-              waitingOnOpponent={state.waitingOnOpponent}
               iAmHighestBidder={state.iAmHighestBidder}
               opponentHasBid={state.opponentHasBid}
               mySquadFull={state.mySquadFull}

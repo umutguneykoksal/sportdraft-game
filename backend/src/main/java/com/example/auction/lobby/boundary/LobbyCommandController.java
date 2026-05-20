@@ -42,7 +42,9 @@ public class LobbyCommandController {
         return sessionOrchestrator.createRoom(
             authTokenResolver.resolveUserId(authorization),
             nickname,
-            gameMode
+            gameMode,
+            request != null ? request.minPoolRating() : null,
+            request != null ? request.poolLeague() : null
         );
     }
 

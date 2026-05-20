@@ -4,6 +4,8 @@ import {
   Formation,
   GameMode,
   LobbyRoomResponse,
+  PoolMinRating,
+  PoolLeagueId,
   SessionSnapshotResponse,
   getSessionSnapshot,
   createRoom,
@@ -35,6 +37,8 @@ export function useLobbyFlow() {
   const [error, setError] = useState<string | null>(null);
   const [countdownSecondsLeft, setCountdownSecondsLeft] = useState<number | null>(null);
   const [createGameMode, setCreateGameMode] = useState<GameMode>("DUEL");
+  const [createMinPoolRating, setCreateMinPoolRating] = useState<PoolMinRating>(70);
+  const [createPoolLeague, setCreatePoolLeague] = useState<PoolLeagueId>("PREMIER_LEAGUE");
   const session = getOrCreateClientSession();
   const sessionId = snapshot?.sessionId ?? null;
   const { events, isConnected } = useSessionStream(sessionId);
@@ -186,13 +190,13 @@ export function useLobbyFlow() {
     setLoading(true);
     setError(null);
     try {
-      setSnapshot(await createRoom(fresh.nickname, createGameMode));
+      setSnapshot(await createRoom(fresh.nickname, createGameMode, createMinPoolRating, createPoolLeague));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to create room");
     } finally {
       setLoading(false);
     }
-  }, [createGameMode]);
+  }, [createGameMode, createMinPoolRating, createPoolLeague]);
 
   const handleJoinRoom = useCallback(async (roomSessionId: string) => {
     const fresh = getOrCreateClientSession();
@@ -265,5 +269,9 @@ export function useLobbyFlow() {
     chooseFormation,
     createGameMode,
     setCreateGameMode,
+    createMinPoolRating,
+    setCreateMinPoolRating,
+    createPoolLeague,
+    setCreatePoolLeague,
   };
 }
