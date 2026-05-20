@@ -18,6 +18,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -59,8 +60,8 @@ public class AuctionRoundLifecycle {
         session.findOpenRound().ifPresent(r -> {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "An active round already exists");
         });
-        if (session.playerCount() < 2) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Cannot start auction round without two players");
+        if (!AuctionRules.hasFullLobby(session)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Cannot start auction until lobby is full");
         }
         if (AuctionRules.isSessionRostersFull(session)) {
             matchTransition.enterMatchStartPending(session, vBefore);
@@ -157,8 +158,8 @@ public class AuctionRoundLifecycle {
         if (session.getStatus() != SessionStatus.AUCTIONING) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Session is not auctioning");
         }
-        if (session.playerCount() < 2) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Session does not have two players");
+        if (!AuctionRules.hasFullLobby(session)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Session does not have a full lobby");
         }
 
         Map<UUID, Card> cardMap = cardCatalog.getCardMap();
@@ -271,7 +272,7 @@ public class AuctionRoundLifecycle {
         }
 
         round.registerReady(userId);
-        if (round.areBothReady()) {
+        if (round.areAllReady(session.getMaxPlayers())) {
             settlement.closeRound(round, session, vBefore, cardMap);
             return session.findOpenRound()
                 .map(r -> AuctionRoundResponses.toResponseWithContext(r, cardMap.get(r.getCardId()), session, cardMap, userId))
@@ -311,19 +312,19 @@ public class AuctionRoundLifecycle {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Not your turn");
         }
 
-        UUID opponentUserId = AuctionRules.otherPlayerUserId(session, userId);
         boolean callerIsHighestBidder = round.getHighestBidderId() != null
             && session.findPlayerByUserId(userId)
                 .map(p -> p.getId().equals(round.getHighestBidderId())).orElse(false);
 
         if (callerIsHighestBidder) {
-            if (round.hasUserPassed(opponentUserId)) {
+            Optional<UUID> nextBidder = AuctionRules.findNextEligibleBidder(session, round, roundCard, cardMap, userId);
+            if (nextBidder.isEmpty()) {
                 settlement.closeRound(round, session, vBefore, cardMap);
                 return session.findOpenRound()
                     .map(r -> AuctionRoundResponses.toResponseWithContext(r, cardMap.get(r.getCardId()), session, cardMap, userId))
                     .orElse(AuctionRoundResponses.toResponse(round, roundCard, session, cardMap));
             }
-            round.setCurrentTurnUserId(opponentUserId);
+            round.setCurrentTurnUserId(nextBidder.get());
             sessionStore.saveIfVersionMatch(session, vBefore);
             AuctionRoundResponse response = AuctionRoundResponses.toResponseWithContext(round, roundCard, session, cardMap, userId);
             sseEmitterRegistry.broadcast(sessionId, "turn_passed",
@@ -340,12 +341,9 @@ public class AuctionRoundLifecycle {
                 .orElse(AuctionRoundResponses.toResponse(round, roundCard, session, cardMap));
         }
 
-        ActivePlayer opponent = session.findPlayerByUserId(opponentUserId).orElse(null);
-        boolean opponentCanBid = opponent != null
-            && AuctionRules.canPlayerBidRound(opponent, roundCard, AuctionTiming.STARTING_BID, cardMap);
-
-        if (opponentCanBid && !round.hasUserPassed(opponentUserId)) {
-            round.setCurrentTurnUserId(opponentUserId);
+        Optional<UUID> nextBidder = AuctionRules.findNextEligibleBidder(session, round, roundCard, cardMap, userId);
+        if (nextBidder.isPresent()) {
+            round.setCurrentTurnUserId(nextBidder.get());
             sessionStore.saveIfVersionMatch(session, vBefore);
             AuctionRoundResponse response = AuctionRoundResponses.toResponseWithContext(round, roundCard, session, cardMap, userId);
             sseEmitterRegistry.broadcast(sessionId, "turn_passed",
@@ -400,12 +398,11 @@ public class AuctionRoundLifecycle {
             return round.getStatus() != RoundStatus.OPEN;
         }
 
-        UUID otherUserId = AuctionRules.otherPlayerUserId(session, currentTurnUserId);
-        ActivePlayer otherPlayer = session.findPlayerByUserId(otherUserId).orElse(null);
-        if (otherPlayer != null
-            && !round.hasUserPassed(otherUserId)
-            && AuctionRules.canPlayerBidRound(otherPlayer, roundCard, minimumAllowed, cardMap)) {
-            round.setCurrentTurnUserId(otherUserId);
+        Optional<UUID> nextBidder = AuctionRules.findNextEligibleBidder(
+            session, round, roundCard, cardMap, currentTurnUserId
+        );
+        if (nextBidder.isPresent()) {
+            round.setCurrentTurnUserId(nextBidder.get());
             return false;
         }
 
@@ -414,6 +411,7 @@ public class AuctionRoundLifecycle {
     }
 
     private UUID determineOpeningBidder(ActiveSession session, Map<UUID, Card> cardMap) {
+        session.ensureTurnOrder();
         return session.latestRound()
             .map(prev -> {
                 if (prev.getStatus() == RoundStatus.SOLD) {
@@ -421,17 +419,15 @@ public class AuctionRoundLifecycle {
                         .filter(p -> p.getId().equals(prev.getHighestBidderId()))
                         .findFirst().orElse(null);
                     if (winner != null) {
-                        return AuctionRules.otherPlayerUserId(session, winner.getUserId());
+                        return AuctionRules.nextTurnUserId(session, winner.getUserId());
                     }
                 }
                 UUID prevOpening = prev.getOpeningBidderUserId();
                 if (prevOpening != null) {
-                    return prevOpening;
+                    return AuctionRules.nextTurnUserId(session, prevOpening);
                 }
-                return session.getPlayers().stream().map(ActivePlayer::getUserId).sorted().findFirst()
-                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "Cannot determine opening bidder"));
+                return session.getTurnOrder().get(0);
             })
-            .orElseGet(() -> session.getPlayers().stream().map(ActivePlayer::getUserId).sorted().findFirst()
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "Cannot determine opening bidder")));
+            .orElseGet(() -> session.getTurnOrder().get(0));
     }
 }

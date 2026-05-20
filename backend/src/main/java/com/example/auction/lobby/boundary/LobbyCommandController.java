@@ -32,11 +32,18 @@ public class LobbyCommandController {
 
     @PostMapping
     public SessionSnapshotResponse createRoom(
-        @Valid @RequestBody(required = false) JoinLobbyRequest request,
+        @Valid @RequestBody(required = false) CreateRoomRequest request,
         @RequestHeader("Authorization") String authorization
     ) {
         String nickname = request != null ? request.nickname() : null;
-        return sessionOrchestrator.createRoom(authTokenResolver.resolveUserId(authorization), nickname);
+        var gameMode = request != null && request.gameMode() != null
+            ? com.example.auction.session.entity.GameMode.fromWire(request.gameMode())
+            : com.example.auction.session.entity.GameMode.DUEL;
+        return sessionOrchestrator.createRoom(
+            authTokenResolver.resolveUserId(authorization),
+            nickname,
+            gameMode
+        );
     }
 
     /**

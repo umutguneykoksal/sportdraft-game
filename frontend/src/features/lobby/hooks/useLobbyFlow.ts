@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Formation,
+  GameMode,
   LobbyRoomResponse,
   SessionSnapshotResponse,
   getSessionSnapshot,
@@ -30,6 +31,7 @@ export function useLobbyFlow() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [countdownSecondsLeft, setCountdownSecondsLeft] = useState<number | null>(null);
+  const [createGameMode, setCreateGameMode] = useState<GameMode>("DUEL");
   const session = getOrCreateClientSession();
   const sessionId = snapshot?.sessionId ?? null;
   const { events, isConnected } = useSessionStream(sessionId);
@@ -159,13 +161,13 @@ export function useLobbyFlow() {
     setLoading(true);
     setError(null);
     try {
-      setSnapshot(await createRoom(fresh.nickname));
+      setSnapshot(await createRoom(fresh.nickname, createGameMode));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to create room");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [createGameMode]);
 
   const handleJoinRoom = useCallback(async (roomSessionId: string) => {
     const fresh = getOrCreateClientSession();
@@ -236,5 +238,7 @@ export function useLobbyFlow() {
     handleLeave,
     handleStartAuction,
     chooseFormation,
+    createGameMode,
+    setCreateGameMode,
   };
 }

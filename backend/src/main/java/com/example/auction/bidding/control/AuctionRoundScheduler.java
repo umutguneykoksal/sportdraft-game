@@ -62,7 +62,7 @@ public class AuctionRoundScheduler {
                             settlement.closeRound(round, session, session.getVersion(), cardMap);
                         }
                     }
-                    if (session.playerCount() >= 2 && AuctionRules.isSessionRostersFull(session)) {
+                    if (AuctionRules.hasFullLobby(session) && AuctionRules.isSessionRostersFull(session)) {
                         matchTransition.enterMatchStartPending(session, session.getVersion());
                     }
                 });

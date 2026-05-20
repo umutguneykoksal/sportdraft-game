@@ -5,6 +5,7 @@ import com.example.auction.lobby.boundary.LobbyRoomResponse;
 import com.example.auction.lobby.boundary.SessionSnapshotResponse;
 import com.example.auction.lobby.control.LobbyService;
 import com.example.auction.session.entity.Formation;
+import com.example.auction.session.entity.GameMode;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.stereotype.Component;
@@ -22,6 +23,10 @@ public class SessionOrchestrator {
 
     public List<LobbyRoomResponse> listRooms() {
         return lobbyService.listRooms();
+    }
+
+    public SessionSnapshotResponse createRoom(UUID userId, String nickname, GameMode gameMode) {
+        return lobbyService.createRoom(userId, nickname, gameMode);
     }
 
     public SessionSnapshotResponse createRoom(UUID userId, String nickname) {

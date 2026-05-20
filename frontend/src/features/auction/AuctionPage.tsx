@@ -1,4 +1,5 @@
 import { useParams } from "react-router-dom";
+import type { PlayerAuctionView } from "../../shared/api/contracts";
 import { FORMATION_LABELS } from "../../shared/formations";
 import { openEligibleHighlights } from "../../shared/positions";
 import { AuctionBidPanel } from "./AuctionBidPanel";
@@ -31,7 +32,12 @@ export function AuctionPage() {
               {FORMATION_LABELS[state.myFormation]}
             </span>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
+            {state.currentTurnNickname && (
+              <span className="text-xs bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2 py-1 rounded-full">
+                Turn: {state.currentTurnNickname}
+              </span>
+            )}
             <div className="text-right">
               <p className="text-xs text-slate-400">Budget</p>
               <p className="text-base sm:text-lg font-bold text-white">
@@ -60,8 +66,34 @@ export function AuctionPage() {
       {state.sessionSnap?.status === "MATCH_START_PENDING" && (
         <div className="bg-accent-green/10 border-b border-accent-green/30 px-4 py-4 text-center">
           <p className="text-lg font-bold text-accent-green animate-pulse">
-            All squads complete! Starting match...
+            {state.gameMode === "TOURNAMENT"
+              ? "All squads complete! Running tournament bracket..."
+              : state.gameMode === "LEAGUE"
+                ? "All squads complete! League coming soon..."
+                : "All squads complete! Starting match..."}
           </p>
+        </div>
+      )}
+
+      {state.multiPlayerMode && state.playerViews.length > 0 && (
+        <div className="border-b border-white/10 bg-surface-card px-4 py-3 overflow-x-auto">
+          <div className="max-w-7xl mx-auto flex gap-3 min-w-max">
+            {state.playerViews.map((p: PlayerAuctionView) => (
+              <div
+                key={p.userId}
+                className={`shrink-0 rounded-lg border px-3 py-2 min-w-[140px] ${
+                  p.currentTurn
+                    ? "border-accent ring-1 ring-accent/40"
+                    : "border-white/10"
+                }`}
+              >
+                <p className="text-xs text-slate-400 truncate">{p.nickname}</p>
+                <p className="text-sm font-bold text-white">
+                  {Math.round(p.budgetRemaining / 100)} cr · {p.rosterSize}/11
+                </p>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
@@ -75,60 +107,105 @@ export function AuctionPage() {
       )}
 
       <div className="max-w-7xl mx-auto px-4 py-6">
-        <div className="grid grid-cols-1 lg:grid-cols-[1fr_340px_1fr] gap-6">
-          <AuctionRosterPanel
-            title="My Team"
-            formation={state.myFormation}
-            cards={state.myTeam}
-            teamColor="#3b82f6"
-            teamBorderColor="#60a5fa"
-            highlightPositions={pitchHighlights}
-          />
-
-          <AuctionBidPanel
-            round={state.round}
-            auctionPhaseActive={state.auctionPhaseActive}
-            error={state.error}
-            secondsLeft={state.secondsLeft}
-            timeExtended={state.timeExtended}
-            timerPercent={state.timerPercent}
-            timerColor={state.timerColor}
-            minimumBid={state.minimumBid}
-            budget={state.budget}
-            roundIsOpen={state.roundIsOpen}
-            controlsLocked={state.controlsLocked}
-            loading={state.loading}
-            canBid={state.canBid}
-            couldBid={state.couldBid}
-            canPass={state.canPass}
-            canFillCard={state.canFillCard}
-            showTakePanel={state.showTakePanel}
-            showNoSlotBanner={state.showNoSlotBanner}
-            waitingOnOpponent={state.waitingOnOpponent}
-            iAmHighestBidder={state.iAmHighestBidder}
-            opponentHasBid={state.opponentHasBid}
-            mySquadFull={state.mySquadFull}
-            myUserId={state.myUserId}
-            turnIsOpen={state.turnIsOpen}
-            isMyTurn={state.isMyTurn}
-            inTimerGrace={state.inTimerGrace}
-            amount={state.amount}
-            setAmount={state.setAmount}
-            turnStatusMessage={state.turnStatusMessage}
-            onTake={state.handleTake}
-            onBid={state.handleBid}
-            onPass={state.handlePassRound}
-          />
-
-          <AuctionRosterPanel
-            title="Opponent"
-            formation={state.opponentFormation}
-            cards={state.opponentTeam}
-            away
-            teamColor="#ef4444"
-            teamBorderColor="#f87171"
-          />
-        </div>
+        {state.multiPlayerMode ? (
+          <div className="grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-6">
+            <AuctionRosterPanel
+              title="My Team"
+              formation={state.myFormation}
+              cards={state.myTeam}
+              teamColor="#3b82f6"
+              teamBorderColor="#60a5fa"
+              highlightPositions={pitchHighlights}
+            />
+            <AuctionBidPanel
+              round={state.round}
+              auctionPhaseActive={state.auctionPhaseActive}
+              error={state.error}
+              secondsLeft={state.secondsLeft}
+              timeExtended={state.timeExtended}
+              timerPercent={state.timerPercent}
+              timerColor={state.timerColor}
+              minimumBid={state.minimumBid}
+              budget={state.budget}
+              roundIsOpen={state.roundIsOpen}
+              controlsLocked={state.controlsLocked}
+              loading={state.loading}
+              canBid={state.canBid}
+              couldBid={state.couldBid}
+              canPass={state.canPass}
+              canFillCard={state.canFillCard}
+              showTakePanel={state.showTakePanel}
+              showNoSlotBanner={state.showNoSlotBanner}
+              waitingOnOpponent={state.waitingOnOpponent}
+              iAmHighestBidder={state.iAmHighestBidder}
+              opponentHasBid={state.opponentHasBid}
+              mySquadFull={state.mySquadFull}
+              myUserId={state.myUserId}
+              turnIsOpen={state.turnIsOpen}
+              isMyTurn={state.isMyTurn}
+              inTimerGrace={state.inTimerGrace}
+              amount={state.amount}
+              setAmount={state.setAmount}
+              turnStatusMessage={state.turnStatusMessage}
+              onTake={state.handleTake}
+              onBid={state.handleBid}
+              onPass={state.handlePassRound}
+            />
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-[1fr_340px_1fr] gap-6">
+            <AuctionRosterPanel
+              title="My Team"
+              formation={state.myFormation}
+              cards={state.myTeam}
+              teamColor="#3b82f6"
+              teamBorderColor="#60a5fa"
+              highlightPositions={pitchHighlights}
+            />
+            <AuctionBidPanel
+              round={state.round}
+              auctionPhaseActive={state.auctionPhaseActive}
+              error={state.error}
+              secondsLeft={state.secondsLeft}
+              timeExtended={state.timeExtended}
+              timerPercent={state.timerPercent}
+              timerColor={state.timerColor}
+              minimumBid={state.minimumBid}
+              budget={state.budget}
+              roundIsOpen={state.roundIsOpen}
+              controlsLocked={state.controlsLocked}
+              loading={state.loading}
+              canBid={state.canBid}
+              couldBid={state.couldBid}
+              canPass={state.canPass}
+              canFillCard={state.canFillCard}
+              showTakePanel={state.showTakePanel}
+              showNoSlotBanner={state.showNoSlotBanner}
+              waitingOnOpponent={state.waitingOnOpponent}
+              iAmHighestBidder={state.iAmHighestBidder}
+              opponentHasBid={state.opponentHasBid}
+              mySquadFull={state.mySquadFull}
+              myUserId={state.myUserId}
+              turnIsOpen={state.turnIsOpen}
+              isMyTurn={state.isMyTurn}
+              inTimerGrace={state.inTimerGrace}
+              amount={state.amount}
+              setAmount={state.setAmount}
+              turnStatusMessage={state.turnStatusMessage}
+              onTake={state.handleTake}
+              onBid={state.handleBid}
+              onPass={state.handlePassRound}
+            />
+            <AuctionRosterPanel
+              title="Opponent"
+              formation={state.opponentFormation}
+              cards={state.opponentTeam}
+              away
+              teamColor="#ef4444"
+              teamBorderColor="#f87171"
+            />
+          </div>
+        )}
       </div>
     </div>
   );

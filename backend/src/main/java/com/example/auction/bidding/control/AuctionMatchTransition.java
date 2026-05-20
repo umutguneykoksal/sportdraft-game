@@ -3,7 +3,9 @@ package com.example.auction.bidding.control;
 import com.example.auction.bidding.entity.Card;
 import com.example.auction.bidding.entity.Position;
 import com.example.auction.session.control.SessionAccess;
+import com.example.auction.session.entity.GameMode;
 import com.example.auction.session.entity.SessionStatus;
+import com.example.auction.simulation.control.DraftCompletedEvent;
 import com.example.auction.session.redis.ActivePlayer;
 import com.example.auction.session.redis.ActiveRound;
 import com.example.auction.session.redis.ActiveSession;
@@ -47,7 +49,7 @@ public class AuctionMatchTransition {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Match start is not pending");
         }
         session.registerMatchStartReady(userId);
-        if (session.areBothMatchStartReady()) {
+        if (session.areAllMatchStartReady()) {
             finalizeSessionFromFullRosters(session, vBefore);
         } else {
             sessionStore.saveIfVersionMatch(session, vBefore);
@@ -66,7 +68,7 @@ public class AuctionMatchTransition {
         if (session.getStatus() != SessionStatus.AUCTIONING) {
             return;
         }
-        if (session.playerCount() < 2) {
+        if (!AuctionRules.hasFullLobby(session)) {
             return;
         }
         if (!AuctionRules.isSessionRostersFull(session)) {
@@ -100,25 +102,34 @@ public class AuctionMatchTransition {
         if (session.getStatus() != SessionStatus.MATCH_START_PENDING) {
             return;
         }
-        if (session.playerCount() < 2) {
+        if (!AuctionRules.hasFullLobby(session)) {
             return;
         }
         if (!AuctionRules.isSessionRostersFull(session)) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Cannot finalize before both rosters are full");
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Cannot finalize before all rosters are full");
         }
         session.moveToFinalizing(session.getId().getMostSignificantBits());
         sessionStore.saveIfVersionMatch(session, vBefore);
 
         Map<UUID, Card> cardMap = cardCatalog.getCardMap();
-        publishSessionFinalized(session, cardMap);
+        if (session.getGameMode() == GameMode.DUEL) {
+            publishSessionFinalized(session, cardMap);
+        } else {
+            publishDraftCompleted(session, cardMap);
+        }
         sseEmitterRegistry.broadcast(
             session.getId(), "session_finalizing",
-            Map.of("sessionId", session.getId(), "reason", "rosters_complete", "seed", session.getMatchSeed())
+            Map.of(
+                "sessionId", session.getId(),
+                "reason", "rosters_complete",
+                "seed", session.getMatchSeed(),
+                "gameMode", session.getGameMode().name()
+            )
         );
     }
 
     void publishSessionFinalized(ActiveSession session, Map<UUID, Card> cardMap) {
-        if (session.playerCount() < 2) {
+        if (!AuctionRules.hasFullLobby(session) || session.getGameMode() != GameMode.DUEL) {
             return;
         }
         List<ActivePlayer> sorted = session.playersSortedById();
@@ -135,6 +146,33 @@ public class AuctionMatchTransition {
             session.getMatchSeed() == null ? session.getId().getMostSignificantBits() : session.getMatchSeed(),
             home.getFormation(), away.getFormation(), homeRoster, awayRoster,
             home.getUserId(), away.getUserId()
+        ));
+    }
+
+    void publishDraftCompleted(ActiveSession session, Map<UUID, Card> cardMap) {
+        if (!AuctionRules.hasFullLobby(session)) {
+            return;
+        }
+        session.ensureTurnOrder();
+        List<DraftCompletedEvent.DraftPlayerRoster> rosters = session.getTurnOrder().stream()
+            .map(uid -> session.findPlayerByUserId(uid).orElseThrow())
+            .map(p -> new DraftCompletedEvent.DraftPlayerRoster(
+                p.getUserId(),
+                p.getNickname(),
+                p.getFormation(),
+                toRatedRoster(p, cardMap)
+            ))
+            .toList();
+
+        session.moveToAwaitingResult();
+        sessionStore.save(session);
+        publisher.publishEvent(new DraftCompletedEvent(
+            UUID.randomUUID(),
+            Instant.now(),
+            session.getId(),
+            session.getGameMode(),
+            session.getMatchSeed() == null ? session.getId().getMostSignificantBits() : session.getMatchSeed(),
+            rosters
         ));
     }
 

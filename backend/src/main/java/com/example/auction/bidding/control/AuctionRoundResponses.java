@@ -25,13 +25,7 @@ final class AuctionRoundResponses {
     ) {
         long minimumBid = AuctionRules.minimumBidForRound(round);
         boolean opponentCanBid = true;
-        if (round.getCurrentTurnUserId() != null) {
-            UUID opponentUserId = AuctionRules.otherPlayerUserId(session, round.getCurrentTurnUserId());
-            ActivePlayer opponent = session.findPlayerByUserId(opponentUserId).orElse(null);
-            opponentCanBid = opponent != null
-                && !round.hasUserPassed(opponentUserId)
-                && AuctionRules.canPlayerBidRound(opponent, card, minimumBid, cardMap);
-        }
+        opponentCanBid = AuctionRules.anyOtherPlayerCanBid(session, round, card, cardMap, null);
         return buildRoundResponse(
             round, card, session.getId(), session.getVersion(),
             resolveHighestBidderUserId(round, session), opponentCanBid,
@@ -44,13 +38,7 @@ final class AuctionRoundResponses {
     ) {
         long minimumBid = AuctionRules.minimumBidForRound(round);
         boolean opponentCanBid = true;
-        if (round.getCurrentTurnUserId() != null) {
-            UUID opponentUserId = AuctionRules.otherPlayerUserId(session, round.getCurrentTurnUserId());
-            ActivePlayer opponent = session.findPlayerByUserId(opponentUserId).orElse(null);
-            opponentCanBid = opponent != null
-                && !round.hasUserPassed(opponentUserId)
-                && AuctionRules.canPlayerBidRound(opponent, card, minimumBid, cardMap);
-        }
+        opponentCanBid = AuctionRules.anyOtherPlayerCanBid(session, round, card, cardMap, viewerUserId);
         boolean viewerCanBid = computeViewerCanBid(round, session, viewerUserId, card, cardMap);
         boolean viewerCanTake = computeViewerCanTake(round, session, viewerUserId, card, cardMap);
         boolean viewerCanPass = computeViewerCanPass(round, viewerUserId);

@@ -3,6 +3,7 @@ package com.example.auction.bidding.control;
 import com.example.auction.bidding.boundary.AuctionRoundResponse;
 import com.example.auction.bidding.boundary.AuctionStateResponse;
 import com.example.auction.bidding.boundary.AuctionTeamCardResponse;
+import com.example.auction.bidding.boundary.PlayerAuctionView;
 import com.example.auction.bidding.boundary.PlaceBidRequest;
 import com.example.auction.bidding.entity.Card;
 import com.example.auction.bidding.entity.RoundStatus;
@@ -76,12 +77,16 @@ public class AuctionService {
 
     public AuctionStateResponse getAuctionState(UUID sessionId, UUID userId) {
         ActiveSession session = sessionStore.getById(sessionId);
+        Map<UUID, Card> cardMap = cardCatalog.getCardMap();
         TeamSnapshot teams = buildTeamSnapshot(session, userId);
 
-        Map<UUID, Card> cardMap = cardCatalog.getCardMap();
         AuctionRoundResponse currentRound = session.findOpenRound()
             .map(r -> AuctionRoundResponses.toResponseWithContext(r, cardMap.get(r.getCardId()), session, cardMap, userId))
             .orElse(null);
+
+        List<PlayerAuctionView> players = session.getMaxPlayers() > 2
+            ? buildPlayerViews(session, cardMap)
+            : List.of();
 
         return new AuctionStateResponse(
             currentRound,
@@ -89,8 +94,36 @@ public class AuctionService {
             teams.opponentTeam(),
             teams.myFormation(),
             teams.opponentFormation(),
-            session.getVersion()
+            session.getVersion(),
+            players
         );
+    }
+
+    private List<PlayerAuctionView> buildPlayerViews(ActiveSession session, Map<UUID, Card> cardMap) {
+        List<ActiveRound> soldRounds = session.roundsByStatus(RoundStatus.SOLD);
+        Map<UUID, Long> soldAmountByCardId = new HashMap<>();
+        Map<UUID, Integer> draftOrderByCardId = new HashMap<>();
+        int draftIndex = 0;
+        for (ActiveRound sr : soldRounds) {
+            soldAmountByCardId.put(sr.getCardId(), sr.getHighestBidCents());
+            draftOrderByCardId.put(sr.getCardId(), draftIndex++);
+        }
+
+        UUID turnUserId = session.findOpenRound().map(ActiveRound::getCurrentTurnUserId).orElse(null);
+        session.ensureTurnOrder();
+        return session.getTurnOrder().stream()
+            .map(uid -> session.findPlayerByUserId(uid).orElse(null))
+            .filter(p -> p != null)
+            .map(p -> new PlayerAuctionView(
+                p.getUserId(),
+                p.getNickname(),
+                p.getRemainingBudgetCents(),
+                p.getCardIds().size(),
+                p.getUserId().equals(turnUserId),
+                p.getFormation().name(),
+                AuctionRoundResponses.buildTeamCards(p, cardMap, soldAmountByCardId, draftOrderByCardId)
+            ))
+            .toList();
     }
 
     public TeamSnapshot buildTeamSnapshot(ActiveSession session, UUID userId) {

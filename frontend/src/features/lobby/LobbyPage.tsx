@@ -2,8 +2,8 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useLobbyFlow } from "./hooks/useLobbyFlow";
 import { FORMATION_LABELS, FORMATION_DOTS } from "../../shared/formations";
-import type { Formation, LobbyRoomResponse } from "../../shared/api/contracts";
-import { SESSION_STATUS_LABELS } from "../../shared/api/contracts";
+import type { Formation, GameMode, LobbyRoomResponse } from "../../shared/api/contracts";
+import { GAME_MODE_LABELS, SESSION_STATUS_LABELS } from "../../shared/api/contracts";
 import { saveNickname } from "../../shared/session";
 
 const STATUS_BADGE_COLORS: Record<string, string> = {
@@ -37,16 +37,22 @@ function RoomCard({
   onSpectate: () => void;
   loading: boolean;
 }) {
-  const canJoin = room.status === "WAITING" && room.playerCount < 2;
+  const maxPlayers = room.maxPlayers ?? 2;
+  const canJoin = room.status === "WAITING" && room.playerCount < maxPlayers;
   const canSpectate = room.status !== "WAITING" && room.status !== "COUNTDOWN";
 
   return (
     <div className="bg-surface-card rounded-xl border border-white/10 p-4 flex flex-col sm:flex-row items-start sm:items-center gap-3 transition-all hover:border-white/20">
       <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 mb-1.5">
+        <div className="flex items-center gap-2 mb-1.5 flex-wrap">
           <StatusBadge status={room.status} />
+          {room.gameMode && (
+            <span className="text-xs font-medium px-2 py-0.5 rounded-full border bg-violet-500/20 text-violet-300 border-violet-500/30">
+              {GAME_MODE_LABELS[room.gameMode as GameMode] ?? room.gameMode}
+            </span>
+          )}
           <span className="text-slate-500 text-xs">
-            {room.playerCount}/2 players
+            {room.playerCount}/{maxPlayers} players
             {room.spectatorCount > 0 && ` · ${room.spectatorCount} watching`}
           </span>
         </div>
@@ -158,7 +164,12 @@ export function LobbyPage() {
     handleLeave,
     handleStartAuction,
     chooseFormation,
+    createGameMode,
+    setCreateGameMode,
   } = useLobbyFlow();
+
+  const maxPlayers = snapshot?.maxPlayers ?? 2;
+  const gameMode = snapshot?.gameMode ?? "DUEL";
 
   const [nicknameInput, setNicknameInput] = useState(session.nickname);
   const isInSession = snapshot?.joined === true;
@@ -185,7 +196,7 @@ export function LobbyPage() {
           Football Card Auction
         </h1>
         <p className="text-slate-400 mt-2">
-          2-player auction draft game
+          Auction draft — duel, tournament, or league
         </p>
       </div>
 
@@ -194,6 +205,28 @@ export function LobbyPage() {
         <div className="w-full max-w-2xl space-y-6">
           {/* Nickname + Create Room */}
           <div className="bg-surface-card rounded-xl border border-white/10 p-5">
+            <label className="block text-slate-400 text-sm mb-2">Game mode</label>
+            <div className="flex flex-wrap gap-2 mb-4">
+              {(["DUEL", "TOURNAMENT", "LEAGUE"] as GameMode[]).map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => setCreateGameMode(mode)}
+                  className={`text-sm font-medium px-3 py-2 rounded-lg border transition-colors ${
+                    createGameMode === mode
+                      ? "bg-accent border-accent text-white"
+                      : "bg-surface-elevated border-white/10 text-slate-300 hover:border-white/30"
+                  }`}
+                >
+                  {GAME_MODE_LABELS[mode]}
+                </button>
+              ))}
+            </div>
+            {createGameMode === "LEAGUE" && (
+              <p className="text-amber-400/90 text-xs mb-3">
+                League standings and fixtures arrive in a future update. Draft works; matches are not played yet.
+              </p>
+            )}
             <label className="block text-slate-400 text-sm mb-2">Choose your nickname</label>
             <div className="flex gap-3">
               <input
@@ -261,7 +294,12 @@ export function LobbyPage() {
             </div>
             <div className="text-center">
               <span className="text-slate-400 text-sm">Players</span>
-              <p className="text-white font-semibold">{snapshot.playerCount}/2</p>
+              <p className="text-white font-semibold">
+                {snapshot.playerCount}/{maxPlayers}
+                {gameMode !== "DUEL" && (
+                  <span className="text-slate-500 text-xs ml-1">({GAME_MODE_LABELS[gameMode]})</span>
+                )}
+              </p>
             </div>
             <div className="text-right">
               <span className="text-slate-400 text-sm">Formation</span>
@@ -291,7 +329,10 @@ export function LobbyPage() {
                 <div className="w-3 h-3 bg-accent rounded-full inline-block mx-1 animation-delay-200"></div>
                 <div className="w-3 h-3 bg-accent rounded-full inline-block mx-1 animation-delay-400"></div>
               </div>
-              <p className="text-slate-400 mt-4">Waiting for an opponent to join...</p>
+              <p className="text-slate-400 mt-4">
+                Waiting for {maxPlayers - snapshot.playerCount} more player
+                {maxPlayers - snapshot.playerCount === 1 ? "" : "s"}...
+              </p>
             </div>
           )}
 
@@ -316,7 +357,8 @@ export function LobbyPage() {
               </div>
 
               {/* One player ready — wait for opponent, no countdown */}
-              {snapshot.matchStartReadyCount === 1 && (
+              {snapshot.matchStartReadyCount >= 1
+                && snapshot.matchStartReadyCount < maxPlayers && (
                 <p className="text-center text-slate-400 text-sm">
                   {snapshot.matchStartConfirmedByMe
                     ? "Waiting for opponent to confirm..."
@@ -325,7 +367,7 @@ export function LobbyPage() {
               )}
 
               {/* Both ready — 5s countdown before auction */}
-              {snapshot.matchStartReadyCount === 2
+              {snapshot.matchStartReadyCount === maxPlayers
                 && countdownSecondsLeft !== null
                 && countdownSecondsLeft > 0 && (
                 <div className="text-center">
@@ -348,7 +390,7 @@ export function LobbyPage() {
                   }`}
                 >
                   {snapshot.matchStartConfirmedByMe
-                    ? `Ready (${snapshot.matchStartReadyCount}/2)`
+                    ? `Ready (${snapshot.matchStartReadyCount}/${maxPlayers})`
                     : "Start Auction"}
                 </button>
                 <button

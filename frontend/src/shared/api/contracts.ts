@@ -39,6 +39,20 @@ export type Formation =
 
 export type Position = "GK" | "DEF" | "CDM" | "CM" | "CAM" | "FWD";
 
+export type GameMode = "DUEL" | "TOURNAMENT" | "LEAGUE";
+
+export const GAME_MODE_LABELS: Record<GameMode, string> = {
+  DUEL: "Duel (2 players)",
+  TOURNAMENT: "Tournament (4 players)",
+  LEAGUE: "League (4 players)",
+};
+
+export interface LobbyPlayerView {
+  userId: string;
+  nickname: string;
+  seat: number;
+}
+
 export interface SessionSnapshotResponse {
   sessionId: string;
   status: SessionStatus;
@@ -49,10 +63,11 @@ export interface SessionSnapshotResponse {
   matchStartDeadlineAt: string | null;
   matchStartReadyCount: number;
   matchStartConfirmedByMe: boolean;
-  /** Session version for stale detection; optional for backward compat. */
   version?: number;
-  /** Last event seq at snapshot time; use for gap detection on reconnect. */
   lastSeq?: number;
+  gameMode?: GameMode;
+  maxPlayers?: number;
+  players?: LobbyPlayerView[];
 }
 
 export interface AuctionRoundResponse {
@@ -96,14 +111,24 @@ export interface AuctionTeamCardResponse {
   amountCents: number;
 }
 
+export interface PlayerAuctionView {
+  userId: string;
+  nickname: string;
+  budgetRemaining: number;
+  rosterSize: number;
+  currentTurn: boolean;
+  formation: Formation | string;
+  team: AuctionTeamCardResponse[];
+}
+
 export interface AuctionStateResponse {
   currentRound: AuctionRoundResponse | null;
   myTeam: AuctionTeamCardResponse[];
   opponentTeam: AuctionTeamCardResponse[];
   myFormation: Formation | null;
   opponentFormation: Formation | null;
-  /** Session version; optional for backward compat. */
   version?: number;
+  players?: PlayerAuctionView[];
 }
 
 export interface MatchResultResponse {
@@ -132,9 +157,33 @@ export interface LobbyRoomResponse {
   sessionId: string;
   status: string;
   playerCount: number;
+  maxPlayers?: number;
+  gameMode?: GameMode;
   playerNicknames: string[];
   createdAt: string;
   spectatorCount: number;
+}
+
+export interface CompetitionMatchResponse {
+  matchId: string;
+  roundKey: string;
+  homeUserId: string;
+  homeNickname: string;
+  awayUserId: string;
+  awayNickname: string;
+  homeScore: number | null;
+  awayScore: number | null;
+  status: string;
+}
+
+export interface CompetitionResponse {
+  competitionId: string;
+  sessionId: string;
+  type: string;
+  status: string;
+  championUserId: string | null;
+  championNickname: string | null;
+  matches: CompetitionMatchResponse[];
 }
 
 export interface SpectateStateResponse {

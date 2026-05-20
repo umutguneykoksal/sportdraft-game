@@ -7,7 +7,9 @@ import static org.mockito.Mockito.when;
 import com.example.auction.lobby.boundary.SessionSnapshotResponse;
 import com.example.auction.lobby.control.LobbyService;
 import com.example.auction.session.entity.Formation;
+import com.example.auction.session.entity.GameMode;
 import com.example.auction.session.entity.SessionStatus;
+import java.util.List;
 import com.example.auction.bidding.control.AuctionService;
 import java.time.Instant;
 import java.util.UUID;
@@ -32,7 +34,8 @@ class SessionOrchestratorTest {
         UUID userId = UUID.randomUUID();
         SessionSnapshotResponse snap = new SessionSnapshotResponse(
             UUID.randomUUID(), SessionStatus.WAITING, Instant.now(), 1, true,
-            Formation.FOUR_FOUR_TWO, null, 0, false, 0L, 0L
+            Formation.FOUR_FOUR_TWO, null, 0, false, 0L, 0L,
+            GameMode.DUEL, 2, List.of()
         );
         when(lobbyService.createRoom(userId, "nick")).thenReturn(snap);
 
@@ -55,7 +58,10 @@ class SessionOrchestratorTest {
             1,
             true,
             1L,
-            0L
+            0L,
+            GameMode.DUEL,
+            2,
+            List.of()
         );
         when(lobbyService.getSnapshot(sessionId, userId)).thenReturn(snap);
 

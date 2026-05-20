@@ -6,7 +6,9 @@ import com.example.auction.common.realtime.SessionEventLog;
 import com.example.auction.common.sse.SseEmitterRegistry;
 import com.example.auction.lobby.boundary.LobbyRoomResponse;
 import com.example.auction.lobby.boundary.SessionSnapshotResponse;
+import com.example.auction.lobby.boundary.LobbyPlayerView;
 import com.example.auction.session.entity.Formation;
+import com.example.auction.session.entity.GameMode;
 import com.example.auction.session.entity.SessionStatus;
 import com.example.auction.session.redis.ActivePlayer;
 import com.example.auction.session.control.SessionAccess;
@@ -57,6 +59,8 @@ public class LobbyService {
                 s.getId(),
                 s.getStatus().name(),
                 s.playerCount(),
+                s.getMaxPlayers(),
+                s.getGameMode(),
                 s.getPlayers().stream().map(ActivePlayer::getNickname).toList(),
                 s.getCreatedAt(),
                 sseEmitterRegistry.spectatorCount(s.getId())
@@ -64,19 +68,25 @@ public class LobbyService {
             .toList();
     }
 
-    public SessionSnapshotResponse createRoom(UUID userId, String nickname) {
+    public SessionSnapshotResponse createRoom(UUID userId, String nickname, GameMode gameMode) {
         if (sessionStore.findAllActiveIds().size() >= MAX_CONCURRENT_ROOMS) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                 "Maximum %d concurrent rooms reached. Try again later.".formatted(MAX_CONCURRENT_ROOMS));
         }
-        ActiveSession session = new ActiveSession(UUID.randomUUID(), SessionStatus.WAITING, Instant.now());
+        GameMode mode = gameMode != null ? gameMode : GameMode.DUEL;
+        ActiveSession session = new ActiveSession(UUID.randomUUID(), SessionStatus.WAITING, Instant.now(), mode);
         String safeName = sanitizeNickname(nickname, userId);
         ActivePlayer player = new ActivePlayer(
             UUID.randomUUID(), userId, safeName, Formation.FOUR_FOUR_TWO, STARTING_BUDGET_CENTS
         );
         session.getPlayers().add(player);
+        session.addToTurnOrder(userId);
         sessionStore.save(session);
         return snapshot(session, userId);
+    }
+
+    public SessionSnapshotResponse createRoom(UUID userId, String nickname) {
+        return createRoom(userId, nickname, GameMode.DUEL);
     }
 
     public SessionSnapshotResponse joinRoom(UUID sessionId, UUID userId, String nickname) {
@@ -87,7 +97,7 @@ public class LobbyService {
         if (session.hasPlayerWithUserId(userId)) {
             return snapshot(session, userId);
         }
-        if (session.playerCount() >= 2) {
+        if (session.playerCount() >= session.getMaxPlayers()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Room is full");
         }
 
@@ -97,8 +107,9 @@ public class LobbyService {
             UUID.randomUUID(), userId, safeName, Formation.FOUR_FOUR_TWO, STARTING_BUDGET_CENTS
         );
         session.getPlayers().add(player);
+        session.addToTurnOrder(userId);
 
-        if (session.playerCount() == 2) {
+        if (session.playerCount() == session.getMaxPlayers()) {
             session.moveToCountdown(Instant.now().plus(5, ChronoUnit.SECONDS));
             sessionStore.saveIfVersionMatch(session, versionBefore);
             sseEmitterRegistry.broadcast(
@@ -123,7 +134,7 @@ public class LobbyService {
     public SessionSnapshotResponse joinLobby(UUID userId, String nickname) {
         List<ActiveSession> waitingSessions = sessionStore.findWaitingSessions();
         ActiveSession target = waitingSessions.stream()
-            .filter(s -> s.playerCount() < 2)
+            .filter(s -> s.playerCount() < s.getMaxPlayers())
             .findFirst()
             .orElse(null);
         if (target != null) {
@@ -155,7 +166,7 @@ public class LobbyService {
             return snapshot(session, userId);
         }
 
-        boolean needsReset = session.playerCount() < 2
+        boolean needsReset = session.playerCount() < session.getMaxPlayers()
             && (session.getStatus() == SessionStatus.COUNTDOWN
                 || session.getStatus() == SessionStatus.FORMATION_SELECT);
         if (needsReset) {
@@ -213,7 +224,7 @@ public class LobbyService {
             return snapshot(session, userId);
         }
 
-        if (session.areBothMatchStartReady()) {
+        if (session.areAllMatchStartReady()) {
             session.setCountdownEndsAt(
                 Instant.now().plus(FORMATION_BOTH_READY_COUNTDOWN_SECONDS, ChronoUnit.SECONDS)
             );
@@ -247,7 +258,7 @@ public class LobbyService {
         for (ActiveSession session : sessionStore.findByStatus(SessionStatus.COUNTDOWN)) {
             if (session.getCountdownEndsAt() != null && !session.getCountdownEndsAt().isAfter(now)) {
                 long vBefore = session.getVersion();
-                if (session.playerCount() == 2) {
+                if (session.playerCount() == session.getMaxPlayers()) {
                     session.moveToFormationSelect(null);
                     sessionStore.saveIfVersionMatch(session, vBefore);
                     sseEmitterRegistry.broadcast(
@@ -263,9 +274,9 @@ public class LobbyService {
 
         for (ActiveSession session : sessionStore.findByStatus(SessionStatus.FORMATION_SELECT)) {
             if (session.getCountdownEndsAt() != null && !session.getCountdownEndsAt().isAfter(now)
-                && session.areBothMatchStartReady()) {
+                && session.areAllMatchStartReady()) {
                 long vBefore = session.getVersion();
-                if (session.playerCount() == 2) {
+                if (session.playerCount() == session.getMaxPlayers()) {
                     session.getPlayers().forEach(ActivePlayer::confirmDefaultFormationIfMissing);
                     session.moveToAuctioning(buildShuffledCardPool());
                     sessionStore.saveIfVersionMatch(session, vBefore);
@@ -300,8 +311,17 @@ public class LobbyService {
                 ? session.getMatchStartDeadlineAt()
                 : session.getCountdownEndsAt();
             matchStartReadyCount = session.matchStartReadyCount();
-            matchStartConfirmedByMe = userId.equals(session.getMatchStartReadyUserOneId())
-                || userId.equals(session.getMatchStartReadyUserTwoId());
+            matchStartConfirmedByMe = session.isMatchStartReady(userId);
+        }
+
+        List<LobbyPlayerView> players = new ArrayList<>();
+        session.ensureTurnOrder();
+        for (int i = 0; i < session.getTurnOrder().size(); i++) {
+            UUID uid = session.getTurnOrder().get(i);
+            int seat = i;
+            session.findPlayerByUserId(uid).ifPresent(p ->
+                players.add(new LobbyPlayerView(p.getUserId(), p.getNickname(), seat))
+            );
         }
 
         return new SessionSnapshotResponse(
@@ -315,7 +335,10 @@ public class LobbyService {
             matchStartReadyCount,
             matchStartConfirmedByMe,
             session.getVersion(),
-            eventLog.currentSeq(session.getId())
+            eventLog.currentSeq(session.getId()),
+            session.getGameMode(),
+            session.getMaxPlayers(),
+            players
         );
     }
 }

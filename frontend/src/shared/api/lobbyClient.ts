@@ -1,4 +1,4 @@
-import { LobbyRoomResponse, MatchEvent, SessionSnapshotResponse, SpectateStateResponse } from "./contracts";
+import { GameMode, LobbyRoomResponse, MatchEvent, SessionSnapshotResponse, SpectateStateResponse } from "./contracts";
 import { authHeaders, getApiBase, getApiPrefix, parseOrThrow } from "./httpClient";
 
 export async function listLobbies(): Promise<LobbyRoomResponse[]> {
@@ -8,11 +8,14 @@ export async function listLobbies(): Promise<LobbyRoomResponse[]> {
   return parseOrThrow<LobbyRoomResponse[]>(response, `listLobbies failed: ${response.status}`);
 }
 
-export async function createRoom(nickname: string): Promise<SessionSnapshotResponse> {
+export async function createRoom(
+  nickname: string,
+  gameMode: GameMode = "DUEL"
+): Promise<SessionSnapshotResponse> {
   const response = await fetch(`${getApiBase()}${getApiPrefix()}/lobbies`, {
     method: "POST",
     headers: authHeaders(),
-    body: JSON.stringify({ nickname }),
+    body: JSON.stringify({ nickname, gameMode }),
   });
   return parseOrThrow<SessionSnapshotResponse>(response, `createRoom failed: ${response.status}`);
 }

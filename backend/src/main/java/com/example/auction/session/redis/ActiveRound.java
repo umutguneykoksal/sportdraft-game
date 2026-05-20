@@ -49,6 +49,9 @@ public class ActiveRound {
         this.turnStartedAt = Instant.now();
         this.readyUserOneId = null;
         this.readyUserTwoId = null;
+        if (readyUserIds != null) {
+            readyUserIds.clear();
+        }
     }
 
     public void markSold() {
@@ -59,18 +62,48 @@ public class ActiveRound {
         this.status = RoundStatus.PASSED;
     }
 
+    private List<UUID> readyUserIds = new ArrayList<>();
+
     public boolean registerReady(UUID userId) {
-        if (userId == null || userId.equals(readyUserOneId) || userId.equals(readyUserTwoId)) {
+        if (userId == null) {
             return false;
         }
-        if (readyUserOneId == null) { readyUserOneId = userId; return true; }
-        if (readyUserTwoId == null) { readyUserTwoId = userId; return true; }
-        return false;
+        syncReadyFromLegacy();
+        if (readyUserIds.contains(userId)) {
+            return false;
+        }
+        readyUserIds.add(userId);
+        syncLegacyFromReady();
+        return true;
     }
 
     @JsonIgnore
+    public boolean areAllReady(int requiredPlayers) {
+        syncReadyFromLegacy();
+        return readyUserIds.size() >= requiredPlayers;
+    }
+
+    /** @deprecated use {@link #areAllReady(int)} */
+    @JsonIgnore
     public boolean areBothReady() {
-        return readyUserOneId != null && readyUserTwoId != null;
+        return areAllReady(2);
+    }
+
+    private void syncReadyFromLegacy() {
+        if (readyUserIds == null) {
+            readyUserIds = new ArrayList<>();
+        }
+        if (readyUserOneId != null && !readyUserIds.contains(readyUserOneId)) {
+            readyUserIds.add(readyUserOneId);
+        }
+        if (readyUserTwoId != null && !readyUserIds.contains(readyUserTwoId)) {
+            readyUserIds.add(readyUserTwoId);
+        }
+    }
+
+    private void syncLegacyFromReady() {
+        readyUserOneId = readyUserIds.size() > 0 ? readyUserIds.get(0) : null;
+        readyUserTwoId = readyUserIds.size() > 1 ? readyUserIds.get(1) : null;
     }
 
     public boolean registerPass(UUID userId) {
@@ -125,4 +158,8 @@ public class ActiveRound {
     public void setBids(List<ActiveBid> bids) { this.bids = bids; }
     public List<UUID> getPassedUserIds() { return passedUserIds; }
     public void setPassedUserIds(List<UUID> passedUserIds) { this.passedUserIds = passedUserIds; }
+    public List<UUID> getReadyUserIds() { return readyUserIds; }
+    public void setReadyUserIds(List<UUID> readyUserIds) {
+        this.readyUserIds = readyUserIds != null ? new ArrayList<>(readyUserIds) : new ArrayList<>();
+    }
 }

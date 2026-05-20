@@ -77,14 +77,31 @@ export function useAuctionPageState(sessionId: string | undefined) {
     matchCompleted,
   } = useSessionSync(sessionId ?? null);
 
-  const myTeam = auctionState ? mapCards(auctionState.myTeam) : [];
-  const opponentTeam = auctionState ? mapCards(auctionState.opponentTeam) : [];
-  const myFormation: Formation = (auctionState?.myFormation as Formation) ?? "FOUR_FOUR_TWO";
+  const multiPlayerMode = (sessionSnap?.maxPlayers ?? 2) > 2;
+  const playerViews = auctionState?.players ?? [];
+  const myPlayerView = playerViews.find((p) => p.userId === myUserId);
+
+  const myTeam = multiPlayerMode && myPlayerView
+    ? mapCards(myPlayerView.team)
+    : auctionState ? mapCards(auctionState.myTeam) : [];
+  const opponentTeam = multiPlayerMode
+    ? []
+    : auctionState ? mapCards(auctionState.opponentTeam) : [];
+  const myFormation: Formation = (multiPlayerMode && myPlayerView
+    ? myPlayerView.formation
+    : auctionState?.myFormation) as Formation ?? "FOUR_FOUR_TWO";
   const opponentFormation: Formation = (auctionState?.opponentFormation as Formation) ?? "FOUR_FOUR_TWO";
   const error = actionError ?? syncError;
 
   const spent = myTeam.reduce((sum, c) => sum + c.amountCents, 0);
-  const budget = 100 - spent;
+  const budget = multiPlayerMode && myPlayerView
+    ? Math.round(myPlayerView.budgetRemaining / 100)
+    : 100 - spent;
+  const currentTurnNickname =
+    playerViews.find((p) => p.currentTurn)?.nickname
+    ?? (round?.currentTurnUserId
+      ? sessionSnap?.players?.find((p) => p.userId === round.currentTurnUserId)?.nickname
+      : null);
   const mySquadFull = myTeam.length >= 11;
   const isMyTurn = !!myUserId && !!round && round.currentTurnUserId === myUserId;
   const roundIsOpen = round?.status === "OPEN" ?? false;
@@ -150,22 +167,33 @@ export function useAuctionPageState(sessionId: string | undefined) {
     navigate("/lobby", { replace: true });
   }, [sessionNotFound, navigate]);
 
+  const gameMode = sessionSnap?.gameMode ?? "DUEL";
+
   useEffect(() => {
-    if (!sessionSnap) return;
-    if (sessionSnap.status === "FINISHED") {
+    if (!sessionSnap || !sessionId) return;
+    if (gameMode === "DUEL" && sessionSnap.status === "FINISHED") {
       navigate(`/match/${sessionId}`);
       return;
     }
     const isActivePage = (s: string) =>
       s === "AUCTIONING" || s === "MATCH_START_PENDING" || s === "FINALIZING" || s === "AWAITING_RESULT";
-    if (!isActivePage(sessionSnap.status)) navigate("/lobby");
-  }, [sessionSnap?.status, navigate, sessionId]);
+    if (!isActivePage(sessionSnap.status) && gameMode === "DUEL") navigate("/lobby");
+  }, [sessionSnap?.status, gameMode, navigate, sessionId]);
 
   useEffect(() => {
-    if ((matchCompleted || lastEvent?.eventType === "match_completed") && sessionId) {
+    if (!sessionId || !lastEvent) return;
+    if (lastEvent.eventType === "tournament_completed") {
+      navigate(`/tournament/${sessionId}`);
+      return;
+    }
+    if (lastEvent.eventType === "league_pending") {
+      navigate(`/league-pending/${sessionId}`);
+      return;
+    }
+    if (gameMode === "DUEL" && (matchCompleted || lastEvent.eventType === "match_completed")) {
       navigate(`/match/${sessionId}`);
     }
-  }, [matchCompleted, lastEvent, navigate, sessionId]);
+  }, [matchCompleted, lastEvent, gameMode, navigate, sessionId]);
 
   useEffect(() => {
     if (!lastEvent) return;
@@ -504,5 +532,9 @@ export function useAuctionPageState(sessionId: string | undefined) {
     handlePassRound,
     handleConfirmMatchStart,
     roundOutcomeNotice,
+    multiPlayerMode,
+    playerViews,
+    currentTurnNickname,
+    gameMode,
   };
 }

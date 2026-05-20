@@ -19,3 +19,5 @@ frontend/build/
 .idea/
 .vscode/
 *.iml
+docs/
+*.md
