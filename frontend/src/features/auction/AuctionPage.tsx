@@ -4,6 +4,7 @@ import { openEligibleHighlights } from "../../shared/positions";
 import { AuctionBidPanel } from "./AuctionBidPanel";
 import { AuctionRosterPanel } from "./AuctionRosterPanel";
 import { useAuctionPageState } from "./hooks/useAuctionPageState";
+import { AuctionRoundOutcomeToast } from "./AuctionRoundOutcomeToast";
 
 export function AuctionPage() {
   const { sessionId } = useParams<{ sessionId: string }>();
@@ -21,6 +22,7 @@ export function AuctionPage() {
 
   return (
     <div className="min-h-screen bg-surface">
+      <AuctionRoundOutcomeToast notice={state.roundOutcomeNotice} />
       <div className="bg-surface-card border-b border-white/10 px-4 py-3">
         <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2 sm:gap-4">

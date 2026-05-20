@@ -14,6 +14,12 @@ import { clearActiveSessionId, setActiveSessionId } from "../../../shared/sessio
 import { useSessionSync } from "../../../shared/realtime/useSessionSync";
 import type { Formation } from "../../../shared/api/contracts";
 import { deriveViewerFlags } from "../deriveViewerFlags";
+import {
+  buildRoundOutcomeNotice,
+  type RoundEndedPayload,
+  type RoundOutcomeNotice,
+} from "../buildRoundOutcomeNotice";
+import { getOrCreateClientSession } from "../../../shared/session";
 
 export const BID_UI_GRACE_MS = 2000;
 
@@ -55,6 +61,9 @@ export function useAuctionPageState(sessionId: string | undefined) {
   const roundTotalSecondsRef = useRef<number>(30);
   const [turnIsOpen, setTurnIsOpen] = useState(false);
   const [resolvingRoundId, setResolvingRoundId] = useState<string | null>(null);
+  const [roundOutcomeNotice, setRoundOutcomeNotice] = useState<RoundOutcomeNotice | null>(null);
+  const lastOutcomeRoundIdRef = useRef<string | null>(null);
+  const outcomeDismissRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const {
     snapshot: sessionSnap,
@@ -174,6 +183,42 @@ export function useAuctionPageState(sessionId: string | undefined) {
     }
     if (lastEvent.eventType === "round_ended" || lastEvent.eventType === "round_started") {
       setResolvingRoundId(null);
+    }
+  }, [lastEvent]);
+
+  useEffect(() => {
+    if (!lastEvent || lastEvent.eventType !== "round_ended") return;
+
+    const notice = buildRoundOutcomeNotice(
+      lastEvent.payload as RoundEndedPayload,
+      myUserId,
+      getOrCreateClientSession().nickname
+    );
+    if (!notice || notice.roundId === lastOutcomeRoundIdRef.current) return;
+
+    lastOutcomeRoundIdRef.current = notice.roundId;
+    setRoundOutcomeNotice(notice);
+
+    if (outcomeDismissRef.current) {
+      clearTimeout(outcomeDismissRef.current);
+    }
+    const ms = notice.kind === "sold" ? 4500 : 3200;
+    outcomeDismissRef.current = setTimeout(() => {
+      setRoundOutcomeNotice(null);
+      outcomeDismissRef.current = null;
+    }, ms);
+
+    return () => {
+      if (outcomeDismissRef.current) {
+        clearTimeout(outcomeDismissRef.current);
+        outcomeDismissRef.current = null;
+      }
+    };
+  }, [lastEvent, myUserId]);
+
+  useEffect(() => {
+    if (lastEvent?.eventType === "round_started") {
+      setRoundOutcomeNotice(null);
     }
   }, [lastEvent]);
 
@@ -458,5 +503,6 @@ export function useAuctionPageState(sessionId: string | undefined) {
     handleBid,
     handlePassRound,
     handleConfirmMatchStart,
+    roundOutcomeNotice,
   };
 }
