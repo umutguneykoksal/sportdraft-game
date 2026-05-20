@@ -15,7 +15,7 @@ export function AuctionRoundOutcomeToast({ notice }: Props) {
   if (notice.kind === "sold") {
     return (
       <div
-        className="fixed bottom-6 left-1/2 z-50 w-[min(100%,22rem)] -translate-x-1/2 px-4 pointer-events-none"
+        className="fixed top-6 left-1/2 z-50 w-[min(100%,22rem)] -translate-x-1/2 px-4 pointer-events-none"
         role="status"
         aria-live="polite"
       >
@@ -45,7 +45,7 @@ export function AuctionRoundOutcomeToast({ notice }: Props) {
 
   return (
     <div
-      className="fixed bottom-6 left-1/2 z-50 w-[min(100%,22rem)] -translate-x-1/2 px-4 pointer-events-none"
+      className="fixed top-6 left-1/2 z-50 w-[min(100%,22rem)] -translate-x-1/2 px-4 pointer-events-none"
       role="status"
       aria-live="polite"
     >
