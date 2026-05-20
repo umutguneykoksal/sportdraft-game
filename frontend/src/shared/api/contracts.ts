@@ -196,6 +196,8 @@ export interface LobbyRoomResponse {
   spectatorCount: number;
 }
 
+export type TournamentPhase = "SEMIS" | "INTERMISSION" | "FINAL" | "REPLAYS";
+
 export interface CompetitionMatchResponse {
   matchId: string;
   roundKey: string;
@@ -210,6 +212,7 @@ export interface CompetitionMatchResponse {
   status: string;
   playable: boolean;
   watchedByMe: boolean;
+  replayAllowed: boolean;
   allPlayersWatched: boolean;
   watchCount: number;
   requiredWatchers: number;
@@ -230,6 +233,7 @@ export interface CompetitionMatchOpenResponse {
   homePenaltyScore: number | null;
   awayPenaltyScore: number | null;
   watchedByMe: boolean;
+  replay: boolean;
   allPlayersWatched: boolean;
   watchCount: number;
   requiredWatchers: number;
@@ -240,6 +244,9 @@ export interface CompetitionResponse {
   sessionId: string;
   type: string;
   status: string;
+  tournamentPhase: TournamentPhase;
+  intermissionEndsAt: string | null;
+  replaysUnlocked: boolean;
   championUserId: string | null;
   championNickname: string | null;
   matches: CompetitionMatchResponse[];

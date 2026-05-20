@@ -8,6 +8,9 @@ public record CompetitionResponse(
     UUID sessionId,
     String type,
     String status,
+    String tournamentPhase,
+    String intermissionEndsAt,
+    boolean replaysUnlocked,
     UUID championUserId,
     String championNickname,
     List<CompetitionMatchResponse> matches

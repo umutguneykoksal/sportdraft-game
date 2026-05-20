@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   CompetitionMatchResponse,
@@ -8,79 +8,74 @@ import {
 } from "../../shared/api";
 import { clearActiveSessionId } from "../../shared/session";
 import { useSessionStream } from "../../shared/sse";
+import {
+  findFinal,
+  findMySemi,
+  formatMatchScore,
+  resolveTournamentStep,
+} from "./tournamentFlow";
 
-function roundLabel(roundKey: string): string {
-  if (roundKey === "SEMI_1" || roundKey === "SEMI_2") return roundKey.replace("_", "-");
-  return roundKey;
-}
-
-function formatScore(match: CompetitionMatchResponse): string {
-  if (match.homeScore == null || match.awayScore == null) {
-    return match.status === "COMPLETED" ? "Watch to reveal score" : "—";
-  }
-  const base = `${match.homeScore} – ${match.awayScore}`;
-  if (
-    match.homePenaltyScore != null &&
-    match.awayPenaltyScore != null &&
-    match.homeScore === match.awayScore
-  ) {
-    return `${base} (${match.homePenaltyScore}–${match.awayPenaltyScore} pens)`;
-  }
-  return base;
-}
-
-function MatchCard({
-  match,
-  onWatch,
+function IntermissionScreen({
+  competition,
+  secondsLeft,
 }: {
-  match: CompetitionMatchResponse;
-  onWatch: (matchId: string) => void;
+  competition: CompetitionResponse;
+  secondsLeft: number;
 }) {
-  const done = match.status === "COMPLETED";
-  const locked = !match.playable && match.status === "PENDING";
-  const score = formatScore(match);
+  const semis = competition.matches.filter((m) => m.roundKey.startsWith("SEMI"));
 
   return (
-    <div
-      className={`rounded-xl border p-4 ${
-        match.watchedByMe
-          ? "border-accent-green/40 bg-accent-green/5"
-          : locked
-            ? "border-slate-600/40 bg-slate-900/40 opacity-70"
-            : "border-white/10 bg-surface-card"
-      }`}
-    >
-      <div className="flex items-center justify-between gap-2 mb-2">
-        <p className="text-xs text-slate-500 uppercase tracking-wide">{roundLabel(match.roundKey)}</p>
-        <p className="text-xs text-slate-500">
-          {match.watchCount}/{match.requiredWatchers} watched
-        </p>
+    <div className="fixed inset-0 z-50 bg-surface flex flex-col items-center justify-center px-4">
+      <div className="w-full max-w-md space-y-6 text-center">
+        <p className="text-sm uppercase tracking-widest text-amber-400">Semi-final results</p>
+        <div className="inline-flex items-center justify-center w-24 h-24 rounded-full border-4 border-amber-400 bg-surface-card">
+          <span className="text-4xl font-black text-white">{Math.max(0, secondsLeft)}</span>
+        </div>
+        <p className="text-slate-300">Final starts in {Math.max(0, secondsLeft)}s</p>
+        <div className="space-y-3">
+          {semis.map((semi) => (
+            <div key={semi.matchId} className="rounded-xl border border-white/10 bg-surface-card p-4">
+              <p className="text-xs text-slate-500 uppercase mb-2">{semi.roundKey.replace("_", "-")}</p>
+              <div className="flex items-center justify-between gap-2 text-white font-medium">
+                <span className="truncate">{semi.homeNickname}</span>
+                <span className="text-card-gold shrink-0">{formatMatchScore(semi)}</span>
+                <span className="truncate">{semi.awayNickname}</span>
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
+    </div>
+  );
+}
+
+function MatchRow({
+  match,
+  title,
+  onWatch,
+  watchLabel,
+}: {
+  match: CompetitionMatchResponse;
+  title: string;
+  onWatch?: () => void;
+  watchLabel?: string;
+}) {
+  return (
+    <div className="rounded-xl border border-white/10 bg-surface-card p-4">
+      <p className="text-xs text-slate-500 uppercase tracking-wide mb-2">{title}</p>
       <div className="flex items-center justify-between gap-2 text-white font-medium">
         <span className="truncate">{match.homeNickname}</span>
-        <span className="text-slate-400 text-sm shrink-0">{score}</span>
+        <span className="text-slate-400 text-sm shrink-0">{formatMatchScore(match)}</span>
         <span className="truncate text-right">{match.awayNickname}</span>
       </div>
-      {locked && (
-        <p className="text-xs text-amber-400/90 mt-2">
-          Locked until all players watch both semi-finals
-        </p>
-      )}
-      {match.playable && (
+      {onWatch && watchLabel && (
         <button
           type="button"
-          onClick={() => onWatch(match.matchId)}
-          className={`mt-3 w-full py-2 rounded-lg text-sm font-semibold transition-colors ${
-            match.watchedByMe
-              ? "bg-slate-700/60 border border-slate-500/40 text-slate-200 hover:bg-slate-700"
-              : "bg-accent hover:bg-blue-600 text-white"
-          }`}
+          onClick={onWatch}
+          className="mt-3 w-full py-2 rounded-lg text-sm font-semibold bg-slate-700/60 border border-slate-500/40 text-slate-200 hover:bg-slate-700 transition-colors"
         >
-          {match.watchedByMe ? "Watch again" : "Watch match"}
+          {watchLabel}
         </button>
-      )}
-      {done && match.allPlayersWatched && (
-        <p className="text-xs text-accent-green mt-2 text-center">All players watched</p>
       )}
     </div>
   );
@@ -94,6 +89,8 @@ export function TournamentBracketPage() {
   const [competition, setCompetition] = useState<CompetitionResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [secondsLeft, setSecondsLeft] = useState(0);
+  const autoNavigatedRef = useRef(false);
 
   const refresh = useCallback(async () => {
     if (!sessionId) return;
@@ -125,18 +122,54 @@ export function TournamentBracketPage() {
 
   useEffect(() => {
     const relevant = events.some(
-      (e) => e.eventType === "tournament_updated" || e.eventType === "tournament_completed"
+      (e) =>
+        e.eventType === "tournament_updated"
+        || e.eventType === "tournament_completed"
+        || e.eventType === "tournament_intermission"
+        || e.eventType === "tournament_final_start"
     );
-    if (relevant) refresh();
+    if (relevant) {
+      autoNavigatedRef.current = false;
+      refresh();
+    }
   }, [events, refresh]);
+
+  useEffect(() => {
+    if (!competition?.intermissionEndsAt) return;
+    const tick = () => {
+      const ms = Date.parse(competition.intermissionEndsAt!) - Date.now();
+      setSecondsLeft(Math.max(0, Math.ceil(ms / 1000)));
+    };
+    tick();
+    const id = window.setInterval(tick, 250);
+    return () => window.clearInterval(id);
+  }, [competition?.intermissionEndsAt]);
+
+  useEffect(() => {
+    if (!sessionId || !competition || loading) return;
+    const step = resolveTournamentStep(competition, myUserId);
+    if (step.kind === "watch" && !step.replay && !autoNavigatedRef.current) {
+      autoNavigatedRef.current = true;
+      navigate(`/tournament/${sessionId}/match/${step.matchId}`, { replace: true });
+    }
+  }, [competition, loading, myUserId, navigate, sessionId]);
 
   const isChampion =
     competition?.championUserId != null && competition.championUserId === myUserId;
 
-  const semis = competition?.matches.filter((m) => m.roundKey.startsWith("SEMI")) ?? [];
-  const finalMatch = competition?.matches.find((m) => m.roundKey === "FINAL");
+  const mySemi = competition ? findMySemi(competition.matches, myUserId) : undefined;
+  const finalMatch = competition ? findFinal(competition.matches) : undefined;
+  const otherSemi = competition?.matches.find(
+    (m) => m.roundKey.startsWith("SEMI") && m.matchId !== mySemi?.matchId
+  );
 
-  const pendingWatch = competition?.matches.some((m) => m.playable && !m.watchedByMe) ?? false;
+  const watchReplay = (matchId: string) => {
+    navigate(`/tournament/${sessionId}/match/${matchId}?replay=1`);
+  };
+
+  if (competition?.tournamentPhase === "INTERMISSION") {
+    return <IntermissionScreen competition={competition} secondsLeft={secondsLeft} />;
+  }
 
   return (
     <div className="min-h-screen bg-surface flex flex-col items-center px-4 py-8">
@@ -144,7 +177,13 @@ export function TournamentBracketPage() {
         <div className="text-center">
           <h1 className="text-3xl font-extrabold text-white">Tournament</h1>
           <p className="text-slate-400 mt-1 text-sm">
-            Watch every match — scores stay hidden until you do
+            {competition?.replaysUnlocked
+              ? "Replays unlocked — watch any match again"
+              : competition?.tournamentPhase === "SEMIS"
+                ? "Watch your semi-final"
+                : competition?.tournamentPhase === "FINAL"
+                  ? "Final — everyone watches together"
+                  : "Tournament in progress"}
           </p>
         </div>
 
@@ -165,33 +204,54 @@ export function TournamentBracketPage() {
                   <p className="text-accent-green text-sm mt-2">You won the tournament!</p>
                 )}
               </div>
-            ) : pendingWatch ? (
-              <div className="bg-amber-900/20 border border-amber-500/30 rounded-xl px-4 py-3 text-center">
-                <p className="text-amber-300 text-sm">
-                  Watch all available matches to unlock the final and crown the champion
-                </p>
-              </div>
             ) : null}
 
-            <div className="space-y-3">
-              <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wide">Semi-finals</h2>
-              {semis.map((m) => (
-                <MatchCard
-                  key={m.matchId}
-                  match={m}
-                  onWatch={(id) => navigate(`/tournament/${sessionId}/match/${id}`)}
-                />
-              ))}
-            </div>
-
-            {finalMatch && (
-              <div className="space-y-3">
-                <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wide">Final</h2>
-                <MatchCard
-                  match={finalMatch}
-                  onWatch={(id) => navigate(`/tournament/${sessionId}/match/${id}`)}
-                />
+            {competition.tournamentPhase === "SEMIS" && mySemi?.watchedByMe && (
+              <div className="bg-surface-card border border-white/10 rounded-xl px-4 py-3 text-center">
+                <p className="text-slate-400 text-sm">Waiting for other semi-finals to finish…</p>
               </div>
+            )}
+
+            {competition.tournamentPhase === "FINAL" && finalMatch?.watchedByMe && !competition.replaysUnlocked && (
+              <div className="bg-surface-card border border-white/10 rounded-xl px-4 py-3 text-center">
+                <p className="text-slate-400 text-sm">Waiting for others to finish the final…</p>
+              </div>
+            )}
+
+            {competition.replaysUnlocked ? (
+              <div className="space-y-3">
+                <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wide">Replays</h2>
+                {competition.matches.map((m) => (
+                  <MatchRow
+                    key={m.matchId}
+                    match={m}
+                    title={m.roundKey.replace("_", " ")}
+                    onWatch={() => watchReplay(m.matchId)}
+                    watchLabel="Watch again"
+                  />
+                ))}
+              </div>
+            ) : (
+              <>
+                {mySemi && (
+                  <div className="space-y-3">
+                    <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wide">Your semi-final</h2>
+                    <MatchRow match={mySemi} title="Your match" />
+                  </div>
+                )}
+                {otherSemi && (
+                  <div className="space-y-3">
+                    <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wide">Other semi-final</h2>
+                    <MatchRow match={otherSemi} title="Other match" />
+                  </div>
+                )}
+                {finalMatch && (
+                  <div className="space-y-3">
+                    <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wide">Final</h2>
+                    <MatchRow match={finalMatch} title="Final" />
+                  </div>
+                )}
+              </>
             )}
           </>
         )}

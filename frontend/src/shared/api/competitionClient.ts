@@ -11,10 +11,12 @@ export async function getCompetitionBySession(sessionId: string): Promise<Compet
 
 export async function openTournamentMatch(
   sessionId: string,
-  matchId: string
+  matchId: string,
+  replay = false
 ): Promise<CompetitionMatchOpenResponse> {
+  const replayParam = replay ? "?replay=true" : "";
   const response = await fetch(
-    `${getApiBase()}${getApiPrefix()}/sessions/${sessionId}/competition/matches/${matchId}/open`,
+    `${getApiBase()}${getApiPrefix()}/sessions/${sessionId}/competition/matches/${matchId}/open${replayParam}`,
     { method: "POST", headers: authHeaders() }
   );
   return parseOrThrow<CompetitionMatchOpenResponse>(

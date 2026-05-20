@@ -19,6 +19,7 @@ public record CompetitionMatchOpenResponse(
     Integer homePenaltyScore,
     Integer awayPenaltyScore,
     boolean watchedByMe,
+    boolean replay,
     boolean allPlayersWatched,
     long watchCount,
     int requiredWatchers

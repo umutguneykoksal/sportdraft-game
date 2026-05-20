@@ -28,10 +28,11 @@ public class CompetitionCommandController {
     public CompetitionMatchOpenResponse openMatch(
         @PathVariable UUID sessionId,
         @PathVariable UUID matchId,
-        @RequestHeader("Authorization") String authorization
+        @RequestHeader("Authorization") String authorization,
+        @org.springframework.web.bind.annotation.RequestParam(defaultValue = "false") boolean replay
     ) {
         UUID userId = authTokenResolver.resolveUserId(authorization);
-        return tournamentMatchService.openMatch(sessionId, matchId, userId);
+        return tournamentMatchService.openMatch(sessionId, matchId, userId, replay);
     }
 
     @PostMapping("/{sessionId}/competition/matches/{matchId}/ack-watch")

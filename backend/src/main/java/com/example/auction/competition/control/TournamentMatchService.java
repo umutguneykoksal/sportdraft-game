@@ -10,6 +10,7 @@ import com.example.auction.competition.entity.CompetitionMatchViewEntity;
 import com.example.auction.competition.entity.CompetitionMatchViewRepository;
 import com.example.auction.competition.entity.CompetitionRepository;
 import com.example.auction.competition.entity.CompetitionStatus;
+import com.example.auction.competition.entity.TournamentPhase;
 import com.example.auction.common.sse.SseEmitterRegistry;
 import com.example.auction.session.control.SessionAccess;
 import com.example.auction.session.redis.ActiveSessionStore;
@@ -52,21 +53,45 @@ public class TournamentMatchService {
     }
 
     @Transactional
-    public CompetitionMatchOpenResponse openMatch(UUID sessionId, UUID matchId, UUID userId) {
+    public CompetitionMatchOpenResponse openMatch(UUID sessionId, UUID matchId, UUID userId, boolean replay) {
         CompetitionEntity competition = loadCompetition(sessionId);
         requireParticipant(competition, sessionId, userId);
 
         CompetitionMatchEntity match = loadMatch(competition.getId(), matchId);
-        if (!bracketService.isMatchPlayable(competition, match)) {
-            throw new ResponseStatusException(
-                HttpStatus.CONFLICT,
-                "Final is locked until every player has watched both semi-finals"
-            );
+        boolean watched = viewRepository.existsByMatchIdAndUserId(matchId, userId);
+
+        if (replay) {
+            if (!bracketService.isReplayAllowed(competition, match)) {
+                throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "Replays unlock after everyone watches the final"
+                );
+            }
+        } else {
+            if (competition.getTournamentPhase() == TournamentPhase.INTERMISSION) {
+                throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "Semi-final results — final starts shortly"
+                );
+            }
+            if (match.getRoundKey().startsWith("SEMI") && !bracketService.isMatchParticipant(match, userId)) {
+                throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN,
+                    "You can only watch your own semi-final"
+                );
+            }
+            if (!bracketService.isMandatoryWatchPending(competition, match, userId, watched)) {
+                throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "This match is not available to watch right now"
+                );
+            }
         }
 
         SimulationResult result = bracketService.simulateMatchIfNeeded(competition, match);
-        boolean watched = viewRepository.existsByMatchIdAndUserId(matchId, userId);
         TournamentDraftSnapshot snapshot = bracketService.readSnapshot(competition);
+        int required = bracketService.requiredWatchers(competition, match);
+        boolean showScores = replay || watched;
 
         return new CompetitionMatchOpenResponse(
             match.getId(),
@@ -78,14 +103,15 @@ public class TournamentMatchService {
             formation(snapshot, match.getHomeUserId()),
             formation(snapshot, match.getAwayUserId()),
             result.timeline(),
-            watched ? result.homeGoals() : null,
-            watched ? result.awayGoals() : null,
-            watched && result.decidedOnPenalties() ? result.homePenaltyGoals() : null,
-            watched && result.decidedOnPenalties() ? result.awayPenaltyGoals() : null,
+            showScores ? result.homeGoals() : null,
+            showScores ? result.awayGoals() : null,
+            showScores && result.decidedOnPenalties() ? result.homePenaltyGoals() : null,
+            showScores && result.decidedOnPenalties() ? result.awayPenaltyGoals() : null,
             watched,
-            bracketService.allPlayersWatched(competition, match),
+            replay,
+            bracketService.matchFullyWatched(competition, match),
             viewRepository.countByMatchId(matchId),
-            bracketService.snapshotPlayerCount(competition)
+            required
         );
     }
 
@@ -98,6 +124,9 @@ public class TournamentMatchService {
         if (match.getStatus() != CompetitionMatchStatus.COMPLETED) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Match has not been simulated yet");
         }
+        if (competition.getTournamentPhase() == TournamentPhase.REPLAYS) {
+            return competitionQueryService.getBySessionId(sessionId, userId);
+        }
 
         if (!viewRepository.existsByMatchIdAndUserId(matchId, userId)) {
             CompetitionMatchViewEntity view = new CompetitionMatchViewEntity();
@@ -107,8 +136,22 @@ public class TournamentMatchService {
             viewRepository.save(view);
         }
 
-        bracketService.ensureFinalMatch(competition);
+        if (bracketService.tryStartIntermissionIfReady(competition)) {
+            competition = competitionRepository.findById(competition.getId()).orElse(competition);
+            sseEmitterRegistry.broadcast(
+                sessionId,
+                "tournament_intermission",
+                Map.of(
+                    "sessionId", sessionId,
+                    "competitionId", competition.getId(),
+                    "intermissionEndsAt", competition.getIntermissionEndsAt(),
+                    "tournamentPhase", TournamentPhase.INTERMISSION.name()
+                )
+            );
+        }
+
         CompetitionEntity updated = bracketService.tryCompleteTournament(competition);
+        updated = competitionRepository.findById(updated.getId()).orElse(updated);
 
         if (updated.getStatus() == CompetitionStatus.COMPLETED) {
             finishSessionIfPresent(sessionId);
@@ -118,14 +161,19 @@ public class TournamentMatchService {
                 Map.of(
                     "sessionId", sessionId,
                     "competitionId", updated.getId(),
-                    "championUserId", updated.getChampionUserId()
+                    "championUserId", updated.getChampionUserId(),
+                    "tournamentPhase", TournamentPhase.REPLAYS.name()
                 )
             );
         } else {
             sseEmitterRegistry.broadcast(
                 sessionId,
                 "tournament_updated",
-                Map.of("sessionId", sessionId, "competitionId", updated.getId())
+                Map.of(
+                    "sessionId", sessionId,
+                    "competitionId", updated.getId(),
+                    "tournamentPhase", updated.getTournamentPhase().name()
+                )
             );
         }
 

@@ -16,6 +16,7 @@ public record CompetitionMatchResponse(
     String status,
     boolean playable,
     boolean watchedByMe,
+    boolean replayAllowed,
     boolean allPlayersWatched,
     long watchCount,
     int requiredWatchers

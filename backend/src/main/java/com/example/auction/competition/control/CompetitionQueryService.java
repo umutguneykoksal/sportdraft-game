@@ -9,6 +9,7 @@ import com.example.auction.competition.entity.CompetitionMatchStatus;
 import com.example.auction.competition.entity.CompetitionMatchViewRepository;
 import com.example.auction.competition.entity.CompetitionRepository;
 import com.example.auction.competition.entity.CompetitionStatus;
+import com.example.auction.competition.entity.TournamentPhase;
 import com.example.auction.session.redis.ActivePlayer;
 import com.example.auction.session.redis.ActiveSession;
 import com.example.auction.session.redis.ActiveSessionStore;
@@ -58,14 +59,15 @@ public class CompetitionQueryService {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Competition not found");
         }
 
+        bracketService.ensureFinalMatch(competition);
+
         ActiveSession session = sessionStore.findById(sessionId).orElse(null);
         TournamentDraftSnapshot snapshot = bracketService.readSnapshot(competition);
-        int required = snapshot.playerCount();
 
         List<CompetitionMatchResponse> matchResponses = matchRepository
             .findByCompetitionIdOrderBySortOrderAsc(competition.getId())
             .stream()
-            .map(m -> toMatchResponse(competition, m, viewerUserId, required, snapshot, session))
+            .map(m -> toMatchResponse(competition, m, viewerUserId, snapshot, session))
             .toList();
 
         boolean revealChampion = competition.getStatus() == CompetitionStatus.COMPLETED
@@ -77,6 +79,9 @@ public class CompetitionQueryService {
             competition.getSessionId(),
             competition.getType().name(),
             competition.getStatus().name(),
+            competition.getTournamentPhase().name(),
+            competition.getIntermissionEndsAt() != null ? competition.getIntermissionEndsAt().toString() : null,
+            competition.getTournamentPhase() == TournamentPhase.REPLAYS,
             revealChampion ? competition.getChampionUserId() : null,
             revealChampion ? championNickname(snapshot, competition.getChampionUserId()) : null,
             matchResponses
@@ -87,14 +92,14 @@ public class CompetitionQueryService {
         CompetitionEntity competition,
         CompetitionMatchEntity match,
         UUID viewerUserId,
-        int required,
         TournamentDraftSnapshot snapshot,
         ActiveSession session
     ) {
         boolean watchedByMe = viewerUserId != null
             && viewRepository.existsByMatchIdAndUserId(match.getId(), viewerUserId);
-        boolean scoresVisible = watchedByMe && match.getStatus() == CompetitionMatchStatus.COMPLETED;
+        boolean scoresVisible = bracketService.scoresVisibleForViewer(competition, match, watchedByMe);
         long watchCount = viewRepository.countByMatchId(match.getId());
+        int required = bracketService.requiredWatchers(competition, match);
 
         return new CompetitionMatchResponse(
             match.getId(),
@@ -108,8 +113,9 @@ public class CompetitionQueryService {
             scoresVisible ? match.getHomePenaltyScore() : null,
             scoresVisible ? match.getAwayPenaltyScore() : null,
             match.getStatus().name(),
-            bracketService.isMatchPlayable(competition, match),
+            bracketService.isMandatoryWatchPending(competition, match, viewerUserId, watchedByMe),
             watchedByMe,
+            bracketService.isReplayAllowed(competition, match),
             watchCount >= required,
             watchCount,
             required

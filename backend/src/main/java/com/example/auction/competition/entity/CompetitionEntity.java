@@ -39,6 +39,13 @@ public class CompetitionEntity {
     @Column(name = "draft_snapshot", columnDefinition = "jsonb")
     private String draftSnapshotJson;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "tournament_phase", nullable = false)
+    private TournamentPhase tournamentPhase = TournamentPhase.SEMIS;
+
+    @Column(name = "intermission_ends_at")
+    private Instant intermissionEndsAt;
+
     public UUID getId() { return id; }
     public void setId(UUID id) { this.id = id; }
     public UUID getSessionId() { return sessionId; }
@@ -53,4 +60,8 @@ public class CompetitionEntity {
     public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }
     public String getDraftSnapshotJson() { return draftSnapshotJson; }
     public void setDraftSnapshotJson(String draftSnapshotJson) { this.draftSnapshotJson = draftSnapshotJson; }
+    public TournamentPhase getTournamentPhase() { return TournamentPhase.effective(tournamentPhase); }
+    public void setTournamentPhase(TournamentPhase tournamentPhase) { this.tournamentPhase = tournamentPhase; }
+    public Instant getIntermissionEndsAt() { return intermissionEndsAt; }
+    public void setIntermissionEndsAt(Instant intermissionEndsAt) { this.intermissionEndsAt = intermissionEndsAt; }
 }

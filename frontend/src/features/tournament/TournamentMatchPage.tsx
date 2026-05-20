@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
   ackTournamentMatchWatch,
   openTournamentMatch,
@@ -21,6 +21,8 @@ function scoresFromTimeline(timeline: MatchEvent[], homeUserId: string) {
 
 export function TournamentMatchPage() {
   const { sessionId, matchId } = useParams<{ sessionId: string; matchId: string }>();
+  const [searchParams] = useSearchParams();
+  const isReplay = searchParams.get("replay") === "1";
   const navigate = useNavigate();
   const [payload, setPayload] = useState<CompetitionMatchOpenResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -32,7 +34,7 @@ export function TournamentMatchPage() {
     let cancelled = false;
     (async () => {
       try {
-        const data = await openTournamentMatch(sessionId, matchId);
+        const data = await openTournamentMatch(sessionId, matchId, isReplay);
         if (!cancelled) setPayload(data);
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : "Failed to load match");
@@ -43,15 +45,22 @@ export function TournamentMatchPage() {
     return () => {
       cancelled = true;
     };
-  }, [sessionId, matchId]);
+  }, [sessionId, matchId, isReplay]);
 
-  const derivedScores = useMemo(() => {
+  const derivedScores = useCallback(() => {
     if (!payload) return { home: 0, away: 0 };
+    if (payload.homeScore != null && payload.awayScore != null) {
+      return { home: payload.homeScore, away: payload.awayScore };
+    }
     return scoresFromTimeline(payload.timeline, payload.homeUserId);
   }, [payload]);
 
   const handleComplete = async () => {
     if (!sessionId || !matchId || ackInFlight) return;
+    if (isReplay) {
+      navigate(`/tournament/${sessionId}`);
+      return;
+    }
     setAckInFlight(true);
     try {
       await ackTournamentMatchWatch(sessionId, matchId);
@@ -86,16 +95,16 @@ export function TournamentMatchPage() {
   }
 
   const label = payload.roundKey.replace("_", " ");
+  const scores = derivedScores();
 
   return (
     <div className="min-h-screen bg-surface flex flex-col">
       <div className="bg-surface-card border-b border-white/10 px-4 py-4 text-center">
-        <h1 className="text-2xl font-extrabold text-white">{label}</h1>
+        <h1 className="text-2xl font-extrabold text-white">
+          {isReplay ? `${label} (replay)` : label}
+        </h1>
         <p className="text-slate-400 text-sm mt-1">
           {payload.homeNickname} vs {payload.awayNickname}
-        </p>
-        <p className="text-xs text-slate-500 mt-1">
-          Watch the full simulation — bracket updates after everyone finishes
         </p>
       </div>
 
@@ -104,22 +113,14 @@ export function TournamentMatchPage() {
           timeline={payload.timeline}
           homeTeamId={payload.homeUserId}
           onComplete={handleComplete}
-          finalHomeScore={derivedScores.home}
-          finalAwayScore={derivedScores.away}
+          finalHomeScore={scores.home}
+          finalAwayScore={scores.away}
           homeNickname={payload.homeNickname}
           awayNickname={payload.awayNickname}
         />
       ) : (
-        <div className="flex-1 flex flex-col items-center justify-center gap-4 px-4">
-          <p className="text-slate-300">Simulation complete.</p>
-          <button
-            type="button"
-            disabled={ackInFlight}
-            onClick={handleComplete}
-            className="bg-accent hover:bg-blue-600 disabled:opacity-40 text-white font-bold px-6 py-3 rounded-lg"
-          >
-            {ackInFlight ? "Saving…" : "Continue to bracket"}
-          </button>
+        <div className="flex-1 flex items-center justify-center text-slate-400">
+          Match simulation in progress…
         </div>
       )}
     </div>
