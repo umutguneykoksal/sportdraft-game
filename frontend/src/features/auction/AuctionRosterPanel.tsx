@@ -1,5 +1,5 @@
 import { TeamPitch } from "../../shared/components/TeamPitch";
-import type { Formation } from "../../shared/api/contracts";
+import type { Formation, Position } from "../../shared/api/contracts";
 import type { AuctionTeamCardResponse } from "../../shared/api";
 import { POSITION_COLORS } from "./hooks/useAuctionPageState";
 
@@ -10,7 +10,7 @@ type Props = {
   teamColor: string;
   teamBorderColor: string;
   away?: boolean;
-  highlightPositions?: string[];
+  highlightPositions?: Position[];
 };
 
 export function AuctionRosterPanel({
