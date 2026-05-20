@@ -117,6 +117,8 @@ export function processEventBatch(
         if (payload?.round) {
           handlers.patchRound(payload.round, true);
         }
+        // Refresh player budgets / rosters (4-player auction state.players[]).
+        refreshKind = maxRefresh(refreshKind, "state");
         break;
       }
 

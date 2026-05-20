@@ -67,7 +67,7 @@ describe("processEventBatch", () => {
     status: "OPEN",
   } as AuctionRoundResponse;
 
-  it("patches bid_placed without full refresh", () => {
+  it("patches bid_placed and requests state refresh for player budgets", () => {
     const patchRound = jest.fn();
     const { result } = processEventBatch(
       [{ eventType: "bid_placed", seq: 5, payload: { round }, occurredAt: new Date().toISOString() }],
@@ -80,7 +80,7 @@ describe("processEventBatch", () => {
       }
     );
     expect(patchRound).toHaveBeenCalledWith(round, true);
-    expect(result.refreshKind).toBe("none");
+    expect(result.refreshKind).toBe("state");
   });
 
   it("requests state refresh on SOLD round_ended for players", () => {

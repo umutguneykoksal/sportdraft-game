@@ -14,6 +14,7 @@ import { clearActiveSessionId, setActiveSessionId } from "../../../shared/sessio
 import { useSessionSync } from "../../../shared/realtime/useSessionSync";
 import type { Formation } from "../../../shared/api/contracts";
 import { deriveViewerFlags } from "../deriveViewerFlags";
+import { buildDuelTurnOrderEntries, buildTurnOrderEntries, type TurnOrderEntry } from "../AuctionTurnOrderBar";
 import {
   buildRoundOutcomeNotice,
   type RoundEndedPayload,
@@ -94,14 +95,35 @@ export function useAuctionPageState(sessionId: string | undefined) {
   const error = actionError ?? syncError;
 
   const spent = myTeam.reduce((sum, c) => sum + c.amountCents, 0);
+  // Budget is in the same minor units as highestBidCents (starting budget 100).
   const budget = multiPlayerMode && myPlayerView
-    ? Math.round(myPlayerView.budgetRemaining / 100)
+    ? myPlayerView.budgetRemaining
     : 100 - spent;
   const currentTurnNickname =
     playerViews.find((p) => p.currentTurn)?.nickname
     ?? (round?.currentTurnUserId
       ? sessionSnap?.players?.find((p) => p.userId === round.currentTurnUserId)?.nickname
       : null);
+
+  const opponentSpent = opponentTeam.reduce((sum, c) => sum + c.amountCents, 0);
+  const opponentBudget = 100 - opponentSpent;
+
+  const turnOrderEntries: TurnOrderEntry[] = multiPlayerMode
+    ? buildTurnOrderEntries(
+        playerViews,
+        sessionSnap?.players,
+        round?.currentTurnUserId,
+        myUserId
+      )
+    : buildDuelTurnOrderEntries(
+        sessionSnap?.players,
+        round?.currentTurnUserId,
+        myUserId,
+        budget,
+        myTeam.length,
+        opponentBudget,
+        opponentTeam.length
+      );
   const mySquadFull = myTeam.length >= 11;
   const isMyTurn = !!myUserId && !!round && round.currentTurnUserId === myUserId;
   const roundIsOpen = round?.status === "OPEN" ?? false;
@@ -534,6 +556,7 @@ export function useAuctionPageState(sessionId: string | undefined) {
     roundOutcomeNotice,
     multiPlayerMode,
     playerViews,
+    turnOrderEntries,
     currentTurnNickname,
     gameMode,
   };

@@ -1,6 +1,6 @@
 import { useParams } from "react-router-dom";
-import type { PlayerAuctionView } from "../../shared/api/contracts";
 import { FORMATION_LABELS } from "../../shared/formations";
+import { AuctionTurnOrderBar } from "./AuctionTurnOrderBar";
 import { openEligibleHighlights } from "../../shared/positions";
 import { AuctionBidPanel } from "./AuctionBidPanel";
 import { AuctionRosterPanel } from "./AuctionRosterPanel";
@@ -33,7 +33,7 @@ export function AuctionPage() {
             </span>
           </div>
           <div className="flex items-center gap-3 flex-wrap">
-            {state.currentTurnNickname && (
+            {state.currentTurnNickname && state.turnOrderEntries.length < 2 && (
               <span className="text-xs bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2 py-1 rounded-full">
                 Turn: {state.currentTurnNickname}
               </span>
@@ -75,26 +75,8 @@ export function AuctionPage() {
         </div>
       )}
 
-      {state.multiPlayerMode && state.playerViews.length > 0 && (
-        <div className="border-b border-white/10 bg-surface-card px-4 py-3 overflow-x-auto">
-          <div className="max-w-7xl mx-auto flex gap-3 min-w-max">
-            {state.playerViews.map((p: PlayerAuctionView) => (
-              <div
-                key={p.userId}
-                className={`shrink-0 rounded-lg border px-3 py-2 min-w-[140px] ${
-                  p.currentTurn
-                    ? "border-accent ring-1 ring-accent/40"
-                    : "border-white/10"
-                }`}
-              >
-                <p className="text-xs text-slate-400 truncate">{p.nickname}</p>
-                <p className="text-sm font-bold text-white">
-                  {Math.round(p.budgetRemaining / 100)} cr · {p.rosterSize}/11
-                </p>
-              </div>
-            ))}
-          </div>
-        </div>
+      {state.turnOrderEntries.length >= 2 && (
+        <AuctionTurnOrderBar entries={state.turnOrderEntries} />
       )}
 
       {(state.sessionSnap?.status === "AWAITING_RESULT" || state.sessionSnap?.status === "FINALIZING") && (

@@ -156,12 +156,7 @@ final class AuctionRoundResponses {
         if (viewer == null || !AuctionRules.canPlayerBidRound(viewer, card, minimumBid, cardMap)) {
             return false;
         }
-        UUID opponentUserId = AuctionRules.otherPlayerUserId(session, viewerUserId);
-        if (round.hasUserPassed(opponentUserId)) {
-            return true;
-        }
-        ActivePlayer opponent = session.findPlayerByUserId(opponentUserId).orElse(null);
-        return opponent == null || !AuctionRules.canPlayerBidRound(opponent, card, minimumBid, cardMap);
+        return !AuctionRules.anyOtherPlayerCanBid(session, round, card, cardMap, viewerUserId);
     }
 
     private static boolean computeViewerCanPass(ActiveRound round, UUID viewerUserId) {
