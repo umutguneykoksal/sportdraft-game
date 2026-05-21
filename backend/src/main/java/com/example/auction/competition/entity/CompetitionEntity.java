@@ -46,6 +46,14 @@ public class CompetitionEntity {
     @Column(name = "intermission_ends_at")
     private Instant intermissionEndsAt;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "league_phase")
+    private LeaguePhase leaguePhase;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "co_champion_user_ids", columnDefinition = "jsonb")
+    private String coChampionUserIdsJson;
+
     public UUID getId() { return id; }
     public void setId(UUID id) { this.id = id; }
     public UUID getSessionId() { return sessionId; }
@@ -64,4 +72,8 @@ public class CompetitionEntity {
     public void setTournamentPhase(TournamentPhase tournamentPhase) { this.tournamentPhase = tournamentPhase; }
     public Instant getIntermissionEndsAt() { return intermissionEndsAt; }
     public void setIntermissionEndsAt(Instant intermissionEndsAt) { this.intermissionEndsAt = intermissionEndsAt; }
+    public LeaguePhase getLeaguePhase() { return LeaguePhase.effective(leaguePhase); }
+    public void setLeaguePhase(LeaguePhase leaguePhase) { this.leaguePhase = leaguePhase; }
+    public String getCoChampionUserIdsJson() { return coChampionUserIdsJson; }
+    public void setCoChampionUserIdsJson(String coChampionUserIdsJson) { this.coChampionUserIdsJson = coChampionUserIdsJson; }
 }

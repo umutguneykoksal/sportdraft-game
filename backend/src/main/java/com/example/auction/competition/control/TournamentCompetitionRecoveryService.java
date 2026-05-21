@@ -54,17 +54,7 @@ public class TournamentCompetitionRecoveryService {
         }
 
         ActiveSession session = sessionStore.findById(sessionId).orElse(null);
-        if (session == null || session.getGameMode() != GameMode.TOURNAMENT) {
-            return false;
-        }
-        if (session.getStatus() != SessionStatus.FINALIZING
-            && session.getStatus() != SessionStatus.AWAITING_RESULT) {
-            return false;
-        }
-        if (session.playerCount() < session.getMaxPlayers()) {
-            return false;
-        }
-        if (!session.getPlayers().stream().allMatch(ActivePlayer::isRosterFull)) {
+        if (!CompetitionRecoveryTemplate.isEligibleForRecovery(session, GameMode.TOURNAMENT)) {
             return false;
         }
 

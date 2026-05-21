@@ -2,7 +2,6 @@ package com.example.auction.session.control;
 
 import com.example.auction.common.realtime.SessionEventLog;
 import com.example.auction.common.sse.SseEmitterRegistry;
-import com.example.auction.session.entity.GameMode;
 import com.example.auction.session.entity.SessionStatus;
 import com.example.auction.session.redis.ActivePlayer;
 import com.example.auction.session.redis.ActiveSession;
@@ -12,7 +11,6 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import org.slf4j.Logger;
@@ -27,19 +25,6 @@ public class SessionDisconnectCleanupScheduler {
     private static final Logger log = LoggerFactory.getLogger(SessionDisconnectCleanupScheduler.class);
     private static final int FORFEIT_WINNER_SCORE = 3;
     private static final int FORFEIT_LOSER_SCORE = 0;
-    private static final Set<SessionStatus> FORFEIT_ELIGIBLE_STATUSES = Set.of(
-        SessionStatus.AUCTIONING,
-        SessionStatus.MATCH_START_PENDING,
-        SessionStatus.FORMATION_SELECT,
-        SessionStatus.COUNTDOWN
-    );
-    private static final Set<SessionStatus> LOBBY_PHASE_STATUSES = Set.of(
-        SessionStatus.WAITING,
-        SessionStatus.COUNTDOWN,
-        SessionStatus.FORMATION_SELECT
-    );
-    /** Grace period before archiving FINISHED duel sessions to let clients poll final state. */
-    private static final Duration FINISHED_ARCHIVE_GRACE_PERIOD = Duration.ofMinutes(2);
 
     private final ActiveSessionStore sessionStore;
     private final SseEmitterRegistry sseEmitterRegistry;
@@ -83,7 +68,7 @@ public class SessionDisconnectCleanupScheduler {
                 }
 
                 // Per-player forfeit: if one player disconnected while the other is still connected
-                if (session.playerCount() == 2 && FORFEIT_ELIGIBLE_STATUSES.contains(session.getStatus())) {
+                if (session.playerCount() == 2 && SessionDisconnectPolicy.isForfeitEligible(session.getStatus())) {
                     if (checkAndApplyForfeit(session)) continue;
                 } else {
                     log.debug("Session {} skipping forfeit check: playerCount={} status={}",
@@ -91,7 +76,7 @@ public class SessionDisconnectCleanupScheduler {
                 }
 
                 // Do not auto-finish multi-player / post-draft sessions on disconnect.
-                if (!shouldSkipDisconnectDraw(session)
+                if (!SessionDisconnectPolicy.shouldSkipDisconnectDraw(session)
                     && sseEmitterRegistry.isDisconnectedLongerThan(sessionId, disconnectTimeout)) {
                     log.info("Both players disconnected for session {}, ending as 0-0 draw", sessionId);
                     long vBefore = session.getVersion();
@@ -190,11 +175,13 @@ public class SessionDisconnectCleanupScheduler {
      * Tournament rooms use a longer timeout; an empty room is deleted immediately.
      */
     private boolean cleanupLobbyPhaseDisconnects(ActiveSession session) {
-        if (!LOBBY_PHASE_STATUSES.contains(session.getStatus())) {
+        if (!SessionDisconnectPolicy.isLobbyPhase(session.getStatus())) {
             return false;
         }
 
-        Duration lobbyTimeout = lobbyDisconnectTimeout(session);
+        Duration lobbyTimeout = SessionDisconnectPolicy.lobbyDisconnectTimeout(
+            session, disconnectTimeout, tournamentLobbyDisconnectTimeout
+        );
         UUID sessionId = session.getId();
         List<ActivePlayer> toRemove = new ArrayList<>();
 
@@ -239,9 +226,7 @@ public class SessionDisconnectCleanupScheduler {
             return true;
         }
 
-        boolean needsReset = session.playerCount() < session.getMaxPlayers()
-            && (statusBefore == SessionStatus.COUNTDOWN
-                || statusBefore == SessionStatus.FORMATION_SELECT);
+        boolean needsReset = SessionDisconnectPolicy.shouldResetLobbyAfterLeave(session, statusBefore);
         if (needsReset) {
             session.moveToWaiting();
             sessionStore.saveIfVersionMatch(session, versionBefore);
@@ -276,7 +261,7 @@ public class SessionDisconnectCleanupScheduler {
 
         for (ActiveSession session : sessionStore.findByStatus(SessionStatus.FINISHED)) {
             UUID sessionId = session.getId();
-            Duration gracePeriod = finishedGracePeriod(session);
+            Duration gracePeriod = SessionDisconnectPolicy.finishedGracePeriod(session, tournamentRetention);
 
             Instant firstObserved = finishedObservedAt.computeIfAbsent(sessionId, k -> now);
 
@@ -288,7 +273,7 @@ public class SessionDisconnectCleanupScheduler {
             }
 
             try {
-                if (session.getGameMode() == GameMode.TOURNAMENT) {
+                if (SessionDisconnectPolicy.shouldArchiveTournamentWithoutPostgres(session)) {
                     sessionStore.delete(sessionId);
                     log.info("Removed FINISHED tournament session {} after {}s retention",
                         sessionId, gracePeriod.toSeconds());
@@ -305,38 +290,5 @@ public class SessionDisconnectCleanupScheduler {
         }
 
         finishedObservedAt.keySet().removeIf(id -> !sessionStore.exists(id));
-    }
-
-    private Duration lobbyDisconnectTimeout(ActiveSession session) {
-        if (session.getGameMode() == GameMode.TOURNAMENT) {
-            return tournamentLobbyDisconnectTimeout;
-        }
-        return disconnectTimeout;
-    }
-
-    static Duration finishedGracePeriod(ActiveSession session, Duration tournamentRetention) {
-        if (session.getGameMode() == GameMode.TOURNAMENT) {
-            return tournamentRetention;
-        }
-        return FINISHED_ARCHIVE_GRACE_PERIOD;
-    }
-
-    private Duration finishedGracePeriod(ActiveSession session) {
-        return finishedGracePeriod(session, tournamentRetention);
-    }
-
-    /** Tournament / league sessions must not be ended as 0-0 when SSE drops after draft. */
-    private static boolean shouldSkipDisconnectDraw(ActiveSession session) {
-        if (session.getMaxPlayers() > 2) {
-            return true;
-        }
-        GameMode mode = session.getGameMode();
-        if (mode == GameMode.TOURNAMENT || mode == GameMode.LEAGUE) {
-            return true;
-        }
-        SessionStatus status = session.getStatus();
-        return status == SessionStatus.AWAITING_RESULT
-            || status == SessionStatus.FINALIZING
-            || status == SessionStatus.MATCH_START_PENDING;
     }
 }

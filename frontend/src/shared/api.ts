@@ -19,6 +19,8 @@ export type {
   MatchEventType,
   PoolMinRatingOption,
   PoolMinRatingOptionsResponse,
+  LeaguePhase,
+  LeagueStandingRow,
 } from "./api/contracts";
 export { SESSION_STATUS_LABELS, ROUND_STATUS_LABELS, GAME_MODE_LABELS, POOL_MIN_RATING_OPTIONS, POOL_LEAGUE_OPTIONS, MIN_POOL_CARD_COUNT, poolLeagueLabel } from "./api/contracts";
 export { ApiError } from "./api/errors";

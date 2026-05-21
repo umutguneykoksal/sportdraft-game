@@ -1,4 +1,5 @@
 import type { CompetitionMatchResponse, CompetitionResponse, TournamentPhase } from "../../shared/api/contracts";
+import { formatMatchScore, resolveCompetitionStep, type CompetitionFlowStep } from "../competition/competitionFlow";
 
 export function findMySemi(
   matches: CompetitionMatchResponse[],
@@ -19,18 +20,14 @@ export function findFinal(matches: CompetitionMatchResponse[]): CompetitionMatch
 export type TournamentStep =
   | { kind: "watch"; matchId: string; replay: boolean }
   | { kind: "intermission"; endsAt: string }
-  | { kind: "waiting"; phase: TournamentPhase }
+  | { kind: "waiting"; phase: string }
   | { kind: "hub" };
 
 export function resolveTournamentStep(
   competition: CompetitionResponse,
   myUserId: string | null
 ): TournamentStep {
-  const { tournamentPhase, matches, intermissionEndsAt } = competition;
-
-  if (tournamentPhase === "INTERMISSION" && intermissionEndsAt) {
-    return { kind: "intermission", endsAt: intermissionEndsAt };
-  }
+  const { tournamentPhase, matches } = competition;
 
   if (tournamentPhase === "SEMIS") {
     const mySemi = findMySemi(matches, myUserId);
@@ -52,24 +49,18 @@ export function resolveTournamentStep(
     }
   }
 
-  if (tournamentPhase === "REPLAYS") {
-    return { kind: "hub" };
-  }
+  const step = resolveCompetitionStep(competition, {
+    pausePhases: ["INTERMISSION"],
+    replayPhase: "REPLAYS",
+    phase: tournamentPhase,
+    myUserId,
+    resolveActiveMatch: () => undefined,
+  });
 
-  return { kind: "hub" };
+  if (step.kind === "pause") {
+    return { kind: "intermission", endsAt: step.endsAt };
+  }
+  return step;
 }
 
-export function formatMatchScore(match: CompetitionMatchResponse): string {
-  if (match.homeScore == null || match.awayScore == null) {
-    return "—";
-  }
-  const base = `${match.homeScore} – ${match.awayScore}`;
-  if (
-    match.homePenaltyScore != null &&
-    match.awayPenaltyScore != null &&
-    match.homeScore === match.awayScore
-  ) {
-    return `${base} (${match.homePenaltyScore}–${match.awayPenaltyScore} pens)`;
-  }
-  return base;
-}
+export { formatMatchScore };

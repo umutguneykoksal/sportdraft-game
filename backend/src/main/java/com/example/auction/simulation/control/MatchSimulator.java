@@ -31,6 +31,21 @@ public class MatchSimulator {
         UUID homeTeamId,
         UUID awayTeamId
     ) {
+        return simulateWithTimeline(
+            seed, homeFormation, awayFormation, homeRoster, awayRoster, homeTeamId, awayTeamId, false
+        );
+    }
+
+    public SimulationResult simulateWithTimeline(
+        long seed,
+        Formation homeFormation,
+        Formation awayFormation,
+        List<SessionFinalizedEvent.RatedCard> homeRoster,
+        List<SessionFinalizedEvent.RatedCard> awayRoster,
+        UUID homeTeamId,
+        UUID awayTeamId,
+        boolean allowDraws
+    ) {
         Random rng = new Random(seed);
 
         double homeAttack = attackScore(homeFormation, homeRoster);
@@ -52,7 +67,7 @@ public class MatchSimulator {
 
         int homePenaltyGoals = 0;
         int awayPenaltyGoals = 0;
-        if (homeGoals == awayGoals) {
+        if (homeGoals == awayGoals && !allowDraws) {
             PenaltyOutcome pens = resolvePenaltyShootout(
                 rng, timeline, homeRoster, awayRoster, homeTeamId, awayTeamId
             );

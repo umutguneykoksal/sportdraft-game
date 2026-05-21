@@ -9,15 +9,12 @@ import com.example.auction.competition.entity.CompetitionRepository;
 import com.example.auction.competition.entity.CompetitionStatus;
 import com.example.auction.competition.entity.CompetitionType;
 import com.example.auction.competition.entity.TournamentPhase;
+import com.example.auction.simulation.control.CompetitionMatchSimulator;
 import com.example.auction.simulation.control.DraftCompletedEvent;
-import com.example.auction.simulation.control.MatchSimulator;
 import com.example.auction.simulation.entity.SimulationResult;
 import java.time.Instant;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
-import java.util.function.Function;
-import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -29,14 +26,14 @@ public class TournamentBracketService {
     private final CompetitionRepository competitionRepository;
     private final CompetitionMatchRepository matchRepository;
     private final CompetitionMatchViewRepository viewRepository;
-    private final MatchSimulator matchSimulator;
+    private final CompetitionMatchSimulator matchSimulator;
     private final CompetitionJson competitionJson;
 
     public TournamentBracketService(
         CompetitionRepository competitionRepository,
         CompetitionMatchRepository matchRepository,
         CompetitionMatchViewRepository viewRepository,
-        MatchSimulator matchSimulator,
+        CompetitionMatchSimulator matchSimulator,
         CompetitionJson competitionJson
     ) {
         this.competitionRepository = competitionRepository;
@@ -72,47 +69,8 @@ public class TournamentBracketService {
 
     @Transactional
     public SimulationResult simulateMatchIfNeeded(CompetitionEntity competition, CompetitionMatchEntity match) {
-        if (match.getStatus() == CompetitionMatchStatus.COMPLETED) {
-            return new SimulationResult(
-                match.getHomeScore() != null ? match.getHomeScore() : 0,
-                match.getAwayScore() != null ? match.getAwayScore() : 0,
-                competitionJson.readTimeline(match.getReplayDataJson()),
-                match.getHomePenaltyScore() != null ? match.getHomePenaltyScore() : 0,
-                match.getAwayPenaltyScore() != null ? match.getAwayPenaltyScore() : 0
-            );
-        }
-
-        TournamentDraftSnapshot snapshot = competitionJson.readSnapshot(competition.getDraftSnapshotJson());
-        Map<UUID, DraftCompletedEvent.DraftPlayerRoster> byUser = snapshot.players().stream()
-            .map(p -> new DraftCompletedEvent.DraftPlayerRoster(
-                p.userId(), p.nickname(), p.formation(), p.roster()
-            ))
-            .collect(Collectors.toMap(DraftCompletedEvent.DraftPlayerRoster::userId, Function.identity()));
-
-        DraftCompletedEvent.DraftPlayerRoster home = byUser.get(match.getHomeUserId());
-        DraftCompletedEvent.DraftPlayerRoster away = byUser.get(match.getAwayUserId());
-
-        SimulationResult result = matchSimulator.simulateWithTimeline(
-            match.getSeed(),
-            home.formation(),
-            away.formation(),
-            home.roster(),
-            away.roster(),
-            home.userId(),
-            away.userId()
-        );
-
-        match.setHomeScore(result.homeGoals());
-        match.setAwayScore(result.awayGoals());
-        match.setHomePenaltyScore(result.decidedOnPenalties() ? result.homePenaltyGoals() : null);
-        match.setAwayPenaltyScore(result.decidedOnPenalties() ? result.awayPenaltyGoals() : null);
-        match.setReplayDataJson(competitionJson.writeTimeline(result.timeline()));
-        match.setWinnerUserId(result.resolveWinner(match.getHomeUserId(), match.getAwayUserId()));
-        match.setStatus(CompetitionMatchStatus.COMPLETED);
-        matchRepository.save(match);
-
+        SimulationResult result = matchSimulator.simulateIfNeeded(readSnapshot(competition), match, false);
         ensureFinalMatch(competition);
-
         return result;
     }
 
@@ -122,20 +80,17 @@ public class TournamentBracketService {
         UUID viewerUserId,
         boolean watchedByMe
     ) {
-        if (viewerUserId == null || watchedByMe) {
-            return false;
-        }
-        return switch (competition.getTournamentPhase()) {
-            case SEMIS -> match.getRoundKey().startsWith("SEMI") && isMatchParticipant(match, viewerUserId);
-            case INTERMISSION -> false;
-            case FINAL -> "FINAL".equals(match.getRoundKey()) && isTournamentParticipant(competition, viewerUserId);
-            case REPLAYS -> false;
-        };
+        return TournamentRules.isMandatoryWatchPending(
+            competition.getTournamentPhase(),
+            match,
+            viewerUserId,
+            watchedByMe,
+            isTournamentParticipant(competition, viewerUserId)
+        );
     }
 
     public boolean isReplayAllowed(CompetitionEntity competition, CompetitionMatchEntity match) {
-        return competition.getTournamentPhase() == TournamentPhase.REPLAYS
-            && match.getStatus() == CompetitionMatchStatus.COMPLETED;
+        return TournamentRules.canReplay(competition.getTournamentPhase(), match.getStatus());
     }
 
     public boolean scoresVisibleForViewer(
@@ -143,21 +98,14 @@ public class TournamentBracketService {
         CompetitionMatchEntity match,
         boolean watchedByMe
     ) {
-        TournamentPhase phase = competition.getTournamentPhase();
         if (match.getStatus() != CompetitionMatchStatus.COMPLETED) {
             return false;
         }
-        if (phase == TournamentPhase.REPLAYS) {
-            return watchedByMe;
-        }
-        if (match.getRoundKey().startsWith("SEMI")
-            && (phase == TournamentPhase.INTERMISSION || phase == TournamentPhase.FINAL)) {
-            return true;
-        }
-        if ("FINAL".equals(match.getRoundKey()) && phase == TournamentPhase.FINAL) {
-            return watchedByMe;
-        }
-        return watchedByMe;
+        return TournamentRules.scoresVisibleForViewer(
+            competition.getTournamentPhase(),
+            match.getRoundKey(),
+            watchedByMe
+        );
     }
 
     public boolean allSemisWatchedByParticipants(UUID competitionId) {
@@ -171,7 +119,7 @@ public class TournamentBracketService {
 
     @Transactional
     public boolean tryStartIntermissionIfReady(CompetitionEntity competition) {
-        if (competition.getTournamentPhase() != TournamentPhase.SEMIS) {
+        if (!TournamentPhaseMachine.canStartIntermission(competition.getTournamentPhase())) {
             return false;
         }
         if (!bothSemisSimulated(competition.getId()) || !allSemisWatchedByParticipants(competition.getId())) {
@@ -186,11 +134,11 @@ public class TournamentBracketService {
 
     @Transactional
     public boolean tryStartFinalPhase(CompetitionEntity competition) {
-        if (competition.getTournamentPhase() != TournamentPhase.INTERMISSION) {
-            return false;
-        }
-        Instant endsAt = competition.getIntermissionEndsAt();
-        if (endsAt == null || Instant.now().isBefore(endsAt)) {
+        if (!TournamentPhaseMachine.canAdvanceToFinal(
+            competition.getTournamentPhase(),
+            competition.getIntermissionEndsAt(),
+            Instant.now()
+        )) {
             return false;
         }
         competition.setTournamentPhase(TournamentPhase.FINAL);
@@ -211,12 +159,12 @@ public class TournamentBracketService {
         return isMandatoryWatchPending(competition, match, viewerUserId, watched);
     }
 
-    private boolean isTournamentParticipant(CompetitionEntity competition, UUID userId) {
+    public boolean isTournamentParticipant(CompetitionEntity competition, UUID userId) {
         return readSnapshot(competition).players().stream().anyMatch(p -> p.userId().equals(userId));
     }
 
     public boolean isMatchParticipant(CompetitionMatchEntity match, UUID userId) {
-        return userId != null && (userId.equals(match.getHomeUserId()) || userId.equals(match.getAwayUserId()));
+        return TournamentRules.isMatchParticipant(match, userId);
     }
 
     public boolean semiParticipantsWatched(CompetitionMatchEntity match) {
@@ -241,7 +189,7 @@ public class TournamentBracketService {
     }
 
     public int requiredWatchers(CompetitionEntity competition, CompetitionMatchEntity match) {
-        if (match.getRoundKey().startsWith("SEMI")) {
+        if (TournamentRules.isSemi(match.getRoundKey())) {
             return 2;
         }
         return snapshotPlayerCount(competition);

@@ -211,6 +211,30 @@ export interface LobbyRoomResponse {
 
 export type TournamentPhase = "SEMIS" | "INTERMISSION" | "FINAL" | "REPLAYS";
 
+export type LeaguePhase =
+  | "MATCHDAY_1"
+  | "BREAK_AFTER_MD1"
+  | "MATCHDAY_2"
+  | "BREAK_AFTER_MD2"
+  | "MATCHDAY_3"
+  | "CHAMPIONSHIP_PLAYOFF"
+  | "COMPLETED"
+  | "REPLAYS";
+
+export interface LeagueStandingRow {
+  userId: string;
+  nickname: string;
+  played: number;
+  won: number;
+  drawn: number;
+  lost: number;
+  goalsFor: number;
+  goalsAgainst: number;
+  goalDifference: number;
+  points: number;
+  rank: number;
+}
+
 export interface CompetitionMatchResponse {
   matchId: string;
   roundKey: string;
@@ -257,12 +281,16 @@ export interface CompetitionResponse {
   sessionId: string;
   type: string;
   status: string;
-  tournamentPhase: TournamentPhase;
+  tournamentPhase: TournamentPhase | null;
   intermissionEndsAt: string | null;
   replaysUnlocked: boolean;
   championUserId: string | null;
   championNickname: string | null;
   matches: CompetitionMatchResponse[];
+  leaguePhase?: LeaguePhase | null;
+  standings?: LeagueStandingRow[];
+  coChampionUserIds?: string[];
+  coChampionNicknames?: string[];
 }
 
 export interface SpectateStateResponse {

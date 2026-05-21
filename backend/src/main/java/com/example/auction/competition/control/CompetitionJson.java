@@ -49,4 +49,23 @@ public class CompetitionJson {
             throw new IllegalStateException("Failed to deserialize match timeline", e);
         }
     }
+
+    public String writeUuidList(List<java.util.UUID> ids) {
+        try {
+            return objectMapper.writeValueAsString(ids);
+        } catch (Exception e) {
+            throw new IllegalStateException("Failed to serialize UUID list", e);
+        }
+    }
+
+    public List<java.util.UUID> readUuidList(String json) {
+        if (json == null || json.isBlank()) {
+            return List.of();
+        }
+        try {
+            return objectMapper.readValue(json, new TypeReference<>() {});
+        } catch (Exception e) {
+            throw new IllegalStateException("Failed to deserialize UUID list", e);
+        }
+    }
 }

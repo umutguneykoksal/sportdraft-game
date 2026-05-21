@@ -192,27 +192,26 @@ public class SessionReadService {
     }
 
     private ResponseEntity<MatchResultResponse> buildResultFromArchive(MatchHistory h, UUID userId) {
-        boolean isHome = h.getHomeUserId().equals(userId);
-        boolean isAway = h.getAwayUserId().equals(userId);
-        if (!isHome && !isAway) {
+        SessionPerspective perspective = SessionPerspective.of(userId, h.getHomeUserId(), h.getAwayUserId());
+        if (!perspective.isParticipant()) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Player not found in session");
         }
-        int myScore = isHome ? h.getHomeScore() : h.getAwayScore();
-        int oppScore = isHome ? h.getAwayScore() : h.getHomeScore();
+        int myScore = perspective.myScore(h.getHomeScore(), h.getAwayScore());
+        int oppScore = perspective.opponentScore(h.getHomeScore(), h.getAwayScore());
 
         try {
             ActiveSession archived = redisObjectMapper.readValue(h.getReplayData(), ActiveSession.class);
             List<ActivePlayer> sorted = archived.playersSortedById();
             String homeNick = sorted.isEmpty() ? "Home" : sorted.get(0).getNickname();
             String awayNick = sorted.size() > 1 ? sorted.get(1).getNickname() : "Away";
-            String myNickname = isHome ? homeNick : awayNick;
-            String oppNickname = isHome ? awayNick : homeNick;
+            String myNickname = perspective.myNickname(homeNick, awayNick);
+            String oppNickname = perspective.opponentNickname(homeNick, awayNick);
             AuctionService.TeamSnapshot teams = auctionService.buildTeamSnapshot(archived, userId);
             int[] stats = calculateStats(archived.getMatchTimeline(), userId);
             int sessionHomePens = archived.getHomePenaltyScore() != null ? archived.getHomePenaltyScore() : 0;
             int sessionAwayPens = archived.getAwayPenaltyScore() != null ? archived.getAwayPenaltyScore() : 0;
-            int myPens = isHome ? sessionHomePens : sessionAwayPens;
-            int oppPens = isHome ? sessionAwayPens : sessionHomePens;
+            int myPens = perspective.myPenaltyScore(sessionHomePens, sessionAwayPens);
+            int oppPens = perspective.opponentPenaltyScore(sessionHomePens, sessionAwayPens);
             UUID winnerId = archived.getMatchWinnerUserId();
 
             return ResponseEntity.ok(new MatchResultResponse(
@@ -234,8 +233,8 @@ public class SessionReadService {
             return ResponseEntity.ok(new MatchResultResponse(
                 myScore, oppScore,
                 List.of(), List.of(),
-                isHome ? h.getHomeFormation() : h.getAwayFormation(),
-                isHome ? h.getAwayFormation() : h.getHomeFormation(),
+                perspective.isHome() ? h.getHomeFormation() : h.getAwayFormation(),
+                perspective.isHome() ? h.getAwayFormation() : h.getHomeFormation(),
                 null, null,
                 userId.toString(),
                 0, 0, 0, 0,

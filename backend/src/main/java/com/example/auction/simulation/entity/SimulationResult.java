@@ -29,6 +29,12 @@ public record SimulationResult(
     }
 
     public UUID resolveWinner(UUID homeTeamId, UUID awayTeamId) {
+        UUID winner = resolveWinnerOrNull(homeTeamId, awayTeamId);
+        return winner != null ? winner : homeTeamId;
+    }
+
+    /** Returns null when regulation ends in a draw and no penalty shootout was played. */
+    public UUID resolveWinnerOrNull(UUID homeTeamId, UUID awayTeamId) {
         if (homeGoals > awayGoals) {
             return homeTeamId;
         }
@@ -41,7 +47,10 @@ public record SimulationResult(
         if (awayPenaltyGoals > homePenaltyGoals) {
             return awayTeamId;
         }
-        return homeTeamId;
+        if (decidedOnPenalties()) {
+            return homeTeamId;
+        }
+        return null;
     }
 
     /**

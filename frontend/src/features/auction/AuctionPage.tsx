@@ -70,7 +70,7 @@ export function AuctionPage() {
             {state.gameMode === "TOURNAMENT"
               ? "All squads complete! Opening tournament bracket..."
               : state.gameMode === "LEAGUE"
-                ? "All squads complete! League coming soon..."
+                ? "All squads complete! Opening league table..."
                 : "All squads complete! Starting match..."}
           </p>
         </div>

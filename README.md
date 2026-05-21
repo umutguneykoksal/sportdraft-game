@@ -8,7 +8,7 @@ Supported formats:
 |------|---------|--------|
 | **Duel** | 2 | Full flow (lobby → draft → match) |
 | **Tournament** | 4 | Draft + bracket; semi/final matches with replay |
-| **League** | 4 | Draft only; standings/fixtures planned |
+| **League** | 4 | Round-robin (3 matchdays, live standings; 2-way tie → playoff final) |
 
 ## Stack
 
@@ -31,7 +31,7 @@ scripts/          Python helpers for card-pool generation (gitignored)
 
 Backend feature slices: `lobby`, `session`, `bidding`, `simulation`, `competition`.
 
-Frontend routes: `/lobby`, `/auction/:sessionId`, `/match/:sessionId`, `/tournament/:sessionId`, `/spectate/:sessionId`.
+Frontend routes: `/lobby`, `/auction/:sessionId`, `/match/:sessionId` (duel), `/tournament/:sessionId`, `/tournament/:sessionId/match/:matchId`, `/league/:sessionId`, `/league/:sessionId/match/:matchId`, `/spectate/:sessionId`.
 
 ## Quick start
 
@@ -95,6 +95,17 @@ cd frontend && npm test -- --watchAll=false
 - **Cross-aggregate effects**: Spring `ApplicationEventPublisher` + `@TransactionalEventListener(AFTER_COMMIT)` with idempotent `ProcessedEvent` handlers
 - **Auth (MVP)**: opaque UUID session token — REST `Authorization: Bearer`, WS/SSE `?token=` — see [ADR-002](docs/adr/ADR-002-anonymous-player-identity.md)
 
+### Competition slice (tournament + league)
+
+Shared match flow for 4-player modes after draft:
+
+- **`CompetitionMatchService`** — facade; delegates to **`CompetitionMatchCommandService`**
+- **`CompetitionMatchModeHooks`** — league vs tournament open/ack guards and phase advancement
+- **`CompetitionVisibilityPolicy`** — watch/score/replay rules (`LeagueRules`, `TournamentRules`)
+- **Phase machines** — `LeaguePhaseMachine`, `TournamentPhaseMachine` (matchday breaks, intermission, playoff)
+- **SSE notifiers** — `LeagueProgressNotifier`, `TournamentProgressNotifier`
+- **Frontend** — shared `CompetitionMatchPage`, `useCompetitionHub`, `competitionFlow.ts`; mode-specific `leagueFlow` / `tournamentFlow`
+
 Key v2 endpoints:
 
 | Area | Path |
@@ -102,8 +113,27 @@ Key v2 endpoints:
 | Lobbies | `GET/POST /api/v2/lobbies`, `GET /api/v2/lobbies/pool-options` |
 | Session | `GET /api/v2/sessions/{id}`, formation + match-start commands |
 | Auction | `POST /api/v2/sessions/{id}/rounds`, bids, pass, ready-next |
-| Competition | `GET /api/v2/sessions/{id}/competition`, tournament match open/ack |
+| Competition | `GET /api/v2/sessions/{id}/competition` |
+| Competition match | `POST .../competition/matches/{matchId}/open`, `POST .../ack-watch` (tournament + league) |
 | Real-time | `GET /api/v2/sessions/{id}/events/stream` (SSE), WebSocket upgrade |
+
+### Competition SSE events
+
+Clients subscribe on the session stream; tournament and league pages refresh on these event types:
+
+| Event | Mode | When |
+|-------|------|------|
+| `tournament_started` | Tournament | Bracket created after draft |
+| `tournament_intermission` | Tournament | Semis done; final countdown |
+| `tournament_final_start` | Tournament | Final phase begins |
+| `tournament_updated` | Tournament | Bracket state changed |
+| `tournament_completed` | Tournament | Champion decided |
+| `league_started` | League | Fixtures created after draft |
+| `league_matchday_break` | League | Matchday finished; 15s break |
+| `league_matchday_started` | League | Next matchday opens |
+| `league_playoff_started` | League | 2-way tie → playoff final |
+| `league_updated` | League | Standings / phase changed |
+| `league_completed` | League | Champion(s) decided |
 
 See [docs/adr/](docs/adr/) for decisions — especially [ADR-005](docs/adr/ADR-005-game-mode-and-competition.md) for tournament/league scope.
 

@@ -1,6 +1,6 @@
 package com.example.auction.competition.boundary;
 
-import com.example.auction.competition.control.TournamentMatchService;
+import com.example.auction.competition.control.CompetitionMatchService;
 import com.example.auction.common.web.AuthTokenResolver;
 import java.util.UUID;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -13,14 +13,14 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v2/sessions")
 public class CompetitionCommandController {
 
-    private final TournamentMatchService tournamentMatchService;
+    private final CompetitionMatchService competitionMatchService;
     private final AuthTokenResolver authTokenResolver;
 
     public CompetitionCommandController(
-        TournamentMatchService tournamentMatchService,
+        CompetitionMatchService competitionMatchService,
         AuthTokenResolver authTokenResolver
     ) {
-        this.tournamentMatchService = tournamentMatchService;
+        this.competitionMatchService = competitionMatchService;
         this.authTokenResolver = authTokenResolver;
     }
 
@@ -32,7 +32,7 @@ public class CompetitionCommandController {
         @org.springframework.web.bind.annotation.RequestParam(defaultValue = "false") boolean replay
     ) {
         UUID userId = authTokenResolver.resolveUserId(authorization);
-        return tournamentMatchService.openMatch(sessionId, matchId, userId, replay);
+        return competitionMatchService.openMatch(sessionId, matchId, userId, replay);
     }
 
     @PostMapping("/{sessionId}/competition/matches/{matchId}/ack-watch")
@@ -42,6 +42,6 @@ public class CompetitionCommandController {
         @RequestHeader("Authorization") String authorization
     ) {
         UUID userId = authTokenResolver.resolveUserId(authorization);
-        return tournamentMatchService.acknowledgeWatch(sessionId, matchId, userId);
+        return competitionMatchService.acknowledgeWatch(sessionId, matchId, userId);
     }
 }

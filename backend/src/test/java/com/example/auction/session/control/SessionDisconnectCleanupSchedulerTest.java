@@ -94,7 +94,7 @@ class SessionDisconnectCleanupSchedulerTest {
         ActiveSession session = tournamentWaitingSession();
         session.moveToFinished();
 
-        assertThat(SessionDisconnectCleanupScheduler.finishedGracePeriod(session, Duration.ofSeconds(240)))
+        assertThat(SessionDisconnectPolicy.finishedGracePeriod(session, Duration.ofSeconds(240)))
             .isEqualTo(Duration.ofSeconds(240));
     }
 

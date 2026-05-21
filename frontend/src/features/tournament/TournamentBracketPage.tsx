@@ -1,13 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import {
-  CompetitionMatchResponse,
-  CompetitionResponse,
-  getClientUserId,
-  getCompetitionBySession,
-} from "../../shared/api";
+import { CompetitionMatchResponse } from "../../shared/api";
 import { clearActiveSessionId } from "../../shared/session";
-import { useSessionStream } from "../../shared/sse";
+import { useCompetitionHub } from "../competition/useCompetitionHub";
 import {
   findFinal,
   findMySemi,
@@ -15,11 +9,18 @@ import {
   resolveTournamentStep,
 } from "./tournamentFlow";
 
+const TOURNAMENT_SSE_EVENTS = [
+  "tournament_updated",
+  "tournament_completed",
+  "tournament_intermission",
+  "tournament_final_start",
+];
+
 function IntermissionScreen({
   competition,
   secondsLeft,
 }: {
-  competition: CompetitionResponse;
+  competition: { matches: CompetitionMatchResponse[] };
   secondsLeft: number;
 }) {
   const semis = competition.matches.filter((m) => m.roundKey.startsWith("SEMI"));
@@ -84,75 +85,11 @@ function MatchRow({
 export function TournamentBracketPage() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
-  const myUserId = getClientUserId();
-  const { events } = useSessionStream(sessionId ?? null);
-  const [competition, setCompetition] = useState<CompetitionResponse | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [secondsLeft, setSecondsLeft] = useState(0);
-  const autoNavigatedRef = useRef(false);
-
-  const refresh = useCallback(async () => {
-    if (!sessionId) return;
-    const maxAttempts = 8;
-    for (let attempt = 0; attempt < maxAttempts; attempt++) {
-      try {
-        const data = await getCompetitionBySession(sessionId);
-        setCompetition(data);
-        setError(null);
-        setLoading(false);
-        return;
-      } catch (e) {
-        const message = e instanceof Error ? e.message : "Failed to load bracket";
-        const retryable = message.toLowerCase().includes("not found") && attempt < maxAttempts - 1;
-        if (retryable) {
-          await new Promise((resolve) => setTimeout(resolve, 500 * (attempt + 1)));
-          continue;
-        }
-        setError(message);
-        setLoading(false);
-        return;
-      }
-    }
-  }, [sessionId]);
-
-  useEffect(() => {
-    refresh();
-  }, [refresh]);
-
-  useEffect(() => {
-    const relevant = events.some(
-      (e) =>
-        e.eventType === "tournament_updated"
-        || e.eventType === "tournament_completed"
-        || e.eventType === "tournament_intermission"
-        || e.eventType === "tournament_final_start"
-    );
-    if (relevant) {
-      autoNavigatedRef.current = false;
-      refresh();
-    }
-  }, [events, refresh]);
-
-  useEffect(() => {
-    if (!competition?.intermissionEndsAt) return;
-    const tick = () => {
-      const ms = Date.parse(competition.intermissionEndsAt!) - Date.now();
-      setSecondsLeft(Math.max(0, Math.ceil(ms / 1000)));
-    };
-    tick();
-    const id = window.setInterval(tick, 250);
-    return () => window.clearInterval(id);
-  }, [competition?.intermissionEndsAt]);
-
-  useEffect(() => {
-    if (!sessionId || !competition || loading) return;
-    const step = resolveTournamentStep(competition, myUserId);
-    if (step.kind === "watch" && !step.replay && !autoNavigatedRef.current) {
-      autoNavigatedRef.current = true;
-      navigate(`/tournament/${sessionId}/match/${step.matchId}`, { replace: true });
-    }
-  }, [competition, loading, myUserId, navigate, sessionId]);
+  const { competition, error, loading, secondsLeft, myUserId } = useCompetitionHub(sessionId, {
+    sseEventTypes: TOURNAMENT_SSE_EVENTS,
+    resolveStep: resolveTournamentStep,
+    matchPath: (sid, matchId) => `/tournament/${sid}/match/${matchId}`,
+  });
 
   const isChampion =
     competition?.championUserId != null && competition.championUserId === myUserId;

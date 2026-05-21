@@ -5,9 +5,6 @@ import com.example.auction.common.events.ProcessedEventRepository;
 import com.example.auction.common.sse.SseEmitterRegistry;
 import com.example.auction.competition.entity.CompetitionEntity;
 import com.example.auction.competition.entity.CompetitionRepository;
-import com.example.auction.competition.entity.CompetitionStatus;
-import com.example.auction.competition.entity.CompetitionType;
-import com.example.auction.session.entity.GameMode;
 import com.example.auction.simulation.control.DraftCompletedEvent;
 import java.time.Instant;
 import java.util.Map;
@@ -27,18 +24,18 @@ public class DraftCompletedListener {
     private static final Logger log = LoggerFactory.getLogger(DraftCompletedListener.class);
 
     private final ProcessedEventRepository processedEventRepository;
-    private final TournamentBracketService tournamentBracketService;
+    private final CompetitionModeRegistry competitionModeRegistry;
     private final CompetitionRepository competitionRepository;
     private final SseEmitterRegistry sseEmitterRegistry;
 
     public DraftCompletedListener(
         ProcessedEventRepository processedEventRepository,
-        TournamentBracketService tournamentBracketService,
+        CompetitionModeRegistry competitionModeRegistry,
         CompetitionRepository competitionRepository,
         SseEmitterRegistry sseEmitterRegistry
     ) {
         this.processedEventRepository = processedEventRepository;
-        this.tournamentBracketService = tournamentBracketService;
+        this.competitionModeRegistry = competitionModeRegistry;
         this.competitionRepository = competitionRepository;
         this.sseEmitterRegistry = sseEmitterRegistry;
     }
@@ -52,38 +49,20 @@ public class DraftCompletedListener {
         }
 
         try {
-            if (event.gameMode() == GameMode.TOURNAMENT) {
-                CompetitionEntity competition = competitionRepository.findBySessionId(event.sessionId())
-                    .orElseGet(() -> tournamentBracketService.initializeTournament(event));
-                broadcastAfterCommit(
-                    event.sessionId(),
-                    "tournament_started",
-                    Map.of(
-                        "sessionId", event.sessionId(),
-                        "competitionId", competition.getId()
-                    )
-                );
-            } else if (event.gameMode() == GameMode.LEAGUE) {
-                CompetitionEntity competition = competitionRepository.findBySessionId(event.sessionId())
-                    .orElseGet(() -> {
-                        CompetitionEntity created = new CompetitionEntity();
-                        created.setId(UUID.randomUUID());
-                        created.setSessionId(event.sessionId());
-                        created.setType(CompetitionType.LEAGUE);
-                        created.setStatus(CompetitionStatus.PENDING);
-                        created.setCreatedAt(Instant.now());
-                        return competitionRepository.save(created);
-                    });
-                broadcastAfterCommit(
-                    event.sessionId(),
-                    "league_pending",
-                    Map.of(
-                        "sessionId", event.sessionId(),
-                        "competitionId", competition.getId(),
-                        "message", "League mode coming in a future update"
-                    )
-                );
+            if (!competitionModeRegistry.supports(event.gameMode())) {
+                return;
             }
+
+            CompetitionEntity competition = competitionRepository.findBySessionId(event.sessionId())
+                .orElseGet(() -> competitionModeRegistry.initialize(event));
+            broadcastAfterCommit(
+                event.sessionId(),
+                competitionModeRegistry.startedEventType(event.gameMode()),
+                Map.of(
+                    "sessionId", event.sessionId(),
+                    "competitionId", competition.getId()
+                )
+            );
 
             processedEventRepository.save(
                 new ProcessedEvent(event.eventId(), "DraftCompletedEvent", Instant.now())

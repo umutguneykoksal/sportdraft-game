@@ -70,7 +70,6 @@ public class AuctionRoundLifecycle {
 
         Map<UUID, Card> cardMap = cardCatalog.getCardMap();
         List<UUID> pool = session.getCardPool();
-        java.util.Set<UUID> sold = session.soldCardIds();
 
         if (pool.isEmpty()) {
             pool = new java.util.ArrayList<>(
@@ -83,48 +82,22 @@ public class AuctionRoundLifecycle {
 
         ActiveRound createdRound = null;
         int poolSize = pool.size();
-        int checked = 0;
-        int idx = session.getCardPoolIndex();
-
-        while (checked < poolSize) {
-            if (idx >= poolSize) {
-                idx = 0;
+        int attempts = 0;
+        while (attempts < poolSize) {
+            RoundCardSelector.SelectionResult selection = RoundCardSelector.findNextEligibleRound(session, cardMap);
+            if (selection == null) {
+                break;
             }
-            UUID cardId = pool.get(idx);
-            idx++;
-            checked++;
-
-            if (sold.contains(cardId)) {
-                continue;
-            }
-
-            Card card = cardMap.get(cardId);
-            if (card == null) {
-                continue;
-            }
-
-            boolean anyEligible = session.getPlayers().stream()
-                .anyMatch(p -> RosterSlotAssignment.canFillCard(p, card, cardMap));
-            if (!anyEligible) {
-                continue;
-            }
-
-            Instant now = Instant.now();
-            UUID openingBidder = determineOpeningBidder(session, cardMap);
-            ActiveRound round = new ActiveRound(
-                UUID.randomUUID(), card.getId(), now,
-                now.plus(AuctionTiming.ROUND_DURATION_SECONDS, ChronoUnit.SECONDS),
-                openingBidder, RoundStatus.OPEN
-            );
+            session.setCardPoolIndex(selection.nextPoolIndex());
+            ActiveRound round = selection.round();
             session.getRounds().add(round);
             if (normalizeTurnForRound(round, session, cardMap)) {
                 settlement.finalizeSettledRound(round, session, vBefore, cardMap, false);
                 vBefore = session.getVersion();
+                attempts++;
                 continue;
             }
-
             createdRound = round;
-            session.setCardPoolIndex(idx);
             break;
         }
 
@@ -186,44 +159,12 @@ public class AuctionRoundLifecycle {
         SessionAccess.requireMember(session, userId);
         ActivePlayer bidder = session.findPlayerByUserId(userId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN, "Player not found in session"));
-        if (bidder.isRosterFull()) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "Roster is full");
-        }
         if (normalizeTurnForRound(round, session, cardMap)) {
             settlement.finalizeSettledRound(round, session, vBefore, cardMap, true);
             meterRegistry.counter("auction.bid.placed").increment();
             return AuctionRoundResponses.resolveMutationResponse(session, cardMap, userId, roundCard, round);
         }
-        boolean turnOpen = AuctionRules.isTurnOpen(round);
-        if (!turnOpen && round.getCurrentTurnUserId() != null && !round.getCurrentTurnUserId().equals(userId)) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Not your turn to bid");
-        }
-        if (AuctionRules.viewerIsLeadingBidder(session, round, userId)) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "You already hold the highest bid; wait for others");
-        }
-
-        long minimumAllowed = round.getHighestBidCents() == 0
-            ? AuctionTiming.STARTING_BID
-            : round.getHighestBidCents() + AuctionTiming.MIN_INCREMENT;
-        if (request.amountCents() < minimumAllowed) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "Bid is below minimum increment");
-        }
-        if (request.amountCents() > bidder.getRemainingBudgetCents()) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
-                "Insufficient budget. Maximum bid: %d cr".formatted(bidder.getRemainingBudgetCents()));
-        }
-        if (!RosterSlotAssignment.canFillCard(bidder, roundCard, cardMap)) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "No open slot for this card");
-        }
-        int totalOpen = RosterSlotAssignment.totalOpenSlots(bidder, cardMap);
-        long remainingAfterBid = bidder.getRemainingBudgetCents() - request.amountCents();
-        long reserveRequired = Math.max(totalOpen - 1, 0);
-        if (remainingAfterBid < reserveRequired) {
-            long maxAllowed = bidder.getRemainingBudgetCents() - reserveRequired;
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
-                "Must reserve %d cr for %d remaining slots. Maximum bid: %d cr"
-                    .formatted(reserveRequired, Math.max(totalOpen - 1, 0), maxAllowed));
-        }
+        AuctionBidValidator.validateBid(session, round, bidder, roundCard, request, cardMap, userId);
 
         Instant newEndsAt = round.getEndsAt();
         if (Instant.now().isAfter(round.getEndsAt().minus(AuctionTiming.ANTI_SNIPE_WINDOW_SECONDS, ChronoUnit.SECONDS))) {
@@ -435,26 +376,5 @@ public class AuctionRoundLifecycle {
 
         round.markPassed();
         return true;
-    }
-
-    private UUID determineOpeningBidder(ActiveSession session, Map<UUID, Card> cardMap) {
-        session.ensureTurnOrder();
-        return session.latestRound()
-            .map(prev -> {
-                if (prev.getStatus() == RoundStatus.SOLD) {
-                    ActivePlayer winner = session.getPlayers().stream()
-                        .filter(p -> p.getId().equals(prev.getHighestBidderId()))
-                        .findFirst().orElse(null);
-                    if (winner != null) {
-                        return AuctionRules.nextTurnUserId(session, winner.getUserId());
-                    }
-                }
-                UUID prevOpening = prev.getOpeningBidderUserId();
-                if (prevOpening != null) {
-                    return AuctionRules.nextTurnUserId(session, prevOpening);
-                }
-                return session.getTurnOrder().get(0);
-            })
-            .orElseGet(() -> session.getTurnOrder().get(0));
     }
 }

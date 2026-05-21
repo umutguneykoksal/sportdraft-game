@@ -14,6 +14,7 @@ import com.example.auction.session.entity.Formation;
 import com.example.auction.session.entity.GameMode;
 import com.example.auction.session.entity.PoolLeague;
 import com.example.auction.session.entity.PoolMinRating;
+import com.example.auction.session.control.SessionDisconnectPolicy;
 import com.example.auction.session.entity.SessionStatus;
 import com.example.auction.session.redis.ActivePlayer;
 import com.example.auction.session.control.SessionAccess;
@@ -215,9 +216,7 @@ public class LobbyService {
             return snapshot(session, userId);
         }
 
-        boolean needsReset = session.playerCount() < session.getMaxPlayers()
-            && (session.getStatus() == SessionStatus.COUNTDOWN
-                || session.getStatus() == SessionStatus.FORMATION_SELECT);
+        boolean needsReset = SessionDisconnectPolicy.shouldResetLobby(session);
         if (needsReset) {
             session.moveToWaiting();
             sessionStore.saveIfVersionMatch(session, versionBefore);

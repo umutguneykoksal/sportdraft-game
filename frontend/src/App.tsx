@@ -5,7 +5,8 @@ import { MatchPage } from "./features/match/MatchPage";
 import { SpectatePage } from "./features/spectate/SpectatePage";
 import { TournamentBracketPage } from "./features/tournament/TournamentBracketPage";
 import { TournamentMatchPage } from "./features/tournament/TournamentMatchPage";
-import { LeaguePendingPage } from "./features/tournament/LeaguePendingPage";
+import { LeagueTablePage } from "./features/league/LeagueTablePage";
+import { LeagueMatchPage } from "./features/league/LeagueMatchPage";
 
 export function App() {
   // Always land on lobby first; useLobbyFlow validates activeSessionId against the server
@@ -19,7 +20,8 @@ export function App() {
       <Route path="/match/:sessionId" element={<MatchPage />} />
       <Route path="/tournament/:sessionId" element={<TournamentBracketPage />} />
       <Route path="/tournament/:sessionId/match/:matchId" element={<TournamentMatchPage />} />
-      <Route path="/league-pending/:sessionId" element={<LeaguePendingPage />} />
+      <Route path="/league/:sessionId" element={<LeagueTablePage />} />
+      <Route path="/league/:sessionId/match/:matchId" element={<LeagueMatchPage />} />
       <Route path="/spectate/:sessionId" element={<SpectatePage />} />
     </Routes>
   );

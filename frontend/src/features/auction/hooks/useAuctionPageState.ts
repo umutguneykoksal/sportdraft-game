@@ -14,6 +14,7 @@ import { clearActiveSessionId, setActiveSessionId } from "../../../shared/sessio
 import { useSessionSync } from "../../../shared/realtime/useSessionSync";
 import type { Formation } from "../../../shared/api/contracts";
 import { deriveViewerFlags } from "../deriveViewerFlags";
+import { deriveRoundTimerEffects } from "../deriveRoundTimerState";
 import { buildDuelTurnOrderEntries, buildTurnOrderEntries, type TurnOrderEntry } from "../AuctionTurnOrderBar";
 import { buildRoundOutcomeNotice, type RoundOutcomeNotice } from "../buildRoundOutcomeNotice";
 import type { RoundEndedPayload } from "../../../shared/realtime/eventDispatch";
@@ -265,8 +266,13 @@ export function useAuctionPageState(sessionId: string | undefined) {
       navigate(`/tournament/${sessionId}`);
       return;
     }
-    if (lastEvent.eventType === "league_pending") {
-      navigate(`/league-pending/${sessionId}`);
+    if (
+      lastEvent.eventType === "league_started"
+      || lastEvent.eventType === "league_updated"
+      || lastEvent.eventType === "league_completed"
+      || lastEvent.eventType === "league_playoff_started"
+    ) {
+      navigate(`/league/${sessionId}`);
       return;
     }
     if (gameMode === "DUEL" && (matchCompleted || lastEvent.eventType === "match_completed")) {
@@ -359,49 +365,41 @@ export function useAuctionPageState(sessionId: string | undefined) {
       return;
     }
 
-    const computeSecondsLeft = () => {
-      const adjustedNow = Date.now() + serverClockOffsetMsRef.current;
-      return Math.max(0, Math.ceil((new Date(round.endsAt).getTime() - adjustedNow) / 1000));
-    };
-    const initial = computeSecondsLeft();
-    const roundChanged = countdownRoundIdRef.current !== round.roundId;
-    const wasExpired = !roundChanged && previousSecondsLeftRef.current <= 0;
-
-    if (!roundChanged && wasExpired && initial > 0) {
-      clearGrace();
-      setTimeExtended(true);
-      setTimeout(() => setTimeExtended(false), 2000);
-    }
-
-    if (roundChanged) {
-      countdownRoundIdRef.current = round.roundId;
-      roundTotalSecondsRef.current = initial;
-      setTimeExtended(false);
-      clearGrace();
-      previousSecondsLeftRef.current = initial;
-    } else if (initial > roundTotalSecondsRef.current) {
-      roundTotalSecondsRef.current = initial;
-      if (initial > 0) clearGrace();
-    } else if (!roundChanged && wasExpired && initial <= 0 && graceTimeoutRef.current == null) {
-      startGrace();
-    }
-
-    setSecondsLeft(initial);
-    if (!roundChanged) {
-      previousSecondsLeftRef.current = initial;
-    }
-    const timer = setInterval(() => {
-      const prev = previousSecondsLeftRef.current;
-      const secs = computeSecondsLeft();
-      if (prev > 0 && secs <= 0) {
-        startGrace();
+    const applyTimerEffects = () => {
+      if (countdownRoundIdRef.current !== round.roundId) {
+        setTimeExtended(false);
       }
-      if (secs > 0) {
+
+      const effects = deriveRoundTimerEffects({
+        roundId: round.roundId,
+        endsAt: round.endsAt,
+        previousRoundId: countdownRoundIdRef.current,
+        previousSecondsLeft: previousSecondsLeftRef.current,
+        roundTotalSeconds: roundTotalSecondsRef.current,
+        serverClockOffsetMs: serverClockOffsetMsRef.current,
+        hasGraceTimeout: graceTimeoutRef.current != null,
+      });
+
+      if (effects.clearGrace) {
         clearGrace();
       }
-      setSecondsLeft(secs);
-      previousSecondsLeftRef.current = secs;
-    }, 250);
+      if (effects.timeExtended) {
+        setTimeExtended(true);
+        setTimeout(() => setTimeExtended(false), 2000);
+      }
+      if (effects.startGrace) {
+        startGrace();
+      }
+
+      countdownRoundIdRef.current = effects.previousRoundId;
+      roundTotalSecondsRef.current = effects.roundTotalSeconds;
+      previousSecondsLeftRef.current = effects.secondsLeft;
+      setSecondsLeft(effects.secondsLeft);
+    };
+
+    applyTimerEffects();
+
+    const timer = setInterval(applyTimerEffects, 250);
     return () => clearInterval(timer);
   }, [round?.roundId, round?.endsAt]);
 

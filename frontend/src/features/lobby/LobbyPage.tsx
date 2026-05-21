@@ -241,11 +241,6 @@ export function LobbyPage() {
                 </button>
               ))}
             </div>
-            {createGameMode === "LEAGUE" && (
-              <p className="text-amber-400/90 text-xs mb-3">
-                League standings and fixtures arrive in a future update. Draft works; matches are not played yet.
-              </p>
-            )}
             <label className="block text-slate-400 text-sm mb-2">Card pool — league</label>
             <select
               value={createPoolLeague}
