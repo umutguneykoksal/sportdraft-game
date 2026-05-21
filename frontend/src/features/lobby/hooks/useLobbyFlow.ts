@@ -6,12 +6,14 @@ import {
   LobbyRoomResponse,
   PoolMinRating,
   PoolLeagueId,
+  PoolMinRatingOption,
   SessionSnapshotResponse,
   getSessionSnapshot,
   createRoom,
   joinRoom,
   leaveLobby,
   listLobbies,
+  getPoolMinRatingOptions,
   selectFormation,
   confirmFormationReady,
 } from "../../../shared/api";
@@ -39,6 +41,8 @@ export function useLobbyFlow() {
   const [createGameMode, setCreateGameMode] = useState<GameMode>("DUEL");
   const [createMinPoolRating, setCreateMinPoolRating] = useState<PoolMinRating>(70);
   const [createPoolLeague, setCreatePoolLeague] = useState<PoolLeagueId>("PREMIER_LEAGUE");
+  const [poolMinRatingOptions, setPoolMinRatingOptions] = useState<PoolMinRatingOption[]>([]);
+  const [poolMinRatingOptionsLoaded, setPoolMinRatingOptionsLoaded] = useState(false);
   const session = getOrCreateClientSession();
   const sessionId = snapshot?.sessionId ?? null;
   const { events, isConnected } = useSessionStream(sessionId);
@@ -183,6 +187,32 @@ export function useLobbyFlow() {
     return () => { cancelled = true; clearInterval(interval); };
   }, [snapshot]);
 
+  // 7b. Pool min-rating options for selected league (disable thresholds with too few cards)
+  useEffect(() => {
+    let cancelled = false;
+    setPoolMinRatingOptionsLoaded(false);
+    (async () => {
+      try {
+        const res = await getPoolMinRatingOptions(createPoolLeague);
+        if (cancelled) return;
+        setPoolMinRatingOptions(res.options);
+        setPoolMinRatingOptionsLoaded(true);
+        setCreateMinPoolRating((current) => {
+          const currentOption = res.options.find((o) => o.minRating === current);
+          if (currentOption?.selectable) return current;
+          const firstSelectable = res.options.find((o) => o.selectable);
+          return (firstSelectable?.minRating ?? 70) as PoolMinRating;
+        });
+      } catch {
+        if (!cancelled) {
+          setPoolMinRatingOptions([]);
+          setPoolMinRatingOptionsLoaded(true);
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [createPoolLeague]);
+
   // --- Handlers ---
 
   const handleCreateRoom = useCallback(async () => {
@@ -273,5 +303,7 @@ export function useLobbyFlow() {
     setCreateMinPoolRating,
     createPoolLeague,
     setCreatePoolLeague,
+    poolMinRatingOptions,
+    poolMinRatingOptionsLoaded,
   };
 }

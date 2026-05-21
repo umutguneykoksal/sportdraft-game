@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useLobbyFlow } from "./hooks/useLobbyFlow";
 import { FORMATION_LABELS, FORMATION_DOTS } from "../../shared/formations";
 import type { Formation, GameMode, LobbyRoomResponse, PoolLeagueId, PoolMinRating } from "../../shared/api/contracts";
-import { GAME_MODE_LABELS, POOL_LEAGUE_OPTIONS, POOL_MIN_RATING_OPTIONS, SESSION_STATUS_LABELS, poolLeagueLabel } from "../../shared/api/contracts";
+import { GAME_MODE_LABELS, MIN_POOL_CARD_COUNT, POOL_LEAGUE_OPTIONS, POOL_MIN_RATING_OPTIONS, SESSION_STATUS_LABELS, poolLeagueLabel } from "../../shared/api/contracts";
 import { saveNickname } from "../../shared/session";
 
 const STATUS_BADGE_COLORS: Record<string, string> = {
@@ -180,6 +180,8 @@ export function LobbyPage() {
     setCreateMinPoolRating,
     createPoolLeague,
     setCreatePoolLeague,
+    poolMinRatingOptions,
+    poolMinRatingOptionsLoaded,
   } = useLobbyFlow();
 
   const maxPlayers = snapshot?.maxPlayers ?? 2;
@@ -189,6 +191,9 @@ export function LobbyPage() {
   const isInSession = snapshot?.joined === true;
   const status = snapshot?.status;
   const nicknameReady = nicknameInput.trim().length >= 2;
+  const hasSelectablePoolRating = poolMinRatingOptions.some((o) => o.selectable);
+  const canCreateRoom = nicknameReady
+    && (!poolMinRatingOptionsLoaded || hasSelectablePoolRating);
 
   const onCreateRoom = () => {
     const trimmed = nicknameInput.trim().substring(0, 20);
@@ -255,23 +260,39 @@ export function LobbyPage() {
             </select>
             <label className="block text-slate-400 text-sm mb-2">Card pool — minimum overall</label>
             <div className="flex flex-wrap gap-2 mb-4">
-              {POOL_MIN_RATING_OPTIONS.map((rating) => (
-                <button
-                  key={rating}
-                  type="button"
-                  onClick={() => setCreateMinPoolRating(rating)}
-                  className={`text-sm font-medium px-3 py-2 rounded-lg border transition-colors ${
-                    createMinPoolRating === rating
-                      ? "bg-card-gold/20 border-card-gold/50 text-card-gold"
-                      : "bg-surface-elevated border-white/10 text-slate-300 hover:border-white/30"
-                  }`}
-                >
-                  {rating}+ OVR
-                </button>
-              ))}
+              {POOL_MIN_RATING_OPTIONS.map((rating) => {
+                const option = poolMinRatingOptions.find((o) => o.minRating === rating);
+                const selectable = !poolMinRatingOptionsLoaded || (option?.selectable ?? false);
+                const cardCount = option?.cardCount;
+                return (
+                  <button
+                    key={rating}
+                    type="button"
+                    onClick={() => selectable && setCreateMinPoolRating(rating)}
+                    disabled={!selectable}
+                    title={
+                      !selectable && cardCount != null
+                        ? `${cardCount} players available (need ${MIN_POOL_CARD_COUNT}+)`
+                        : undefined
+                    }
+                    className={`text-sm font-medium px-3 py-2 rounded-lg border transition-colors ${
+                      createMinPoolRating === rating
+                        ? "bg-card-gold/20 border-card-gold/50 text-card-gold"
+                        : selectable
+                          ? "bg-surface-elevated border-white/10 text-slate-300 hover:border-white/30"
+                          : "bg-surface-elevated/50 border-white/5 text-slate-600 cursor-not-allowed"
+                    }`}
+                  >
+                    {rating}+ OVR{!selectable && poolMinRatingOptionsLoaded ? " (unavailable)" : ""}
+                  </button>
+                );
+              })}
             </div>
             <p className="text-slate-500 text-xs mb-4">
               Only {poolLeagueLabel(createPoolLeague)} cards rated {createMinPoolRating} or higher appear in the auction.
+              {poolMinRatingOptionsLoaded && (
+                <> Each threshold needs at least {MIN_POOL_CARD_COUNT} eligible players.</>
+              )}
             </p>
             <label className="block text-slate-400 text-sm mb-2">Choose your nickname</label>
             <div className="flex gap-3">
@@ -284,12 +305,17 @@ export function LobbyPage() {
               />
               <button
                 onClick={onCreateRoom}
-                disabled={loading || !nicknameReady}
+                disabled={loading || !canCreateRoom}
                 className="bg-accent hover:bg-blue-600 disabled:opacity-50 text-white font-bold py-3 px-6 rounded-xl text-lg transition-colors whitespace-nowrap"
               >
                 {loading ? "Creating..." : "Create Room"}
               </button>
             </div>
+            {poolMinRatingOptionsLoaded && !hasSelectablePoolRating && (
+              <p className="text-red-400 text-xs mt-1">
+                No rating threshold has enough players for {poolLeagueLabel(createPoolLeague)} (need {MIN_POOL_CARD_COUNT}+).
+              </p>
+            )}
             {nicknameInput.trim().length > 0 && nicknameInput.trim().length < 2 && (
               <p className="text-red-400 text-xs mt-1">Minimum 2 characters</p>
             )}

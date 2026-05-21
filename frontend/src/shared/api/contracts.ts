@@ -49,8 +49,20 @@ export const GAME_MODE_LABELS: Record<GameMode, string> = {
 
 export const POOL_MIN_RATING_OPTIONS = [70, 75, 80] as const;
 export type PoolMinRating = (typeof POOL_MIN_RATING_OPTIONS)[number];
+export const MIN_POOL_CARD_COUNT = 100;
 
-export type PoolLeagueId = "PREMIER_LEAGUE" | "LA_LIGA" | "SERIE_A" | "BUNDESLIGA";
+export interface PoolMinRatingOption {
+  minRating: number;
+  cardCount: number;
+  selectable: boolean;
+}
+
+export interface PoolMinRatingOptionsResponse {
+  poolLeague: PoolLeagueId | string;
+  options: PoolMinRatingOption[];
+}
+
+export type PoolLeagueId = "PREMIER_LEAGUE" | "LA_LIGA" | "SERIE_A" | "BUNDESLIGA" | "SUPER_LIG";
 
 export const POOL_LEAGUE_OPTIONS: ReadonlyArray<{
   id: PoolLeagueId;
@@ -58,6 +70,7 @@ export const POOL_LEAGUE_OPTIONS: ReadonlyArray<{
   enabled: boolean;
 }> = [
   { id: "PREMIER_LEAGUE", label: "Premier League", enabled: true },
+  { id: "SUPER_LIG", label: "Trendyol Super Lig", enabled: true },
   { id: "LA_LIGA", label: "La Liga", enabled: false },
   { id: "SERIE_A", label: "Serie A", enabled: false },
   { id: "BUNDESLIGA", label: "Bundesliga", enabled: false },

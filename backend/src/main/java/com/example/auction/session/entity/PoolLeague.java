@@ -8,7 +8,8 @@ public enum PoolLeague {
     PREMIER_LEAGUE("Premier League", true),
     LA_LIGA("La Liga", false),
     SERIE_A("Serie A", false),
-    BUNDESLIGA("Bundesliga", false);
+    BUNDESLIGA("Bundesliga", false),
+    SUPER_LIG("Trendyol Super Lig", true);
 
     private final String displayName;
     private final boolean selectable;

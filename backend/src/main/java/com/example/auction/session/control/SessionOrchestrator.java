@@ -2,6 +2,7 @@ package com.example.auction.session.control;
 
 import com.example.auction.bidding.control.AuctionService;
 import com.example.auction.lobby.boundary.LobbyRoomResponse;
+import com.example.auction.lobby.boundary.PoolMinRatingOptionsResponse;
 import com.example.auction.lobby.boundary.SessionSnapshotResponse;
 import com.example.auction.lobby.control.LobbyService;
 import com.example.auction.session.entity.Formation;
@@ -23,6 +24,10 @@ public class SessionOrchestrator {
 
     public List<LobbyRoomResponse> listRooms() {
         return lobbyService.listRooms();
+    }
+
+    public PoolMinRatingOptionsResponse getPoolMinRatingOptions(String poolLeague) {
+        return lobbyService.getPoolMinRatingOptions(poolLeague);
     }
 
     public SessionSnapshotResponse createRoom(

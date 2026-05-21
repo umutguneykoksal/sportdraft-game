@@ -61,6 +61,10 @@ public class CardCatalogService {
             .toList();
     }
 
+    public int countCardsForPool(PoolLeague league, int minRating) {
+        return getCardIdsForPool(league, minRating).size();
+    }
+
     public Card getCard(UUID cardId) {
         Card card = cardMap.get(cardId);
         if (card == null) {

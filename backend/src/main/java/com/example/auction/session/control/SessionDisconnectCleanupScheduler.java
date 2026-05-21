@@ -9,6 +9,7 @@ import com.example.auction.session.redis.ActiveSession;
 import com.example.auction.session.redis.ActiveSessionStore;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -32,7 +33,12 @@ public class SessionDisconnectCleanupScheduler {
         SessionStatus.FORMATION_SELECT,
         SessionStatus.COUNTDOWN
     );
-    /** Grace period before archiving FINISHED sessions to let clients poll final state. */
+    private static final Set<SessionStatus> LOBBY_PHASE_STATUSES = Set.of(
+        SessionStatus.WAITING,
+        SessionStatus.COUNTDOWN,
+        SessionStatus.FORMATION_SELECT
+    );
+    /** Grace period before archiving FINISHED duel sessions to let clients poll final state. */
     private static final Duration FINISHED_ARCHIVE_GRACE_PERIOD = Duration.ofMinutes(2);
 
     private final ActiveSessionStore sessionStore;
@@ -40,7 +46,9 @@ public class SessionDisconnectCleanupScheduler {
     private final SessionArchiver sessionArchiver;
     private final SessionEventLog eventLog;
     private final Duration disconnectTimeout;
-    
+    private final Duration tournamentLobbyDisconnectTimeout;
+    private final Duration tournamentRetention;
+
     /** Tracks when we first observed a session as FINISHED. */
     private final ConcurrentHashMap<UUID, Instant> finishedObservedAt = new ConcurrentHashMap<>();
 
@@ -49,13 +57,17 @@ public class SessionDisconnectCleanupScheduler {
         SseEmitterRegistry sseEmitterRegistry,
         SessionArchiver sessionArchiver,
         SessionEventLog eventLog,
-        @Value("${app.session.disconnect-timeout-seconds:20}") long disconnectTimeoutSeconds
+        @Value("${app.session.disconnect-timeout-seconds:20}") long disconnectTimeoutSeconds,
+        @Value("${app.session.tournament-lobby-disconnect-timeout-seconds:240}") long tournamentLobbyDisconnectTimeoutSeconds,
+        @Value("${app.session.tournament-retention-seconds:240}") long tournamentRetentionSeconds
     ) {
         this.sessionStore = sessionStore;
         this.sseEmitterRegistry = sseEmitterRegistry;
         this.sessionArchiver = sessionArchiver;
         this.eventLog = eventLog;
         this.disconnectTimeout = Duration.ofSeconds(disconnectTimeoutSeconds);
+        this.tournamentLobbyDisconnectTimeout = Duration.ofSeconds(tournamentLobbyDisconnectTimeoutSeconds);
+        this.tournamentRetention = Duration.ofSeconds(tournamentRetentionSeconds);
     }
 
     @Scheduled(fixedDelay = 5000)
@@ -65,6 +77,10 @@ public class SessionDisconnectCleanupScheduler {
             try {
                 ActiveSession session = sessionStore.findById(sessionId).orElse(null);
                 if (session == null) continue;
+
+                if (cleanupLobbyPhaseDisconnects(session)) {
+                    continue;
+                }
 
                 // Per-player forfeit: if one player disconnected while the other is still connected
                 if (session.playerCount() == 2 && FORFEIT_ELIGIBLE_STATUSES.contains(session.getStatus())) {
@@ -169,41 +185,144 @@ public class SessionDisconnectCleanupScheduler {
         return true;
     }
 
-    /** 
+    /**
+     * Evicts disconnected players from pre-auction lobbies.
+     * Tournament rooms use a longer timeout; an empty room is deleted immediately.
+     */
+    private boolean cleanupLobbyPhaseDisconnects(ActiveSession session) {
+        if (!LOBBY_PHASE_STATUSES.contains(session.getStatus())) {
+            return false;
+        }
+
+        Duration lobbyTimeout = lobbyDisconnectTimeout(session);
+        UUID sessionId = session.getId();
+        List<ActivePlayer> toRemove = new ArrayList<>();
+
+        for (ActivePlayer player : session.getPlayers()) {
+            if (sseEmitterRegistry.hasActivePlayerEmitter(sessionId, player.getUserId())) {
+                sseEmitterRegistry.forgetPlayerDisconnect(sessionId, player.getUserId());
+            } else if (sseEmitterRegistry.isPlayerDisconnectedLongerThan(
+                sessionId, player.getUserId(), lobbyTimeout
+            )) {
+                toRemove.add(player);
+            }
+        }
+
+        if (toRemove.isEmpty()
+            && !session.getPlayers().isEmpty()
+            && !sseEmitterRegistry.hasActiveConnections(sessionId)
+            && sseEmitterRegistry.isDisconnectedLongerThan(sessionId, lobbyTimeout)) {
+            toRemove.addAll(session.getPlayers());
+        }
+
+        if (toRemove.isEmpty()) {
+            return false;
+        }
+
+        long versionBefore = session.getVersion();
+        SessionStatus statusBefore = session.getStatus();
+        for (ActivePlayer player : toRemove) {
+            session.getPlayers().remove(player);
+            log.info(
+                "Removed disconnected player {} from lobby session {} ({})",
+                player.getNickname(),
+                sessionId,
+                statusBefore
+            );
+        }
+
+        if (session.playerCount() == 0) {
+            sessionStore.delete(sessionId);
+            sseEmitterRegistry.forgetSession(sessionId);
+            eventLog.forget(sessionId);
+            log.info("Deleted empty lobby session {}", sessionId);
+            return true;
+        }
+
+        boolean needsReset = session.playerCount() < session.getMaxPlayers()
+            && (statusBefore == SessionStatus.COUNTDOWN
+                || statusBefore == SessionStatus.FORMATION_SELECT);
+        if (needsReset) {
+            session.moveToWaiting();
+            sessionStore.saveIfVersionMatch(session, versionBefore);
+            sseEmitterRegistry.broadcast(
+                sessionId,
+                "countdown_cancelled",
+                Map.of("sessionId", sessionId, "remainingPlayers", session.playerCount())
+            );
+        } else {
+            sessionStore.saveIfVersionMatch(session, versionBefore);
+        }
+
+        sseEmitterRegistry.broadcast(
+            sessionId,
+            "lobby_updated",
+            Map.of(
+                "sessionId", sessionId,
+                "playerCount", session.playerCount(),
+                "status", session.getStatus()
+            )
+        );
+        return true;
+    }
+
+    /**
      * Archive FINISHED sessions after the grace period expires.
-     * This allows clients time to poll the final match result before the session is removed from Redis.
+     * Tournament sessions are dropped from Redis after simulation completes; bracket data stays in Postgres.
      */
     @Scheduled(fixedDelay = 10_000)
     public void archiveFinishedSessions() {
         Instant now = Instant.now();
-        
+
         for (ActiveSession session : sessionStore.findByStatus(SessionStatus.FINISHED)) {
             UUID sessionId = session.getId();
-            
-            // Track when we first saw this session as FINISHED
+            Duration gracePeriod = finishedGracePeriod(session);
+
             Instant firstObserved = finishedObservedAt.computeIfAbsent(sessionId, k -> now);
-            
-            // Check if grace period has elapsed
+
             Duration elapsed = Duration.between(firstObserved, now);
-            if (elapsed.compareTo(FINISHED_ARCHIVE_GRACE_PERIOD) < 0) {
+            if (elapsed.compareTo(gracePeriod) < 0) {
                 log.debug("Session {} FINISHED but grace period not elapsed yet ({}s / {}s)",
-                    sessionId, elapsed.toSeconds(), FINISHED_ARCHIVE_GRACE_PERIOD.toSeconds());
+                    sessionId, elapsed.toSeconds(), gracePeriod.toSeconds());
                 continue;
             }
-            
+
             try {
-                sessionArchiver.archive(session);
+                if (session.getGameMode() == GameMode.TOURNAMENT) {
+                    sessionStore.delete(sessionId);
+                    log.info("Removed FINISHED tournament session {} after {}s retention",
+                        sessionId, gracePeriod.toSeconds());
+                } else {
+                    sessionArchiver.archive(session);
+                    log.info("Archived FINISHED session {} after grace period", sessionId);
+                }
                 finishedObservedAt.remove(sessionId);
                 sseEmitterRegistry.forgetSession(sessionId);
                 eventLog.forget(sessionId);
-                log.info("Archived FINISHED session {} after grace period", sessionId);
             } catch (Exception e) {
-                log.warn("Archival failed for session {}", sessionId, e);
+                log.warn("Cleanup failed for session {}", sessionId, e);
             }
         }
-        
-        // Cleanup stale entries (sessions that were removed outside this scheduler)
+
         finishedObservedAt.keySet().removeIf(id -> !sessionStore.exists(id));
+    }
+
+    private Duration lobbyDisconnectTimeout(ActiveSession session) {
+        if (session.getGameMode() == GameMode.TOURNAMENT) {
+            return tournamentLobbyDisconnectTimeout;
+        }
+        return disconnectTimeout;
+    }
+
+    static Duration finishedGracePeriod(ActiveSession session, Duration tournamentRetention) {
+        if (session.getGameMode() == GameMode.TOURNAMENT) {
+            return tournamentRetention;
+        }
+        return FINISHED_ARCHIVE_GRACE_PERIOD;
+    }
+
+    private Duration finishedGracePeriod(ActiveSession session) {
+        return finishedGracePeriod(session, tournamentRetention);
     }
 
     /** Tournament / league sessions must not be ended as 0-0 when SSE drops after draft. */

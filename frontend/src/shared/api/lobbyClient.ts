@@ -1,4 +1,4 @@
-import { GameMode, LobbyRoomResponse, MatchEvent, PoolLeagueId, PoolMinRating, SessionSnapshotResponse, SpectateStateResponse } from "./contracts";
+import { GameMode, LobbyRoomResponse, MatchEvent, PoolLeagueId, PoolMinRating, PoolMinRatingOptionsResponse, SessionSnapshotResponse, SpectateStateResponse } from "./contracts";
 import { authHeaders, getApiBase, getApiPrefix, parseOrThrow } from "./httpClient";
 
 export async function listLobbies(): Promise<LobbyRoomResponse[]> {
@@ -6,6 +6,19 @@ export async function listLobbies(): Promise<LobbyRoomResponse[]> {
     headers: authHeaders(),
   });
   return parseOrThrow<LobbyRoomResponse[]>(response, `listLobbies failed: ${response.status}`);
+}
+
+export async function getPoolMinRatingOptions(
+  poolLeague: PoolLeagueId
+): Promise<PoolMinRatingOptionsResponse> {
+  const params = new URLSearchParams({ poolLeague });
+  const response = await fetch(`${getApiBase()}${getApiPrefix()}/lobbies/pool-options?${params}`, {
+    headers: authHeaders(),
+  });
+  return parseOrThrow<PoolMinRatingOptionsResponse>(
+    response,
+    `getPoolMinRatingOptions failed: ${response.status}`
+  );
 }
 
 export async function createRoom(

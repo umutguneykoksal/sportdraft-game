@@ -16,6 +16,7 @@ class PoolLeagueTest {
     @Test
     void resolveAcceptsSelectableLeague() {
         assertThat(PoolLeague.resolve("PREMIER_LEAGUE")).isEqualTo(PoolLeague.PREMIER_LEAGUE);
+        assertThat(PoolLeague.resolve("SUPER_LIG")).isEqualTo(PoolLeague.SUPER_LIG);
     }
 
     @Test

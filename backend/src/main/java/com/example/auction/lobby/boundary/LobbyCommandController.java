@@ -1,6 +1,7 @@
 package com.example.auction.lobby.boundary;
 
 import com.example.auction.common.web.AuthTokenResolver;
+import com.example.auction.lobby.boundary.PoolMinRatingOptionsResponse;
 import com.example.auction.session.control.SessionOrchestrator;
 import jakarta.validation.Valid;
 import java.util.List;
@@ -11,6 +12,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -28,6 +30,13 @@ public class LobbyCommandController {
     @GetMapping
     public List<LobbyRoomResponse> listRooms() {
         return sessionOrchestrator.listRooms();
+    }
+
+    @GetMapping("/pool-options")
+    public PoolMinRatingOptionsResponse poolMinRatingOptions(
+        @RequestParam(required = false) String poolLeague
+    ) {
+        return sessionOrchestrator.getPoolMinRatingOptions(poolLeague);
     }
 
     @PostMapping

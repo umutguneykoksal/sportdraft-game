@@ -5,8 +5,11 @@ import com.example.auction.bidding.control.CardCatalogService;
 import com.example.auction.common.realtime.SessionEventLog;
 import com.example.auction.common.sse.SseEmitterRegistry;
 import com.example.auction.lobby.boundary.LobbyRoomResponse;
+import com.example.auction.lobby.boundary.PoolMinRatingOptionView;
+import com.example.auction.lobby.boundary.PoolMinRatingOptionsResponse;
 import com.example.auction.lobby.boundary.SessionSnapshotResponse;
 import com.example.auction.lobby.boundary.LobbyPlayerView;
+import com.example.auction.session.entity.CardPoolRules;
 import com.example.auction.session.entity.Formation;
 import com.example.auction.session.entity.GameMode;
 import com.example.auction.session.entity.PoolLeague;
@@ -22,6 +25,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.http.HttpStatus;
@@ -33,6 +37,14 @@ public class LobbyService {
 
     private static final long STARTING_BUDGET_CENTS = 100L;
     private static final int MAX_CONCURRENT_ROOMS = 4;
+    /** Pre-draft lobby and in-progress auction only; post-draft competition lives in Postgres. */
+    static final Set<SessionStatus> LOBBY_LISTABLE_STATUSES = Set.of(
+        SessionStatus.WAITING,
+        SessionStatus.COUNTDOWN,
+        SessionStatus.FORMATION_SELECT,
+        SessionStatus.AUCTIONING,
+        SessionStatus.MATCH_START_PENDING
+    );
     /** Countdown after both players confirm formation, before auction begins. */
     private static final long FORMATION_BOTH_READY_COUNTDOWN_SECONDS = 5L;
 
@@ -52,11 +64,23 @@ public class LobbyService {
         this.auctionService = auctionService;
     }
 
+    public PoolMinRatingOptionsResponse getPoolMinRatingOptions(String poolLeague) {
+        PoolLeague league = PoolLeague.fromWire(poolLeague);
+        List<PoolMinRatingOptionView> options = PoolMinRating.ALLOWED.stream()
+            .map(minRating -> {
+                int cardCount = cardCatalog.countCardsForPool(league, minRating);
+                return new PoolMinRatingOptionView(minRating, cardCount, CardPoolRules.isViable(cardCount));
+            })
+            .toList();
+        return new PoolMinRatingOptionsResponse(league.name(), options);
+    }
+
     public List<LobbyRoomResponse> listRooms() {
         List<UUID> activeIds = sessionStore.findAllActiveIds();
         if (activeIds.isEmpty()) return List.of();
         List<ActiveSession> sessions = sessionStore.findByStatusNot(SessionStatus.FINISHED);
         return sessions.stream()
+            .filter(s -> LOBBY_LISTABLE_STATUSES.contains(s.getStatus()))
             .map(s -> new LobbyRoomResponse(
                 s.getId(),
                 s.getStatus().name(),
@@ -183,10 +207,11 @@ public class LobbyService {
 
         session.getPlayers().remove(player);
 
-        // Empty room — delete instead of leaving a zombie session in Redis
+        // Empty room — delete immediately when everyone exits the lobby
         if (session.playerCount() == 0) {
             sessionStore.delete(sessionId);
             sseEmitterRegistry.forgetSession(sessionId);
+            eventLog.forget(sessionId);
             return snapshot(session, userId);
         }
 
@@ -326,10 +351,16 @@ public class LobbyService {
     }
 
     private void ensurePoolHasCards(PoolLeague league, int minRating) {
-        if (cardCatalog.getCardIdsForPool(league, minRating).isEmpty()) {
+        int cardCount = cardCatalog.countCardsForPool(league, minRating);
+        if (!CardPoolRules.isViable(cardCount)) {
             throw new ResponseStatusException(
                 HttpStatus.UNPROCESSABLE_ENTITY,
-                "No cards available for %s at minimum rating %d".formatted(league.displayName(), minRating)
+                "Not enough cards for %s at minimum rating %d (%d available, need %d)".formatted(
+                    league.displayName(),
+                    minRating,
+                    cardCount,
+                    CardPoolRules.MIN_CARD_COUNT
+                )
             );
         }
     }
