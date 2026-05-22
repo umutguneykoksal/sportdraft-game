@@ -1,152 +1,175 @@
 # Football Card Auction Game
 
-Browser-based football card auction draft game. Players bid on cards from a **100-credit** budget, fill an **11-slot formation**, then the server runs a rating-weighted match simulation.
+![CI](https://github.com/umutguneykoksal/football-card-auction-game/actions/workflows/ci.yml/badge.svg)
+![Java](https://img.shields.io/badge/Java-21-orange)
+![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.3-green)
+![React](https://img.shields.io/badge/React-18-61dafb)
+![License](https://img.shields.io/badge/License-Proprietary-red)
 
-Supported formats:
+Browser-based **multiplayer football card auction draft** game. Players bid on cards from a **100-credit** budget, fill an **11-slot formation**, then the server runs a **rating-weighted match simulation**.
 
-| Mode | Players | Status |
-|------|---------|--------|
-| **Duel** | 2 | Full flow (lobby → draft → match) |
-| **Tournament** | 4 | Draft + bracket; semi/final matches with replay |
-| **League** | 4 | Round-robin (3 matchdays, live standings; 2-way tie → playoff final) |
+> **Portfolio / demo project** — source is visible on GitHub for review purposes.  
+> **Not open source.** See [LICENSE](LICENSE) — copying, forking for reuse, or redistribution without permission is not allowed.
+
+---
+
+## Highlights
+
+- **3 game modes** — Duel (2p), Tournament (4p bracket), League (4p round-robin + playoff)
+- **Server-authoritative** state — Redis live sessions + PostgreSQL persistence
+- **Real-time** — WebSocket + SSE fallback, ordered event log + reconnect sync
+- **Modular monolith** — BCE slices (`boundary`, `control`, `entity`) with ADRs
+- **Strong test discipline** — JaCoCo 85% backend gate, Jest coverage gate, Testcontainers IT, Playwright E2E (3 modes)
+
+---
+
+## Game modes
+
+| Mode | Players | Flow |
+|------|---------|------|
+| **Duel** | 2 | Lobby → formation → auction draft → instant match |
+| **Tournament** | 4 | Draft → semi-finals → intermission → final → champion |
+| **League** | 4 | Draft → 3 matchdays → standings → co-champion or playoff final |
+
+---
 
 ## Stack
 
-- **Backend**: Java 21, Spring Boot 3.3 (Web, JPA, Validation, Actuator), PostgreSQL, Redis, Flyway, JUnit 5, Testcontainers
-- **Frontend**: React 18 + TypeScript (Create React App), TanStack Query, Zustand, Tailwind CSS
-- **Real-time**: WebSocket (primary) + SSE fallback; REST event sync
-- **API**: `/api/v2` canonical; `/api` v1 `@Deprecated` fallback — see [ADR-003](docs/adr/ADR-003-api-v2-migration.md)
-- **Infra**: Docker Compose (local Postgres + Redis), Railway (backend + frontend deploy)
+| Layer | Technology |
+|-------|------------|
+| Backend | Java 21, Spring Boot 3.3, JPA, Validation, Actuator |
+| Data | PostgreSQL 16, Redis 7, Flyway |
+| Frontend | React 18, TypeScript, TanStack Query, Zustand, Tailwind |
+| Real-time | WebSocket (primary), SSE fallback, REST event sync |
+| API | `/api/v2` canonical ([ADR-003](docs/adr/ADR-003-api-v2-migration.md)) |
+| Testing | JUnit 5, Testcontainers, Jest, Playwright |
+| Infra | Docker Compose (local), Railway (deploy) |
+
+---
 
 ## Repository layout
 
 ```
-backend/          Java modular monolith — BCE slices under com.example.auction.<feature>
-frontend/         CRA app — src/features/<feature>/ + src/shared/
+backend/          Java modular monolith — com.example.auction.<feature>
+frontend/         CRA app — src/features/ + src/shared/
+e2e/              Playwright smoke tests (duel, tournament, league)
 infra/            docker-compose.yml (Postgres 16, Redis 7)
-docs/             ADRs, player-data-pipeline guide
-data/             Local SoFIFA exports + processed league CSV/SQL (gitignored)
-scripts/          Python helpers for card-pool generation (gitignored)
+docs/             ADRs, test coverage matrix, architecture notes
 ```
 
-Backend feature slices: `lobby`, `session`, `bidding`, `simulation`, `competition`.
+**Backend slices:** `lobby`, `session`, `bidding`, `simulation`, `competition`
 
-Frontend routes: `/lobby`, `/auction/:sessionId`, `/match/:sessionId` (duel), `/tournament/:sessionId`, `/tournament/:sessionId/match/:matchId`, `/league/:sessionId`, `/league/:sessionId/match/:matchId`, `/spectate/:sessionId`.
+**Frontend routes:** `/lobby`, `/auction/:sessionId`, `/match/:sessionId`, `/tournament/...`, `/league/...`, `/spectate/:sessionId`
+
+---
 
 ## Quick start
 
+### Prerequisites
+
+- JDK 21, Maven 3.9+
+- Node.js 20+
+- Docker (for Postgres/Redis and integration tests)
+
+### Run locally
+
 ```bash
-# Infra
+# 1. Infrastructure
 cd infra && docker compose up -d
 
-# Backend (port 8080)
+# 2. Backend (http://localhost:8080)
 cd backend && mvn spring-boot:run -Dspring-boot.run.profiles=local
 
-# Frontend (port 3000)
-cd frontend && npm install && npm start
+# 3. Frontend (http://localhost:3000)
+cd frontend && npm ci && npm start
 ```
 
-Set `REACT_APP_API_BASE=http://localhost:8080` in `frontend/.env` if needed.
+Optional: `frontend/.env`
 
-### API version rollback
+```env
+REACT_APP_API_BASE=http://localhost:8080
+```
 
-Default frontend uses v2. To fall back to v1 without backend changes:
+### API v1 fallback
 
 ```env
 REACT_APP_API_VERSION=v1
 ```
 
-## Card pools
+---
 
-At room creation the host picks a **league** and **minimum overall rating** (70 / 75 / 80). Only cards matching both filters enter the auction pool.
+## Testing
 
-| League (`poolLeague`) | Lobby label | Selectable |
-|-----------------------|-------------|------------|
-| `PREMIER_LEAGUE` | Premier League | yes |
-| `SUPER_LIG` | Trendyol Super Lig | yes |
-| `LA_LIGA`, `SERIE_A`, `BUNDESLIGA` | — | coming soon |
+| Layer | Command | Gate |
+|-------|---------|------|
+| Backend unit + IT | `cd backend && mvn verify` | JaCoCo **85%** line coverage |
+| Backend unit only | `cd backend && mvn test -Pskip-it` | No Docker required |
+| Frontend | `cd frontend && npm run test:coverage` | Jest thresholds 85/75/80/85 |
+| E2E (stack running) | `cd e2e && E2E_BASE_URL=http://localhost:3000 npm test` | Duel + tournament + league smoke |
 
-A rating threshold is only offered when the league pool has **at least 100 eligible cards** at that level. The lobby UI and `GET /api/v2/lobbies/pool-options` reflect this; room creation is rejected server-side if the pool is too small.
+See [docs/test-coverage-matrix.md](docs/test-coverage-matrix.md) and [docs/test-coverage-backlog-phase5.md](docs/test-coverage-backlog-phase5.md).
 
-### Adding / refreshing card data
-
-Player cards live in Postgres (`card.pool_league`, `card.rating`, club, nationality, positions). To import from SoFIFA CSV:
-
-1. Put raw export at `data/raw/players.csv`
-2. Run `scripts/split_players_by_league.py` → `data/processed/leagues/`
-3. Run `scripts/generate_league_cards_sql.py` → SQL for Flyway or manual import
-
-See [docs/player-data-pipeline.md](docs/player-data-pipeline.md) and [data/processed/README.md](data/processed/README.md).
+---
 
 ## CI (GitHub Actions)
 
-Every push to `main`/`master`, every pull request, and manual **Actions → CI → Run workflow** runs:
+On every push/PR to `main`/`master`:
 
-| Job | Command | Notes |
-|-----|---------|--------|
-| Backend | `mvn verify` | Unit + IT via **Testcontainers** (ephemeral Postgres 16 + Redis 7 Docker containers) |
-| Frontend | `npm test -- --watchAll=false` | Includes `CompetitionMatchPage` smoke test |
+| Job | What runs |
+|-----|-----------|
+| **Backend** | `mvn verify` — unit + Testcontainers IT, JaCoCo 85% |
+| **Frontend** | `npm run test:coverage` |
+| **Playwright E2E** | Full stack smoke — duel, tournament, league |
 
-Integration tests start their own Docker containers (same path locally and on GitHub Actions). Postgres database `auction_it` is created per test JVM; Flyway applies migrations; containers are destroyed when the JVM exits.
+---
 
-```bash
-cd backend && mvn verify          # unit + IT (Docker required)
-cd backend && mvn test -Pskip-it  # unit only when Docker is unavailable
-cd frontend && npm test -- --watchAll=false
-```
+## Architecture (short)
+
+- **Redis** — active session state (`ActiveSession`), auction rounds, optimistic locking
+- **PostgreSQL** — cards, competitions, match history, Flyway migrations
+- **Domain events** — `ApplicationEventPublisher` + `@TransactionalEventListener(AFTER_COMMIT)` + idempotent `ProcessedEvent` handlers
+- **Competition** — shared `CompetitionMatchCommandService` with league/tournament mode hooks
+- **Auth (MVP)** — opaque UUID bearer token ([ADR-002](docs/adr/ADR-002-anonymous-player-identity.md))
+
+Key ADRs: [docs/adr/](docs/adr/) — especially [ADR-005](docs/adr/ADR-005-game-mode-and-competition.md).
+
+---
+
+## Card pools
+
+Host selects **league** + **minimum OVR** (70 / 75 / 80) at room creation. Thresholds require **≥ 100 eligible cards**.
+
+| League | Status |
+|--------|--------|
+| Premier League | Available |
+| Trendyol Super Lig | Available |
+| La Liga, Serie A, Bundesliga | Coming soon |
+
+Data pipeline: [docs/player-data-pipeline.md](docs/player-data-pipeline.md)
+
+---
 
 ## Deploy
 
-## Architecture
+- **Backend + frontend:** Railway (see project infra config)
+- **Local:** Docker Compose + Spring `local` profile + CRA build served statically
 
-- **Modular monolith** with BCE layout: `{boundary, control, entity}` per feature
-- **Command boundary**: `SessionOrchestrator` → `LobbyService` / `AuctionService`; competition via `competition` slice
-- **Active session state** in Redis (`ActiveSession`); Postgres for cards, match history, competitions, Flyway migrations
-- **Cross-aggregate effects**: Spring `ApplicationEventPublisher` + `@TransactionalEventListener(AFTER_COMMIT)` with idempotent `ProcessedEvent` handlers
-- **Auth (MVP)**: opaque UUID session token — REST `Authorization: Bearer`, WS/SSE `?token=` — see [ADR-002](docs/adr/ADR-002-anonymous-player-identity.md)
-
-### Competition slice (tournament + league)
-
-Shared match flow for 4-player modes after draft:
-
-- **`CompetitionMatchService`** — facade; delegates to **`CompetitionMatchCommandService`**
-- **`CompetitionMatchModeHooks`** — league vs tournament open/ack guards and phase advancement
-- **`CompetitionVisibilityPolicy`** — watch/score/replay rules (`LeagueRules`, `TournamentRules`)
-- **Phase machines** — `LeaguePhaseMachine`, `TournamentPhaseMachine` (matchday breaks, intermission, playoff)
-- **SSE notifiers** — `LeagueProgressNotifier`, `TournamentProgressNotifier`
-- **Frontend** — shared `CompetitionMatchPage`, `useCompetitionHub`, `competitionFlow.ts`; mode-specific `leagueFlow` / `tournamentFlow`
-
-Key v2 endpoints:
-
-| Area | Path |
-|------|------|
-| Lobbies | `GET/POST /api/v2/lobbies`, `GET /api/v2/lobbies/pool-options` |
-| Session | `GET /api/v2/sessions/{id}`, formation + match-start commands |
-| Auction | `POST /api/v2/sessions/{id}/rounds`, bids, pass, ready-next |
-| Competition | `GET /api/v2/sessions/{id}/competition` |
-| Competition match | `POST .../competition/matches/{matchId}/open`, `POST .../ack-watch` (tournament + league) |
-| Real-time | `GET /api/v2/sessions/{id}/events/stream` (SSE), WebSocket upgrade |
-
-### Competition SSE events
-
-Clients subscribe on the session stream; tournament and league pages refresh on these event types:
-
-| Event | Mode | When |
-|-------|------|------|
-| `tournament_started` | Tournament | Bracket created after draft |
-| `tournament_intermission` | Tournament | Semis done; final countdown |
-| `tournament_final_start` | Tournament | Final phase begins |
-| `tournament_updated` | Tournament | Bracket state changed |
-| `tournament_completed` | Tournament | Champion decided |
-| `league_started` | League | Fixtures created after draft |
-| `league_matchday_break` | League | Matchday finished; 15s break |
-| `league_matchday_started` | League | Next matchday opens |
-| `league_playoff_started` | League | 2-way tie → playoff final |
-| `league_updated` | League | Standings / phase changed |
-| `league_completed` | League | Champion(s) decided |
-
-See [docs/adr/](docs/adr/) for decisions — especially [ADR-005](docs/adr/ADR-005-game-mode-and-competition.md) for tournament/league scope.
+---
 
 ## Admin
 
 Session delete endpoints require `X-Admin-Key` when `APP_ADMIN_API_KEY` is set.
+
+---
+
+## License & copyright
+
+**Copyright © 2026 Umut Guney Koksal. All rights reserved.**
+
+This project is **proprietary**. You may **not** copy, modify, distribute, or use the source code without explicit written permission from the copyright holder.
+
+Public GitHub visibility is for **portfolio demonstration and code review only** — not a grant of reuse rights.
+
+For licensing inquiries: [github.com/umutguneykoksal](https://github.com/umutguneykoksal)
+
+Full terms: [LICENSE](LICENSE)

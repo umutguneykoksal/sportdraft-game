@@ -1,0 +1,45 @@
+Copyright (c) 2026 Umut Guney Koksal. All Rights Reserved.
+
+PROPRIETARY SOFTWARE — NOT OPEN SOURCE
+
+This repository and all of its contents (source code, documentation, configuration,
+database schemas, scripts, assets, and design) are the exclusive property of the
+copyright holder unless otherwise stated.
+
+Permission is NOT granted to any person or entity to:
+
+  • use, copy, or reproduce this software or any portion of it;
+  • modify, adapt, translate, or create derivative works;
+  • merge, publish, distribute, sublicense, lease, lend, or sell copies;
+  • reverse engineer, decompile, or disassemble any part of the software;
+  • remove or alter any copyright, trademark, or proprietary notices;
+
+for any purpose, without prior written permission from the copyright holder.
+
+VIEWING ONLY
+
+Public visibility on GitHub (or elsewhere) is for portfolio and demonstration
+purposes only. Viewing the repository does not grant any license or right to use
+the code in personal, commercial, academic, or open-source projects.
+
+THIRD-PARTY COMPONENTS
+
+This project depends on third-party open-source libraries (Spring Boot, React,
+PostgreSQL drivers, etc.) under their respective licenses. Those licenses apply
+only to those components, not to the original work in this repository.
+
+PLAYER / CARD DATA
+
+Football player names, ratings, club data, and related statistics may be subject
+to third-party intellectual property. This project does not grant rights to
+redistribute such data.
+
+NO WARRANTY
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND. IN NO EVENT
+SHALL THE COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY.
+
+CONTACT
+
+For licensing inquiries, contact the repository owner via GitHub:
+https://github.com/umutguneykoksal

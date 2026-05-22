@@ -1,6 +1,9 @@
 {
   "name": "football-card-auction-e2e",
   "private": true,
+  "license": "UNLICENSED",
+  "author": "Umut Guney Koksal",
+  "description": "Football Card Auction Game — Playwright E2E (proprietary; see LICENSE in repo root)",
   "scripts": {
     "test": "npx playwright test",
     "test:headed": "npx playwright test --headed"

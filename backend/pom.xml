@@ -9,6 +9,20 @@
   <name>auction-backend</name>
   <description>Football card auction game backend</description>
 
+  <licenses>
+    <license>
+      <name>Proprietary</name>
+      <comments>All rights reserved. See LICENSE file in repository root.</comments>
+      <distribution>repo</distribution>
+    </license>
+  </licenses>
+
+  <developers>
+    <developer>
+      <name>Umut Guney Koksal</name>
+    </developer>
+  </developers>
+
   <parent>
     <groupId>org.springframework.boot</groupId>
     <artifactId>spring-boot-starter-parent</artifactId>
