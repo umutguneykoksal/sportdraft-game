@@ -14,7 +14,10 @@ import org.testcontainers.utility.DockerImageName;
  * Spring starts containers once per test JVM; Flyway creates the {@code auction_it} schema;
  * containers are removed when the JVM exits.
  */
-@SpringBootTest(classes = AuctionApplication.class)
+@SpringBootTest(
+    classes = AuctionApplication.class,
+    webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT
+)
 @ImportTestcontainers
 @ActiveProfiles(value = "it", inheritProfiles = false)
 @EnabledIfDockerAvailable
