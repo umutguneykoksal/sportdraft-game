@@ -6,6 +6,8 @@ Multiplayer football card auction draft. Two to four players bid from a 100-cred
 
 Duel (2p), tournament bracket (4p), and league with standings + optional playoff (4p) are all live on the site.
 
+**Football only for now** — basketball is coming soon.
+
 Built and maintained by [Umut Guney Koksal](https://github.com/umutguneykoksal).
 
 ![CI](https://github.com/umutguneykoksal/sportdraft-game/actions/workflows/ci.yml/badge.svg)
@@ -31,19 +33,31 @@ Card pool: host picks league and minimum OVR (70 / 75 / 80). Premier League and 
 
 ## Architecture
 
+```mermaid
+flowchart TB
+  Client["React SPA · sportdraft.dev"]
+
+  Client -->|"REST — commands (bid, join, formation)"| API
+  Client <-->|"WebSocket / SSE — live updates"| API
+
+  subgraph API["Spring Boot · dev.sportdraft"]
+    direction LR
+    lobby[lobby] --- session[session] --- bidding[bidding] --- simulation[simulation]
+    bidding --- competition[competition]
+  end
+
+  API --> Redis[("Redis<br/>active sessions · auction rounds · locks")]
+  API --> PG[("PostgreSQL<br/>cards · competitions · history")]
+
+  style Client fill:#1e293b,stroke:#475569,color:#f8fafc
+  style API fill:#0f172a,stroke:#334155,color:#e2e8f0
+  style Redis fill:#7f1d1d,stroke:#991b1b,color:#fecaca
+  style PG fill:#1e3a5f,stroke:#1d4ed8,color:#bfdbfe
 ```
-React  ──REST──►  Spring Boot  ──►  PostgreSQL
-  │                    │
-  └── WS / SSE ◄───────┴──►  Redis (live sessions, auction state)
-```
 
-Backend package root: `dev.sportdraft` — feature slices `lobby`, `session`, `bidding`, `simulation`, `competition` (boundary / control / entity).
+Each feature slice uses **boundary** (HTTP/WS) · **control** (domain logic) · **entity** (JPA / Redis models).
 
-State is server-side: Redis holds active sessions and auction rounds (with optimistic locking), Postgres holds cards, competitions, and history. Clients send commands and render what the server sends back.
-
-Real-time updates go over WebSocket with SSE as fallback; reconnect pulls from the ordered event log.
-
-Competition flows (league vs tournament) share the same match orchestration with mode-specific rules. Cross-cutting side effects use Spring domain events after commit, with idempotent handlers so retries are safe.
+State is server-side: clients send commands and render what the server sends back. Reconnect pulls from the ordered event log. Cross-cutting effects use Spring domain events after commit, with idempotent handlers.
 
 Auth is an anonymous session token for now (Bearer on REST, query param on the stream).
 
