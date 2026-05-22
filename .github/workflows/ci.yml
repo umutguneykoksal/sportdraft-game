@@ -119,6 +119,6 @@ jobs:
         env:
           E2E_BASE_URL: http://localhost:3000
         run: |
-          npm install
-          npx playwright install chromium
+          npm ci
+          npx playwright install --with-deps chromium
           npm test

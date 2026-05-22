@@ -1,14 +1,12 @@
 package com.example.auction.integration;
 
-import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.awaitility.Awaitility.await;
 
 import com.example.auction.common.realtime.RealtimeConnectionTracker;
 import com.example.auction.lobby.control.LobbyService;
 import com.example.auction.session.control.SessionDisconnectCleanupScheduler;
+import com.example.auction.session.entity.MatchHistoryRepository;
 import com.example.auction.session.entity.SessionStatus;
-import com.example.auction.session.redis.ActiveSession;
 import com.example.auction.session.redis.ActiveSessionStore;
 import java.lang.reflect.Field;
 import java.time.Instant;
@@ -31,6 +29,9 @@ class DuelDisconnectForfeitIT extends AbstractIntegrationTest {
     @Autowired
     private SessionDisconnectCleanupScheduler disconnectCleanupScheduler;
 
+    @Autowired
+    private MatchHistoryRepository matchHistoryRepository;
+
     @Test
     void duelDisconnectDuringAuction_awardsForfeitWin() throws Exception {
         UUID user1 = UUID.randomUUID();
@@ -46,25 +47,17 @@ class DuelDisconnectForfeitIT extends AbstractIntegrationTest {
         connectionTracker.onPlayerFullyDisconnected(sessionId, user1);
         backdatePlayerDisconnect(sessionId, user1, Instant.now().minusSeconds(2));
 
-        await().atMost(3, SECONDS).until(() -> {
-            disconnectCleanupScheduler.cleanupDisconnectedSessions();
-            return sessionStore.findById(sessionId)
-                .map(s -> s.getStatus() == SessionStatus.FINISHED)
-                .orElse(false);
-        });
+        disconnectCleanupScheduler.cleanupDisconnectedSessions();
 
-        ActiveSession finished = sessionStore.getById(sessionId);
-        assertThat(finished.getStatus()).isEqualTo(SessionStatus.FINISHED);
-        assertThat(finished.getMatchWinnerUserId()).isEqualTo(user2);
-
-        ActiveSession session = finished;
-        boolean winnerIsHome = session.playersSortedById().get(0).getUserId().equals(user2);
+        assertThat(sessionStore.findById(sessionId)).isEmpty();
+        var history = matchHistoryRepository.findBySessionId(sessionId).orElseThrow();
+        boolean winnerIsHome = history.getHomeUserId().equals(user2);
         if (winnerIsHome) {
-            assertThat(session.getHomeScore()).isEqualTo(3);
-            assertThat(session.getAwayScore()).isEqualTo(0);
+            assertThat(history.getHomeScore()).isEqualTo(3);
+            assertThat(history.getAwayScore()).isEqualTo(0);
         } else {
-            assertThat(session.getHomeScore()).isEqualTo(0);
-            assertThat(session.getAwayScore()).isEqualTo(3);
+            assertThat(history.getHomeScore()).isEqualTo(0);
+            assertThat(history.getAwayScore()).isEqualTo(3);
         }
     }
 
