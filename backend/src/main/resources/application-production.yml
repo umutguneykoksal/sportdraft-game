@@ -37,6 +37,6 @@ logging:
   level:
     root: INFO
     # Keep DEBUG for disconnect monitoring in prod; minimal overhead.
-    com.example.auction.common.sse: INFO
-    com.example.auction.common.realtime: INFO
-    com.example.auction.session.control.SessionDisconnectCleanupScheduler: INFO
+    dev.sportdraft.common.sse: INFO
+    dev.sportdraft.common.realtime: INFO
+    dev.sportdraft.session.control.SessionDisconnectCleanupScheduler: INFO

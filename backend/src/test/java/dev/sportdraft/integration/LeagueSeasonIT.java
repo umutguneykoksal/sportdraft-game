@@ -1,0 +1,167 @@
+package dev.sportdraft.integration;
+
+import static java.util.concurrent.TimeUnit.SECONDS;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.awaitility.Awaitility.await;
+
+import dev.sportdraft.bidding.control.AuctionService;
+import dev.sportdraft.bidding.control.CardCatalogService;
+import dev.sportdraft.competition.boundary.CompetitionMatchOpenResponse;
+import dev.sportdraft.competition.control.CompetitionMatchService;
+import dev.sportdraft.competition.control.LeagueFixtureService;
+import dev.sportdraft.competition.entity.CompetitionEntity;
+import dev.sportdraft.competition.entity.CompetitionMatchEntity;
+import dev.sportdraft.competition.entity.CompetitionMatchRepository;
+import dev.sportdraft.competition.entity.CompetitionRepository;
+import dev.sportdraft.competition.entity.CompetitionStatus;
+import dev.sportdraft.competition.entity.LeaguePhase;
+import dev.sportdraft.lobby.boundary.SessionSnapshotResponse;
+import dev.sportdraft.lobby.control.LobbyService;
+import dev.sportdraft.session.entity.GameMode;
+import dev.sportdraft.session.redis.ActiveSessionStore;
+import java.util.UUID;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+
+class LeagueSeasonIT extends AbstractIntegrationTest {
+
+    @Autowired
+    private LobbyService lobbyService;
+
+    @Autowired
+    private AuctionService auctionService;
+
+    @Autowired
+    private CardCatalogService cardCatalog;
+
+    @Autowired
+    private ActiveSessionStore sessionStore;
+
+    @Autowired
+    private CompetitionRepository competitionRepository;
+
+    @Autowired
+    private CompetitionMatchRepository matchRepository;
+
+    @Autowired
+    private CompetitionMatchService competitionMatchService;
+
+    @Autowired
+    private LeagueFixtureService leagueFixtureService;
+
+    @Test
+    void leagueFullSeason_completesWithChampion() {
+        UUID sessionId = setupLeagueCompetition();
+        CompetitionEntity competition = competitionRepository.findBySessionId(sessionId).orElseThrow();
+        UUID competitionId = competition.getId();
+
+        CompetitionTestFixtures.watchMatchday(competitionMatchService, matchRepository, sessionId, competitionId, 1);
+        competition = competitionRepository.findById(competitionId).orElseThrow();
+        assertThat(competition.getLeaguePhase()).isEqualTo(LeaguePhase.BREAK_AFTER_MD1);
+
+        competition = CompetitionTestFixtures.advanceLeagueBreak(
+            leagueFixtureService, competitionRepository, competition
+        );
+        assertThat(competition.getLeaguePhase()).isEqualTo(LeaguePhase.MATCHDAY_2);
+
+        CompetitionTestFixtures.watchMatchday(competitionMatchService, matchRepository, sessionId, competitionId, 2);
+        competition = competitionRepository.findById(competitionId).orElseThrow();
+        assertThat(competition.getLeaguePhase()).isEqualTo(LeaguePhase.BREAK_AFTER_MD2);
+
+        competition = CompetitionTestFixtures.advanceLeagueBreak(
+            leagueFixtureService, competitionRepository, competition
+        );
+        assertThat(competition.getLeaguePhase()).isEqualTo(LeaguePhase.MATCHDAY_3);
+
+        CompetitionTestFixtures.watchMatchday(competitionMatchService, matchRepository, sessionId, competitionId, 3);
+        competition = competitionRepository.findById(competitionId).orElseThrow();
+
+        if (competition.getLeaguePhase() == LeaguePhase.CHAMPIONSHIP_PLAYOFF) {
+            CompetitionMatchEntity playoff = CompetitionTestFixtures.requireMatch(
+                matchRepository, competitionId, "PLAYOFF_FINAL"
+            );
+            CompetitionTestFixtures.watchMatch(competitionMatchService, sessionId, playoff);
+            competition = competitionRepository.findById(competitionId).orElseThrow();
+        }
+
+        assertThat(competition.getStatus()).isEqualTo(CompetitionStatus.COMPLETED);
+        assertThat(competition.getLeaguePhase()).isEqualTo(LeaguePhase.REPLAYS);
+        assertThat(
+            competition.getChampionUserId() != null || competition.getCoChampionUserIdsJson() != null
+        ).isTrue();
+    }
+
+    @Test
+    void leagueReplay_unlocksAfterCompletion() {
+        UUID sessionId = setupLeagueCompetition();
+        CompetitionEntity competition = competitionRepository.findBySessionId(sessionId).orElseThrow();
+        UUID competitionId = competition.getId();
+
+        completeLeagueSeason(sessionId, competitionId);
+
+        competition = competitionRepository.findById(competitionId).orElseThrow();
+        assertThat(competition.getLeaguePhase()).isEqualTo(LeaguePhase.REPLAYS);
+
+        CompetitionMatchEntity md1A = CompetitionTestFixtures.requireMatch(matchRepository, competitionId, "MD1_A");
+        CompetitionMatchOpenResponse replay = competitionMatchService.openMatch(
+            sessionId, md1A.getId(), CompetitionTestFixtures.USER_1, true
+        );
+        assertThat(replay.replay()).isTrue();
+        assertThat(replay.timeline()).isNotEmpty();
+        assertThat(replay.homeScore()).isNotNull();
+        assertThat(replay.awayScore()).isNotNull();
+    }
+
+    private UUID setupLeagueCompetition() {
+        UUID[] users = {
+            CompetitionTestFixtures.USER_1,
+            CompetitionTestFixtures.USER_2,
+            CompetitionTestFixtures.USER_3,
+            CompetitionTestFixtures.USER_4
+        };
+
+        SessionSnapshotResponse room = lobbyService.createRoom(
+            CompetitionTestFixtures.USER_1, "Player-1", GameMode.LEAGUE
+        );
+        UUID sessionId = room.sessionId();
+        lobbyService.joinRoom(sessionId, CompetitionTestFixtures.USER_2, "Player-2");
+        lobbyService.joinRoom(sessionId, CompetitionTestFixtures.USER_3, "Player-3");
+        lobbyService.joinRoom(sessionId, CompetitionTestFixtures.USER_4, "Player-4");
+
+        CompetitionTestFixtures.advanceToAuctioning(lobbyService, sessionStore, sessionId, users);
+        CompetitionTestFixtures.completeCompetitionDraft(
+            auctionService, cardCatalog, sessionStore, sessionId, users
+        );
+
+        await().atMost(10, SECONDS).until(() -> competitionRepository.findBySessionId(sessionId).isPresent());
+        return sessionId;
+    }
+
+    private void completeLeagueSeason(UUID sessionId, UUID competitionId) {
+        CompetitionTestFixtures.watchMatchday(competitionMatchService, matchRepository, sessionId, competitionId, 1);
+        CompetitionEntity competition = CompetitionTestFixtures.advanceLeagueBreak(
+            leagueFixtureService,
+            competitionRepository,
+            competitionRepository.findById(competitionId).orElseThrow()
+        );
+        assertThat(competition.getLeaguePhase()).isEqualTo(LeaguePhase.MATCHDAY_2);
+
+        CompetitionTestFixtures.watchMatchday(competitionMatchService, matchRepository, sessionId, competitionId, 2);
+        competition = CompetitionTestFixtures.advanceLeagueBreak(
+            leagueFixtureService,
+            competitionRepository,
+            competitionRepository.findById(competitionId).orElseThrow()
+        );
+        assertThat(competition.getLeaguePhase()).isEqualTo(LeaguePhase.MATCHDAY_3);
+
+        CompetitionTestFixtures.watchMatchday(competitionMatchService, matchRepository, sessionId, competitionId, 3);
+        competition = competitionRepository.findById(competitionId).orElseThrow();
+
+        if (competition.getLeaguePhase() == LeaguePhase.CHAMPIONSHIP_PLAYOFF) {
+            CompetitionMatchEntity playoff = CompetitionTestFixtures.requireMatch(
+                matchRepository, competitionId, "PLAYOFF_FINAL"
+            );
+            CompetitionTestFixtures.watchMatch(competitionMatchService, sessionId, playoff);
+        }
+    }
+}

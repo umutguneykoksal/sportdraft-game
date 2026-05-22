@@ -1,0 +1,21 @@
+package dev.sportdraft.competition.control;
+
+import dev.sportdraft.competition.entity.LeaguePhase;
+import java.time.Instant;
+
+final class LeaguePhaseMachine {
+
+    private LeaguePhaseMachine() {}
+
+    static boolean canEvaluateMatchdayBreak(LeaguePhase phase) {
+        int md = phase.matchdayNumber();
+        return md > 0 && !phase.isMatchdayBreak();
+    }
+
+    static boolean canAdvanceFromBreak(LeaguePhase phase, Instant intermissionEndsAt, Instant now) {
+        if (!phase.isMatchdayBreak()) {
+            return false;
+        }
+        return intermissionEndsAt != null && !now.isBefore(intermissionEndsAt);
+    }
+}

@@ -91,7 +91,7 @@ jobs:
         working-directory: backend
         run: |
           mvn -q -DskipTests package
-          nohup java -jar target/auction-backend-0.0.1-SNAPSHOT.jar --spring.profiles.active=local > ../backend-e2e.log 2>&1 &
+          nohup java -jar target/sportdraft-backend-0.0.1-SNAPSHOT.jar --spring.profiles.active=local > ../backend-e2e.log 2>&1 &
           for i in $(seq 1 60); do
             curl -sf http://localhost:8080/actuator/health && exit 0
             sleep 3

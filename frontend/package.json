@@ -1,10 +1,10 @@
 {
-  "name": "auction-frontend",
+  "name": "sportdraft-frontend",
   "version": "0.1.0",
   "private": true,
   "license": "UNLICENSED",
   "author": "Umut Guney Koksal",
-  "description": "Football Card Auction Game — frontend (proprietary; see LICENSE in repo root)",
+  "description": "SportDraft web app",
   "dependencies": {
     "@tanstack/react-query": "^5.59.0",
     "browserslist": "^4.28.2",

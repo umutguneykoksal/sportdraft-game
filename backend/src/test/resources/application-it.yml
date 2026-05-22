@@ -26,7 +26,7 @@ management:
 logging:
   level:
     root: WARN
-    com.example.auction: INFO
+    dev.sportdraft: INFO
 
 app:
   session:

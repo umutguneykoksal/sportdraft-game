@@ -1,6 +1,6 @@
 spring:
   application:
-    name: football-card-auction-game
+    name: sportdraft
   profiles:
     active: local
   datasource:
@@ -44,8 +44,8 @@ management:
 
 logging:
   level:
-    com.example.auction.common.sse: DEBUG
-    com.example.auction.session.control.SessionDisconnectCleanupScheduler: DEBUG
+    dev.sportdraft.common.sse: DEBUG
+    dev.sportdraft.session.control.SessionDisconnectCleanupScheduler: DEBUG
 
 spring.task:
   scheduling:

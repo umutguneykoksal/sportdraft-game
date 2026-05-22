@@ -6,4 +6,4 @@ spring:
 logging:
   level:
     root: INFO
-    com.example.auction: DEBUG
+    dev.sportdraft: DEBUG

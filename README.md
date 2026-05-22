@@ -1,170 +1,105 @@
-# Football Card Auction Game
+# SportDraft
+
+**Play:** [sportdraft.dev](https://www.sportdraft.dev)
+
+Multiplayer football card auction draft. Two to four players bid from a 100-credit budget, pick an 11-slot formation, then the server simulates the match from card ratings.
+
+Duel (2p), tournament bracket (4p), and league with standings + optional playoff (4p) are all live on the site.
+
+Built and maintained by [Umut Guney Koksal](https://github.com/umutguneykoksal).
 
 ![CI](https://github.com/umutguneykoksal/football-card-auction-game/actions/workflows/ci.yml/badge.svg)
-![Java](https://img.shields.io/badge/Java-21-orange)
-![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.3-green)
-![React](https://img.shields.io/badge/React-18-61dafb)
-![License](https://img.shields.io/badge/License-Proprietary-red)
+![Java 21](https://img.shields.io/badge/Java-21-orange)
+![Spring Boot 3.3](https://img.shields.io/badge/Spring%20Boot-3.3-green)
+![React 18](https://img.shields.io/badge/React-18-61dafb)
 
-Browser-based **multiplayer football card auction draft** game. Players bid on cards from a **100-credit** budget, fill an **11-slot formation**, then the server runs a **rating-weighted match simulation**.
-
-> **Portfolio / demo project** — source is visible on GitHub for review purposes.  
-> **Not open source.** See [LICENSE](LICENSE) — copying, forking for reuse, or redistribution without permission is not allowed.
+> **Proprietary** — [LICENSE](LICENSE). No reuse without permission.
 
 ---
 
-## Highlights
+## How it works
 
-- **3 game modes** — Duel (2p), Tournament (4p bracket), League (4p round-robin + playoff)
-- **Server-authoritative** state — Redis live sessions + PostgreSQL persistence
-- **Real-time** — WebSocket + SSE fallback, ordered event log + reconnect sync
-- **Modular monolith** — BCE slices (`boundary`, `control`, `entity`)
-- **Strong test discipline** — JaCoCo 85% backend gate, Jest coverage gate, Testcontainers IT, Playwright E2E (3 modes)
+**Duel** — lobby, formation pick, auction draft, instant result.
+
+**Tournament** — shared draft, semi-finals, intermission, final.
+
+**League** — shared draft, three matchdays, live table, co-champions or a playoff final.
+
+Card pool: host picks league and minimum OVR (70 / 75 / 80). Premier League and Trendyol Super Lig are in; more leagues later.
 
 ---
 
-## Game modes
+## Architecture
 
-| Mode | Players | Flow |
-|------|---------|------|
-| **Duel** | 2 | Lobby → formation → auction draft → instant match |
-| **Tournament** | 4 | Draft → semi-finals → intermission → final → champion |
-| **League** | 4 | Draft → 3 matchdays → standings → co-champion or playoff final |
+```
+React  ──REST──►  Spring Boot  ──►  PostgreSQL
+  │                    │
+  └── WS / SSE ◄───────┴──►  Redis (live sessions, auction state)
+```
+
+Backend package root: `dev.sportdraft` — feature slices `lobby`, `session`, `bidding`, `simulation`, `competition` (boundary / control / entity).
+
+State is server-side: Redis holds active sessions and auction rounds (with optimistic locking), Postgres holds cards, competitions, and history. Clients send commands and render what the server sends back.
+
+Real-time updates go over WebSocket with SSE as fallback; reconnect pulls from the ordered event log.
+
+Competition flows (league vs tournament) share the same match orchestration with mode-specific rules. Cross-cutting side effects use Spring domain events after commit, with idempotent handlers so retries are safe.
+
+Auth is an anonymous session token for now (Bearer on REST, query param on the stream).
 
 ---
 
 ## Stack
 
-| Layer | Technology |
-|-------|------------|
-| Backend | Java 21, Spring Boot 3.3, JPA, Validation, Actuator |
-| Data | PostgreSQL 16, Redis 7, Flyway |
-| Frontend | React 18, TypeScript, TanStack Query, Zustand, Tailwind |
-| Real-time | WebSocket (primary), SSE fallback, REST event sync |
-| API | `/api/v2` canonical; legacy `/api` v1 deprecated fallback |
-| Testing | JUnit 5, Testcontainers, Jest, Playwright |
-| Infra | Docker Compose (local), Railway (deploy) |
+Java 21, Spring Boot 3.3, PostgreSQL 16, Redis 7, Flyway · React 18, TypeScript, TanStack Query, Zustand, Tailwind · JUnit 5, Testcontainers, Jest, Playwright · GitHub Actions · hosted on Railway at [sportdraft.dev](https://www.sportdraft.dev).
+
+API surface is `/api/v2`.
 
 ---
 
-## Repository layout
+## Tests & CI
 
-```
-backend/          Java modular monolith — com.example.auction.<feature>
-frontend/         CRA app — src/features/ + src/shared/
-e2e/              Playwright smoke tests (duel, tournament, league)
-infra/            docker-compose.yml (Postgres 16, Redis 7)
-```
+Every push runs backend (`mvn verify` with Testcontainers, JaCoCo line coverage at 85%), frontend (`npm run test:coverage`), and Playwright smoke tests for all three game modes.
 
-**Backend slices:** `lobby`, `session`, `bidding`, `simulation`, `competition`
-
-**Frontend routes:** `/lobby`, `/auction/:sessionId`, `/match/:sessionId`, `/tournament/...`, `/league/...`, `/spectate/:sessionId`
-
----
-
-## Quick start
-
-### Prerequisites
-
-- JDK 21, Maven 3.9+
-- Node.js 20+
-- Docker (for Postgres/Redis and integration tests)
-
-### Run locally
+Locally:
 
 ```bash
-# 1. Infrastructure
+cd backend && mvn verify                 # needs Docker
+cd backend && mvn test -Pskip-it           # unit only
+cd frontend && npm run test:coverage
+```
+
+---
+
+## Run locally
+
+JDK 21, Node 20+, Docker.
+
+```bash
 cd infra && docker compose up -d
-
-# 2. Backend (http://localhost:8080)
 cd backend && mvn spring-boot:run -Dspring-boot.run.profiles=local
-
-# 3. Frontend (http://localhost:3000)
 cd frontend && npm ci && npm start
 ```
 
-Optional: `frontend/.env`
+Frontend talks to `http://localhost:8080` by default. Override with `REACT_APP_API_BASE` in `frontend/.env`.
 
-```env
-REACT_APP_API_BASE=http://localhost:8080
 ```
-
-### API v1 fallback
-
-```env
-REACT_APP_API_VERSION=v1
+backend/     API + domain logic
+frontend/    web app
+e2e/         Playwright
+infra/       docker-compose (Postgres + Redis)
 ```
 
 ---
 
-## Testing
+## Not shipped yet
 
-| Layer | Command | Gate |
-|-------|---------|------|
-| Backend unit + IT | `cd backend && mvn verify` | JaCoCo **85%** line coverage |
-| Backend unit only | `cd backend && mvn test -Pskip-it` | No Docker required |
-| Frontend | `cd frontend && npm run test:coverage` | Jest thresholds 85/75/80/85 |
-| E2E (stack running) | `cd e2e && E2E_BASE_URL=http://localhost:3000 npm test` | Duel + tournament + league smoke |
+Accounts (OAuth), rate limiting, multi-region. Timed phase jobs assume a single production replica. E2E smoke tests use short drafts; full 44-round flows are in unit/IT tests.
 
 ---
 
-## CI (GitHub Actions)
+## License
 
-On every push/PR to `main`/`master`:
+Copyright © 2026 Umut Guney Koksal. All rights reserved.
 
-| Job | What runs |
-|-----|-----------|
-| **Backend** | `mvn verify` — unit + Testcontainers IT, JaCoCo 85% |
-| **Frontend** | `npm run test:coverage` |
-| **Playwright E2E** | Full stack smoke — duel, tournament, league |
-
----
-
-## Architecture (short)
-
-- **Redis** — active session state (`ActiveSession`), auction rounds, optimistic locking
-- **PostgreSQL** — cards, competitions, match history, Flyway migrations
-- **Domain events** — `ApplicationEventPublisher` + `@TransactionalEventListener(AFTER_COMMIT)` + idempotent `ProcessedEvent` handlers
-- **Competition** — shared `CompetitionMatchCommandService` with league/tournament mode hooks
-- **Auth (MVP)** — opaque UUID bearer token on REST (`Authorization: Bearer`) and realtime (`?token=`)
-
----
-
-## Card pools
-
-Host selects **league** + **minimum OVR** (70 / 75 / 80) at room creation. Thresholds require **≥ 100 eligible cards**.
-
-| League | Status |
-|--------|--------|
-| Premier League | Available |
-| Trendyol Super Lig | Available |
-| La Liga, Serie A, Bundesliga | Coming soon |
-
-Card data is loaded via Flyway migrations and optional local import scripts under `data/` and `scripts/` (gitignored).
-
----
-
-## Deploy
-
-- **Backend + frontend:** Railway (see project infra config)
-- **Local:** Docker Compose + Spring `local` profile + CRA build served statically
-
----
-
-## Admin
-
-Session delete endpoints require `X-Admin-Key` when `APP_ADMIN_API_KEY` is set.
-
----
-
-## License & copyright
-
-**Copyright © 2026 Umut Guney Koksal. All rights reserved.**
-
-This project is **proprietary**. You may **not** copy, modify, distribute, or use the source code without explicit written permission from the copyright holder.
-
-Public GitHub visibility is for **portfolio demonstration and code review only** — not a grant of reuse rights.
-
-For licensing inquiries: [github.com/umutguneykoksal](https://github.com/umutguneykoksal)
-
-Full terms: [LICENSE](LICENSE)
+See [LICENSE](LICENSE). For permissions: [github.com/umutguneykoksal](https://github.com/umutguneykoksal).

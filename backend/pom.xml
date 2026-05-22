@@ -3,11 +3,11 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
 
-  <groupId>com.example</groupId>
-  <artifactId>auction-backend</artifactId>
+  <groupId>dev.sportdraft</groupId>
+  <artifactId>sportdraft-backend</artifactId>
   <version>0.0.1-SNAPSHOT</version>
-  <name>auction-backend</name>
-  <description>Football card auction game backend</description>
+  <name>sportdraft-backend</name>
+  <description>SportDraft API and game engine</description>
 
   <licenses>
     <license>
