@@ -10,6 +10,10 @@ import { PositionBadgeRow } from "../../shared/components/PositionBadgeRow";
 import { PlayerAttributeBars } from "../../shared/components/PlayerAttributeBars";
 import { FORMATION_LABELS } from "../../shared/formations";
 import { openEligibleHighlights } from "../../shared/positions";
+import {
+  computeDisplaySecondsLeft,
+  ROUND_BID_SECONDS,
+} from "../auction/auctionTiming";
 import { useSpectateSync } from "../../shared/realtime/useSpectateSync";
 import { deriveSpectateTurnMessage, nicknameForUserId } from "./deriveSpectateTurnInfo";
 import { useSpectateMatchReplay } from "./hooks/useSpectateMatchReplay";
@@ -52,7 +56,8 @@ export function SpectatePage() {
   const [secondsLeft, setSecondsLeft] = useState(0);
   const [turnIsOpen, setTurnIsOpen] = useState(false);
   const serverClockOffsetMsRef = useRef(0);
-  const roundTotalSecondsRef = useRef(30);
+  const roundTotalSecondsRef = useRef(ROUND_BID_SECONDS);
+  const previousRoundIdRef = useRef<string | null>(null);
   const wasEverConnectedRef = useRef(false);
 
   if (isConnected) wasEverConnectedRef.current = true;
@@ -83,16 +88,19 @@ export function SpectatePage() {
       setSecondsLeft(0);
       return;
     }
-    const computeSecondsLeft = () => {
-      const adjustedNow = Date.now() + serverClockOffsetMsRef.current;
-      return Math.max(0, Math.ceil((new Date(round.endsAt).getTime() - adjustedNow) / 1000));
-    };
+    const computeSecondsLeft = () =>
+      computeDisplaySecondsLeft(round.startsAt, round.endsAt, serverClockOffsetMsRef.current);
     const initial = computeSecondsLeft();
-    if (initial > roundTotalSecondsRef.current) roundTotalSecondsRef.current = initial;
+    if (round.roundId !== previousRoundIdRef.current) {
+      roundTotalSecondsRef.current = ROUND_BID_SECONDS;
+      previousRoundIdRef.current = round.roundId;
+    } else if (initial > roundTotalSecondsRef.current) {
+      roundTotalSecondsRef.current = initial;
+    }
     setSecondsLeft(initial);
     const timer = setInterval(() => setSecondsLeft(computeSecondsLeft()), 250);
     return () => clearInterval(timer);
-  }, [round]);
+  }, [round?.roundId, round?.endsAt, round?.startsAt]);
 
   useEffect(() => {
     if (!round || !round.turnOpenAt) {

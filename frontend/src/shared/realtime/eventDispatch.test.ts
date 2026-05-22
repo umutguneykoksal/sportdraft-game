@@ -153,19 +153,27 @@ describe("processEventBatch", () => {
     );
   });
 
-  it("clears round and requests state refresh on PASSED round_ended", () => {
+  it("patches round and requests state refresh on PASSED round_ended", () => {
     const clearRound = jest.fn();
+    const patchRound = jest.fn();
+    const endedRound = { roundId: "r1", status: "PASSED", cardName: "Haaland" };
     const { result } = processEventBatch(
-      [{ eventType: "round_ended", seq: 6, payload: { result: "PASSED" }, occurredAt: new Date().toISOString() }],
+      [{
+        eventType: "round_ended",
+        seq: 6,
+        payload: { result: "PASSED", round: endedRound },
+        occurredAt: new Date().toISOString(),
+      }],
       5,
       {
-        patchRound: jest.fn(),
+        patchRound,
         clearRound,
         setRound: jest.fn(),
         onMatchCompleted: jest.fn(),
       }
     );
-    expect(clearRound).toHaveBeenCalled();
+    expect(clearRound).not.toHaveBeenCalled();
+    expect(patchRound).toHaveBeenCalledWith(endedRound, false);
     expect(result.refreshKind).toBe("state");
   });
 });

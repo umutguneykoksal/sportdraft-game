@@ -17,6 +17,9 @@ export type AuctionBidPanelProps = {
   budget: number;
   roundIsOpen: boolean;
   controlsLocked: boolean;
+  interactionLocked: boolean;
+  inCardReveal: boolean;
+  showFirstCardIntro: boolean;
   loading: boolean;
   canBid: boolean;
   couldBid: boolean;
@@ -49,6 +52,9 @@ export function AuctionBidPanel(props: AuctionBidPanelProps) {
     budget,
     roundIsOpen,
     controlsLocked,
+    interactionLocked,
+    inCardReveal,
+    showFirstCardIntro,
     loading,
     canBid,
     couldBid,
@@ -70,7 +76,19 @@ export function AuctionBidPanel(props: AuctionBidPanelProps) {
 
   return (
     <div className="space-y-4">
-      {round && auctionPhaseActive && (
+      {showFirstCardIntro && round && auctionPhaseActive && (
+        <div
+          className="bg-surface-card rounded-xl border border-accent/30 p-8 text-center animate-fade-in min-h-[280px] flex flex-col items-center justify-center"
+          role="status"
+          aria-live="polite"
+        >
+          <p className="text-xs uppercase tracking-[0.2em] text-accent mb-3">Auction live</p>
+          <p className="text-2xl sm:text-3xl font-bold text-white">Bidding is starting…</p>
+          <p className="text-sm text-slate-400 mt-3 max-w-xs">First player card coming up</p>
+        </div>
+      )}
+
+      {round && auctionPhaseActive && !showFirstCardIntro && (
         <div
           key={round.roundId}
           className="bg-surface-card rounded-xl border border-white/10 p-4 animate-fade-in"
@@ -142,13 +160,17 @@ export function AuctionBidPanel(props: AuctionBidPanelProps) {
           {roundIsOpen && (
             <div
               className={`relative space-y-3 rounded-lg transition-opacity ${
-                controlsLocked ? "pointer-events-none opacity-45" : ""
+                interactionLocked ? "pointer-events-none opacity-45" : ""
               }`}
             >
-              {controlsLocked && (
+              {interactionLocked && (
                 <div className="absolute inset-0 z-10 flex items-center justify-center rounded-lg bg-black/25">
                   <p className="text-amber-400 text-sm font-semibold animate-pulse px-3 py-1 rounded bg-black/40">
-                    {loading ? "Submitting…" : "Settling round…"}
+                    {inCardReveal
+                      ? "New card — bidding opens soon"
+                      : loading
+                        ? "Submitting…"
+                        : "Settling round…"}
                   </p>
                 </div>
               )}
@@ -166,14 +188,14 @@ export function AuctionBidPanel(props: AuctionBidPanelProps) {
                   </div>
                   <button
                     onClick={onTake}
-                    disabled={controlsLocked || minimumBid > budget}
+                    disabled={interactionLocked || minimumBid > budget}
                     className="w-full bg-accent-green hover:bg-green-600 disabled:opacity-40 text-white font-bold py-3 rounded-lg transition-colors text-lg"
                   >
                     Take for {minimumBid} cr
                   </button>
                   <button
                     onClick={onPass}
-                    disabled={controlsLocked}
+                    disabled={interactionLocked}
                     className="w-full bg-red-900/30 border border-red-500/30 text-red-400 hover:bg-red-900/50 disabled:opacity-40 py-2 rounded-lg transition-colors text-sm font-medium"
                   >
                     Pass
@@ -189,8 +211,8 @@ export function AuctionBidPanel(props: AuctionBidPanelProps) {
                       min={1}
                       max={budget}
                       placeholder="Bid (cr)"
-                      disabled={controlsLocked || mySquadFull || (!canBid && !controlsLocked)}
-                      readOnly={controlsLocked}
+                      disabled={interactionLocked || mySquadFull || (!canBid && !interactionLocked)}
+                      readOnly={interactionLocked}
                       className="flex-1 bg-surface-elevated border border-white/10 rounded-lg px-3 py-2 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-accent disabled:opacity-40"
                     />
                     <button
@@ -199,7 +221,7 @@ export function AuctionBidPanel(props: AuctionBidPanelProps) {
                         const safe = Number.isFinite(current) ? current : Math.max(1, (round?.highestBidCents ?? 0) + 1);
                         setAmount(String(Math.min(safe + 1, budget)));
                       }}
-                      disabled={controlsLocked || mySquadFull || (!canBid && !controlsLocked)}
+                      disabled={interactionLocked || mySquadFull || (!canBid && !interactionLocked)}
                       className="bg-surface-elevated border border-white/10 text-white px-3 py-2 rounded-lg hover:bg-white/10 disabled:opacity-40 transition-colors"
                     >
                       +1
@@ -210,7 +232,7 @@ export function AuctionBidPanel(props: AuctionBidPanelProps) {
                         const safe = Number.isFinite(current) ? current : Math.max(1, (round?.highestBidCents ?? 0) + 1);
                         setAmount(String(Math.min(safe + 5, budget)));
                       }}
-                      disabled={controlsLocked || mySquadFull || (!canBid && !controlsLocked)}
+                      disabled={interactionLocked || mySquadFull || (!canBid && !interactionLocked)}
                       className="bg-surface-elevated border border-white/10 text-white px-3 py-2 rounded-lg hover:bg-white/10 disabled:opacity-40 transition-colors"
                     >
                       +5
@@ -218,14 +240,14 @@ export function AuctionBidPanel(props: AuctionBidPanelProps) {
                   </div>
                   <button
                     onClick={onBid}
-                    disabled={controlsLocked || mySquadFull || (!canBid && !controlsLocked)}
+                    disabled={interactionLocked || mySquadFull || (!canBid && !interactionLocked)}
                     className="w-full bg-accent hover:bg-blue-600 disabled:opacity-40 text-white font-bold py-3 rounded-lg transition-colors"
                   >
                     Place Bid
                   </button>
                   <button
                     onClick={onPass}
-                    disabled={controlsLocked || (!canBid && !controlsLocked)}
+                    disabled={interactionLocked || (!canBid && !interactionLocked)}
                     className="w-full bg-red-900/30 border border-red-500/30 text-red-400 hover:bg-red-900/50 disabled:opacity-40 py-2 rounded-lg transition-colors text-sm font-medium"
                   >
                     Pass
@@ -234,7 +256,7 @@ export function AuctionBidPanel(props: AuctionBidPanelProps) {
               ) : canPass ? (
                 <button
                   onClick={onPass}
-                  disabled={controlsLocked}
+                  disabled={interactionLocked}
                   className="w-full bg-red-900/30 border border-red-500/30 text-red-400 hover:bg-red-900/50 disabled:opacity-40 py-2 rounded-lg transition-colors text-sm font-medium"
                 >
                   Pass
@@ -247,7 +269,7 @@ export function AuctionBidPanel(props: AuctionBidPanelProps) {
             className={`mt-3 text-center text-sm font-medium py-2 rounded-lg transition-colors duration-300 ${
               mySquadFull
                 ? "bg-accent-green/10 text-accent-green"
-                : controlsLocked
+                : inCardReveal || interactionLocked
                   ? "bg-amber-500/10 text-amber-400"
                   : inTimerGrace
                     ? "bg-amber-500/10 text-amber-400"

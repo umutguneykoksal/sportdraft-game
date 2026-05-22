@@ -128,6 +128,7 @@ export interface AuctionRoundResponse {
   currentTurnUserId: string | null;
   readyUserOneId: string | null;
   readyUserTwoId: string | null;
+  startsAt: string | null;
   endsAt: string;
   turnOpenAt: string | null;
   status: string;

@@ -197,7 +197,22 @@ final class AuctionRules {
      * Exclusive turn ends after {@link AuctionTiming#TURN_OPEN_AFTER_SECONDS}, or earlier when the
      * round clock has at most that many seconds left (so late bids cannot reset the window forever).
      */
+    static Instant biddingOpensAt(ActiveRound round) {
+        if (round.getStartsAt() == null) {
+            return null;
+        }
+        return round.getStartsAt().plusSeconds(AuctionTiming.ROUND_REVEAL_SECONDS);
+    }
+
+    static boolean isBiddingOpen(ActiveRound round) {
+        Instant opensAt = biddingOpensAt(round);
+        return opensAt == null || !Instant.now().isBefore(opensAt);
+    }
+
     static boolean isTurnOpen(ActiveRound round) {
+        if (!isBiddingOpen(round)) {
+            return false;
+        }
         Instant now = Instant.now();
         Instant openAt = computeTurnOpenAt(round);
         return openAt != null && !now.isBefore(openAt);

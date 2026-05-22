@@ -1,5 +1,13 @@
+import {
+  computeDisplaySecondsLeft,
+  computeServerSecondsLeft,
+  isInCardRevealPhase,
+  ROUND_BID_SECONDS,
+} from "./auctionTiming";
+
 export type RoundTimerInput = {
   roundId: string;
+  startsAt: string | null;
   endsAt: string;
   previousRoundId: string | null;
   previousSecondsLeft: number;
@@ -10,6 +18,8 @@ export type RoundTimerInput = {
 
 export type RoundTimerEffects = {
   secondsLeft: number;
+  serverSecondsLeft: number;
+  inCardReveal: boolean;
   roundTotalSeconds: number;
   previousSecondsLeft: number;
   previousRoundId: string;
@@ -19,8 +29,13 @@ export type RoundTimerEffects = {
 };
 
 export function deriveRoundTimerEffects(input: RoundTimerInput): RoundTimerEffects {
-  const adjustedNow = Date.now() + input.serverClockOffsetMs;
-  const secondsLeft = Math.max(0, Math.ceil((new Date(input.endsAt).getTime() - adjustedNow) / 1000));
+  const serverSecondsLeft = computeServerSecondsLeft(input.endsAt, input.serverClockOffsetMs);
+  const inCardReveal = isInCardRevealPhase(input.startsAt, input.endsAt, input.serverClockOffsetMs);
+  const secondsLeft = computeDisplaySecondsLeft(
+    input.startsAt,
+    input.endsAt,
+    input.serverClockOffsetMs
+  );
   const roundChanged = input.previousRoundId !== input.roundId;
   const wasExpired = !roundChanged && input.previousSecondsLeft <= 0;
 
@@ -29,25 +44,27 @@ export function deriveRoundTimerEffects(input: RoundTimerInput): RoundTimerEffec
   let startGrace = false;
   let clearGrace = false;
 
-  if (!roundChanged && wasExpired && secondsLeft > 0) {
+  if (!roundChanged && wasExpired && serverSecondsLeft > 0) {
     clearGrace = true;
     timeExtended = true;
   }
 
   if (roundChanged) {
-    roundTotalSeconds = secondsLeft;
+    roundTotalSeconds = ROUND_BID_SECONDS;
     clearGrace = true;
   } else if (secondsLeft > roundTotalSeconds) {
     roundTotalSeconds = secondsLeft;
     if (secondsLeft > 0) {
       clearGrace = true;
     }
-  } else if (!roundChanged && wasExpired && secondsLeft <= 0 && !input.hasGraceTimeout) {
+  } else if (!roundChanged && wasExpired && serverSecondsLeft <= 0 && !input.hasGraceTimeout) {
     startGrace = true;
   }
 
   return {
     secondsLeft,
+    serverSecondsLeft,
+    inCardReveal,
     roundTotalSeconds,
     previousSecondsLeft: secondsLeft,
     previousRoundId: input.roundId,

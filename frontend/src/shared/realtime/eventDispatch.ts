@@ -10,6 +10,7 @@ export const SHARED_ROUND_FIELDS: ReadonlyArray<keyof AuctionRoundResponse> = [
   "highestBidderUserId",
   "currentTurnUserId",
   "endsAt",
+  "startsAt",
   "turnOpenAt",
   "passedPlayerIds",
   "status",
@@ -134,13 +135,10 @@ export function processEventBatch(
       case "round_ended": {
         const endedPayload = (env.payload ?? {}) as RoundEndedPayload;
         handlers.onRoundEnded?.(endedPayload);
-        if (endedPayload?.result === "SOLD") {
-          refreshKind = maxRefresh(refreshKind, spectate ? "full" : "state");
-        } else {
-          handlers.clearRound();
-          // Server auto-starts next round; REST fallback if round_started event is missed.
-          refreshKind = maxRefresh(refreshKind, "state");
+        if (endedPayload?.round) {
+          handlers.patchRound(endedPayload.round, false);
         }
+        refreshKind = maxRefresh(refreshKind, spectate ? "full" : "state");
         break;
       }
 

@@ -26,6 +26,7 @@ public record AuctionRoundResponse(
     UUID currentTurnUserId,
     UUID readyUserOneId,
     UUID readyUserTwoId,
+    Instant startsAt,
     Instant endsAt,
     Instant turnOpenAt,
     String status,

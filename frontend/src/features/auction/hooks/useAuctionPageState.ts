@@ -17,6 +17,7 @@ import { deriveViewerFlags } from "../deriveViewerFlags";
 import { deriveRoundTimerEffects } from "../deriveRoundTimerState";
 import { buildDuelTurnOrderEntries, buildTurnOrderEntries, type TurnOrderEntry } from "../AuctionTurnOrderBar";
 import { buildRoundOutcomeNotice, type RoundOutcomeNotice } from "../buildRoundOutcomeNotice";
+import { ROUND_BID_SECONDS } from "../auctionTiming";
 import type { RoundEndedPayload } from "../../../shared/realtime/eventDispatch";
 import { getOrCreateClientSession } from "../../../shared/session";
 
@@ -43,6 +44,26 @@ function mapCards(raw: AuctionTeamCardResponse[]): AuctionTeamCardResponse[] {
   }));
 }
 
+function auctionIntroStorageKey(sessionId: string) {
+  return `auction-intro-seen:${sessionId}`;
+}
+
+function hasSeenAuctionIntro(sessionId: string) {
+  try {
+    return sessionStorage.getItem(auctionIntroStorageKey(sessionId)) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function markAuctionIntroSeen(sessionId: string) {
+  try {
+    sessionStorage.setItem(auctionIntroStorageKey(sessionId), "1");
+  } catch {
+    // ignore storage failures
+  }
+}
+
 export function useAuctionPageState(sessionId: string | undefined) {
   const navigate = useNavigate();
   const myUserId = getClientUserId();
@@ -54,12 +75,14 @@ export function useAuctionPageState(sessionId: string | undefined) {
   const [matchStartSecondsLeft, setMatchStartSecondsLeft] = useState<number>(0);
   const [timeExtended, setTimeExtended] = useState(false);
   const [inGracePeriod, setInGracePeriod] = useState(false);
+  const [inCardReveal, setInCardReveal] = useState(false);
+  const previousInCardRevealRef = useRef(false);
   const previousRoundIdRef = useRef<string | null>(null);
   const countdownRoundIdRef = useRef<string | null>(null);
   const previousSecondsLeftRef = useRef<number>(0);
   const graceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const serverClockOffsetMsRef = useRef<number>(0);
-  const roundTotalSecondsRef = useRef<number>(30);
+  const roundTotalSecondsRef = useRef<number>(ROUND_BID_SECONDS);
   const [turnIsOpen, setTurnIsOpen] = useState(false);
   const [secondsUntilTurnOpen, setSecondsUntilTurnOpen] = useState<number | null>(null);
   const [resolvingRoundId, setResolvingRoundId] = useState<string | null>(null);
@@ -133,6 +156,14 @@ export function useAuctionPageState(sessionId: string | undefined) {
 
   const opponentSpent = opponentTeam.reduce((sum, c) => sum + c.amountCents, 0);
   const opponentBudget = 100 - opponentSpent;
+  const totalRosterCards = multiPlayerMode
+    ? playerViews.reduce((sum, p) => sum + p.rosterSize, 0)
+    : myTeam.length + opponentTeam.length;
+  const showFirstCardIntro =
+    inCardReveal
+    && totalRosterCards === 0
+    && !!sessionId
+    && !hasSeenAuctionIntro(sessionId);
 
   const turnOrderEntries: TurnOrderEntry[] = multiPlayerMode
     ? buildTurnOrderEntries(
@@ -178,14 +209,17 @@ export function useAuctionPageState(sessionId: string | undefined) {
     roundIsOpen && !canFillCard && !showTakePanel && (isMyTurn || turnIsOpen || canPass);
   const isResolvingRound = !!round && resolvingRoundId === round.roundId;
   const controlsLocked = loading || isResolvingRound;
-  const biddingLockedByGrace = inGracePeriod && secondsLeft <= 0 && !controlsLocked;
-  const canBid = couldBid && !biddingLockedByGrace && !controlsLocked;
+  const interactionLocked = controlsLocked || inCardReveal;
+  const biddingLockedByGrace = inGracePeriod && secondsLeft <= 0 && !interactionLocked;
+  const canBid = couldBid && !biddingLockedByGrace && !interactionLocked;
   const inTimerGrace = inGracePeriod && secondsLeft <= 0 && !timeExtended;
   const auctionPhaseActive = sessionSnap?.status === "AUCTIONING";
   const minimumBid = round ? Math.max(1, round.highestBidCents + 1) : 1;
 
   const turnStatusMessage = (): string => {
+    if (showFirstCardIntro) return "Bidding is starting…";
     if (mySquadFull) return "Squad full (11/11)";
+    if (inCardReveal) return "New card — bidding opens soon";
     if (controlsLocked) return loading ? "Submitting…" : "Settling round…";
     if (inTimerGrace) return couldBid ? "Time's up — bids locked" : "Time's up — resolving turn…";
     if (waitingOnOpponent) {
@@ -321,6 +355,14 @@ export function useAuctionPageState(sessionId: string | undefined) {
   }, []);
 
   useEffect(() => {
+    if (!sessionId) return;
+    if (previousInCardRevealRef.current && !inCardReveal && totalRosterCards === 0) {
+      markAuctionIntroSeen(sessionId);
+    }
+    previousInCardRevealRef.current = inCardReveal;
+  }, [inCardReveal, sessionId, totalRosterCards]);
+
+  useEffect(() => {
     if (!round || round.status !== "OPEN") {
       setResolvingRoundId(null);
     }
@@ -372,6 +414,7 @@ export function useAuctionPageState(sessionId: string | undefined) {
 
       const effects = deriveRoundTimerEffects({
         roundId: round.roundId,
+        startsAt: round.startsAt ?? null,
         endsAt: round.endsAt,
         previousRoundId: countdownRoundIdRef.current,
         previousSecondsLeft: previousSecondsLeftRef.current,
@@ -379,6 +422,8 @@ export function useAuctionPageState(sessionId: string | undefined) {
         serverClockOffsetMs: serverClockOffsetMsRef.current,
         hasGraceTimeout: graceTimeoutRef.current != null,
       });
+
+      setInCardReveal(effects.inCardReveal);
 
       if (effects.clearGrace) {
         clearGrace();
@@ -401,7 +446,7 @@ export function useAuctionPageState(sessionId: string | undefined) {
 
     const timer = setInterval(applyTimerEffects, 250);
     return () => clearInterval(timer);
-  }, [round?.roundId, round?.endsAt]);
+  }, [round?.roundId, round?.endsAt, round?.startsAt]);
 
   useEffect(() => {
     if (!round || !round.turnOpenAt) {
@@ -570,6 +615,7 @@ export function useAuctionPageState(sessionId: string | undefined) {
     roundIsOpen,
     minimumBid,
     controlsLocked,
+    interactionLocked,
     canBid,
     couldBid,
     canPass,
@@ -583,6 +629,8 @@ export function useAuctionPageState(sessionId: string | undefined) {
     turnIsOpen,
     isMyTurn,
     inTimerGrace,
+    inCardReveal,
+    showFirstCardIntro,
     loading,
     timerPercent,
     timerColor,

@@ -94,7 +94,7 @@ final class AuctionRoundResponses {
             attrs.pace(), attrs.shooting(), attrs.passing(), attrs.defending(), attrs.physical(),
             round.getHighestBidCents(), round.getHighestBidderId(), highestBidderUserId,
             round.getCurrentTurnUserId(), round.getReadyUserOneId(), round.getReadyUserTwoId(),
-            round.getEndsAt(), turnOpenAt, round.getStatus().name(),
+            round.getStartsAt(), round.getEndsAt(), turnOpenAt, round.getStatus().name(),
             opponentCanBid, viewerCanBid, viewerCanTake, viewerCanPass, viewerCanFillCard,
             round.getPassedUserIds()
         );
@@ -126,6 +126,9 @@ final class AuctionRoundResponses {
     private static boolean computeViewerCanBid(
         ActiveRound round, ActiveSession session, UUID viewerUserId, Card card, Map<UUID, Card> cardMap
     ) {
+        if (!AuctionRules.isBiddingOpen(round)) {
+            return false;
+        }
         if (viewerUserId == null || !AuctionRules.viewerMayActOnTurn(round, viewerUserId)) {
             return false;
         }
@@ -145,6 +148,9 @@ final class AuctionRoundResponses {
     private static boolean computeViewerCanTake(
         ActiveRound round, ActiveSession session, UUID viewerUserId, Card card, Map<UUID, Card> cardMap
     ) {
+        if (!AuctionRules.isBiddingOpen(round)) {
+            return false;
+        }
         if (viewerUserId == null || AuctionRules.isTurnOpen(round)) {
             return false;
         }
@@ -163,6 +169,9 @@ final class AuctionRoundResponses {
     }
 
     private static boolean computeViewerCanPass(ActiveRound round, UUID viewerUserId) {
+        if (!AuctionRules.isBiddingOpen(round)) {
+            return false;
+        }
         if (viewerUserId == null || !AuctionRules.viewerMayActOnTurn(round, viewerUserId)) {
             return false;
         }

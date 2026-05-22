@@ -50,10 +50,11 @@ export function AuctionRoundOutcomeToast({ notice }: Props) {
       aria-live="polite"
     >
       <div className="rounded-xl border border-slate-500/40 bg-surface-card/95 px-4 py-3 shadow-lg backdrop-blur-sm animate-fade-in">
-        <p className="text-xs uppercase tracking-wide text-slate-400 mb-1">Round ended</p>
+        <p className="text-xs uppercase tracking-wide text-slate-400 mb-1">No one bought</p>
         <p className="text-white font-semibold text-base">
-          No sale — <span className="text-slate-200">{notice.cardName}</span>
+          <span className="text-slate-200">{notice.cardName}</span>
           {ratingSuffix}
+          <span className="text-slate-400 font-normal"> — unsold</span>
         </p>
         {notice.detail && (
           <p className="text-sm text-slate-400 mt-1 capitalize">{notice.detail}</p>

@@ -154,6 +154,9 @@ public class AuctionRoundLifecycle {
         if (Instant.now().isAfter(graceDeadline)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Round has already ended");
         }
+        if (!AuctionRules.isBiddingOpen(round)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Bidding opens soon");
+        }
 
         UUID idem = AuctionRules.parseUuid(idempotencyKey, "Invalid Idempotency-Key value");
         Card roundCard = cardMap.get(round.getCardId());
@@ -172,7 +175,8 @@ public class AuctionRoundLifecycle {
         AuctionBidValidator.validateBid(session, round, bidder, roundCard, request, cardMap, userId);
 
         Instant newEndsAt = round.getEndsAt();
-        if (Instant.now().isAfter(round.getEndsAt().minus(AuctionTiming.ANTI_SNIPE_WINDOW_SECONDS, ChronoUnit.SECONDS))) {
+        Instant antiSnipeThreshold = round.getEndsAt().minus(AuctionTiming.ANTI_SNIPE_WINDOW_SECONDS, ChronoUnit.SECONDS);
+        if (!Instant.now().isBefore(antiSnipeThreshold)) {
             newEndsAt = round.getEndsAt().plus(AuctionTiming.ANTI_SNIPE_EXTENSION_SECONDS, ChronoUnit.SECONDS);
         }
 
@@ -251,6 +255,9 @@ public class AuctionRoundLifecycle {
             return session.findOpenRound()
                 .map(r -> AuctionRoundResponses.toResponseWithContext(r, cardMap.get(r.getCardId()), session, cardMap, userId))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "Round is not open"));
+        }
+        if (!AuctionRules.isBiddingOpen(round)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Bidding opens soon");
         }
 
         Card roundCard = cardMap.get(round.getCardId());

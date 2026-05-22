@@ -66,7 +66,7 @@ export function buildRoundOutcomeNotice(
   if (payload.result === "PASSED") {
     const reason = payload.reason
       ? PASSED_REASON_LABELS[payload.reason] ?? payload.reason.replace(/_/g, " ")
-      : "no winning bid";
+      : "no one bought this card";
     return {
       roundId: round.roundId,
       kind: "passed",

@@ -183,6 +183,7 @@ class AuctionRoundLifecycleTest {
     void placeBid_roundExpired_throwsConflict() {
         ActiveSession session = auctioningSession();
         ActiveRound round = addRound(session, RoundStatus.OPEN);
+        round.setStartsAt(Instant.now().minus(AuctionTiming.ROUND_REVEAL_SECONDS + 1, ChronoUnit.SECONDS));
         round.setEndsAt(Instant.now().minus(5, ChronoUnit.SECONDS));
 
         when(sessionStore.getById(sessionId)).thenReturn(session);
@@ -255,6 +256,27 @@ class AuctionRoundLifecycleTest {
     }
 
     @Test
+    void placeBid_duringCardReveal_throwsConflict() {
+        ActiveSession session = auctioningSession();
+        ActiveRound round = addRound(session, RoundStatus.OPEN);
+        Instant startsAt = Instant.now();
+        round.setStartsAt(startsAt);
+        round.setEndsAt(startsAt.plus(AuctionTiming.ROUND_DURATION_SECONDS, ChronoUnit.SECONDS));
+
+        when(sessionStore.getById(sessionId)).thenReturn(session);
+
+        assertThatThrownBy(() -> lifecycle.placeBid(
+            sessionId, user1, UUID.randomUUID().toString(), new PlaceBidRequest(round.getId(), 1)
+        ))
+            .isInstanceOf(ResponseStatusException.class)
+            .satisfies(ex -> {
+                ResponseStatusException rse = (ResponseStatusException) ex;
+                assertThat(rse.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+                assertThat(rse.getReason()).isEqualTo("Bidding opens soon");
+            });
+    }
+
+    @Test
     void placeBid_extendsEndsAtInAntiSnipeWindow() {
         ActiveSession session = auctioningSession();
         ActiveRound round = addRound(session, RoundStatus.OPEN);
@@ -273,6 +295,56 @@ class AuctionRoundLifecycleTest {
         verify(sessionStore).saveIfVersionMatch(eq(session), anyLong());
     }
 
+    @Test
+    void placeBid_doesNotExtendWhenMoreThanNineSecondsRemain() {
+        ActiveSession session = auctioningSession();
+        ActiveRound round = addRound(session, RoundStatus.OPEN);
+        Instant originalEndsAt = Instant.now().plus(14, ChronoUnit.SECONDS);
+        round.setEndsAt(originalEndsAt);
+
+        when(sessionStore.getById(sessionId)).thenReturn(session);
+
+        lifecycle.placeBid(
+            sessionId, user1, UUID.randomUUID().toString(), new PlaceBidRequest(round.getId(), 1)
+        );
+
+        assertThat(round.getEndsAt()).isEqualTo(originalEndsAt);
+    }
+
+    @Test
+    void placeBid_extendsWhenExactlyNineSecondsRemain() {
+        ActiveSession session = auctioningSession();
+        ActiveRound round = addRound(session, RoundStatus.OPEN);
+        Instant originalEndsAt = Instant.now().plus(9, ChronoUnit.SECONDS);
+        round.setEndsAt(originalEndsAt);
+
+        when(sessionStore.getById(sessionId)).thenReturn(session);
+
+        lifecycle.placeBid(
+            sessionId, user1, UUID.randomUUID().toString(), new PlaceBidRequest(round.getId(), 1)
+        );
+
+        assertThat(round.getEndsAt()).isEqualTo(
+            originalEndsAt.plus(AuctionTiming.ANTI_SNIPE_EXTENSION_SECONDS, ChronoUnit.SECONDS)
+        );
+    }
+
+    @Test
+    void placeBid_doesNotExtendAfterAntiSnipeWhenTwelveSecondsRemain() {
+        ActiveSession session = auctioningSession();
+        ActiveRound round = addRound(session, RoundStatus.OPEN);
+        Instant originalEndsAt = Instant.now().plus(12, ChronoUnit.SECONDS);
+        round.setEndsAt(originalEndsAt);
+
+        when(sessionStore.getById(sessionId)).thenReturn(session);
+
+        lifecycle.placeBid(
+            sessionId, user1, UUID.randomUUID().toString(), new PlaceBidRequest(round.getId(), 1)
+        );
+
+        assertThat(round.getEndsAt()).isEqualTo(originalEndsAt);
+    }
+
     private ActiveSession auctioningSession() {
         ActiveSession session = new ActiveSession(sessionId, SessionStatus.AUCTIONING, Instant.now(), GameMode.DUEL);
         session.setTurnOrder(List.of(user1, user2));
@@ -282,11 +354,12 @@ class AuctionRoundLifecycleTest {
     }
 
     private ActiveRound addRound(ActiveSession session, RoundStatus status) {
+        Instant startsAt = Instant.now().minus(AuctionTiming.ROUND_REVEAL_SECONDS + 1, ChronoUnit.SECONDS);
         ActiveRound round = new ActiveRound(
             UUID.randomUUID(),
             roundCardId,
-            Instant.now(),
-            Instant.now().plus(30, ChronoUnit.SECONDS),
+            startsAt,
+            startsAt.plus(AuctionTiming.ROUND_DURATION_SECONDS, ChronoUnit.SECONDS),
             user1,
             status
         );

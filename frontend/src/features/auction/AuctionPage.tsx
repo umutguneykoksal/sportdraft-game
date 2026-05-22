@@ -120,6 +120,9 @@ export function AuctionPage() {
               budget={state.budget}
               roundIsOpen={state.roundIsOpen}
               controlsLocked={state.controlsLocked}
+              interactionLocked={state.interactionLocked}
+              inCardReveal={state.inCardReveal}
+              showFirstCardIntro={state.showFirstCardIntro}
               loading={state.loading}
               canBid={state.canBid}
               couldBid={state.couldBid}
@@ -161,6 +164,9 @@ export function AuctionPage() {
               budget={state.budget}
               roundIsOpen={state.roundIsOpen}
               controlsLocked={state.controlsLocked}
+              interactionLocked={state.interactionLocked}
+              inCardReveal={state.inCardReveal}
+              showFirstCardIntro={state.showFirstCardIntro}
               loading={state.loading}
               canBid={state.canBid}
               couldBid={state.couldBid}

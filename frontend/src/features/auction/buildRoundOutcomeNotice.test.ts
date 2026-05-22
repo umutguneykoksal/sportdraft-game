@@ -61,4 +61,13 @@ describe("buildRoundOutcomeNotice", () => {
     expect(notice?.kind).toBe("passed");
     expect(notice?.detail).toBe("both players passed");
   });
+
+  it("defaults passed detail when no reason", () => {
+    const notice = buildRoundOutcomeNotice(
+      { result: "PASSED", round: { ...baseRound, status: "PASSED", highestBidCents: 0 } },
+      "user-a",
+      "Alice"
+    );
+    expect(notice?.detail).toBe("no one bought this card");
+  });
 });

@@ -36,10 +36,36 @@ class AuctionRulesTest {
     }
 
     @Test
+    void isBiddingClosedDuringCardReveal() {
+        Instant startsAt = Instant.now().minusMillis(500);
+        ActiveRound round = new ActiveRound(
+            UUID.randomUUID(), UUID.randomUUID(), startsAt,
+            startsAt.plus(AuctionTiming.ROUND_DURATION_SECONDS, ChronoUnit.SECONDS),
+            UUID.randomUUID(), RoundStatus.OPEN
+        );
+
+        assertThat(AuctionRules.isBiddingOpen(round)).isFalse();
+        assertThat(AuctionRules.isTurnOpen(round)).isFalse();
+    }
+
+    @Test
+    void isBiddingOpenAfterRevealWindow() {
+        Instant startsAt = Instant.now().minus(AuctionTiming.ROUND_REVEAL_SECONDS + 1, ChronoUnit.SECONDS);
+        ActiveRound round = new ActiveRound(
+            UUID.randomUUID(), UUID.randomUUID(), startsAt,
+            startsAt.plus(AuctionTiming.ROUND_DURATION_SECONDS, ChronoUnit.SECONDS),
+            UUID.randomUUID(), RoundStatus.OPEN
+        );
+
+        assertThat(AuctionRules.isBiddingOpen(round)).isTrue();
+    }
+
+    @Test
     void turnOpensEarlyWhenRoundHasAtMostFifteenSecondsLeft() {
         Instant now = Instant.now();
+        Instant startsAt = now.minus(AuctionTiming.ROUND_REVEAL_SECONDS + 1, ChronoUnit.SECONDS);
         ActiveRound round = new ActiveRound(
-            UUID.randomUUID(), UUID.randomUUID(), now, now.plus(30, ChronoUnit.SECONDS),
+            UUID.randomUUID(), UUID.randomUUID(), startsAt, now.plus(10, ChronoUnit.SECONDS),
             UUID.randomUUID(), RoundStatus.OPEN
         );
         // Recent bid would normally open turn in 15s; round ends in 10s → open now.

@@ -1,5 +1,6 @@
 import type { AuctionRoundResponse, AuctionTeamCardResponse, Formation } from "../../shared/api/contracts";
 import { openEligibleHighlights } from "../../shared/positions";
+import { isInCardRevealPhase } from "./auctionTiming";
 
 export interface ViewerFlags {
   viewerCanBid: boolean;
@@ -33,6 +34,9 @@ export function deriveViewerFlags(
 
   if (!round || round.status !== "OPEN" || !myUserId) return none;
 
+  const adjustedNow = Date.now() + serverClockOffsetMs;
+  if (isInCardRevealPhase(round.startsAt, round.endsAt, serverClockOffsetMs)) return none;
+
   const minimumBid = Math.max(1, round.highestBidCents + 1);
   const rosterFull = myTeam.length >= 11;
 
@@ -44,7 +48,6 @@ export function deriveViewerFlags(
   const hasPassed = (round.passedPlayerIds ?? []).includes(myUserId);
   const isMyTurn = round.currentTurnUserId === myUserId;
 
-  const adjustedNow = Date.now() + serverClockOffsetMs;
   const turnIsOpen =
     turnIsOpenKnown ??
     (round.turnOpenAt != null && adjustedNow >= new Date(round.turnOpenAt).getTime());
