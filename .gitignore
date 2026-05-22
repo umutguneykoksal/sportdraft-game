@@ -20,7 +20,12 @@ e2e/node_modules/
 .idea/
 .vscode/
 *.iml
+# Local documentation (ADRs, test matrices, plans, logs — not published)
 docs/
+docs/adr/
+
+# Markdown at repo root: README only
 *.md
+!README.md
 data/
 scripts/

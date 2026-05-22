@@ -18,7 +18,7 @@ Browser-based **multiplayer football card auction draft** game. Players bid on c
 - **3 game modes** — Duel (2p), Tournament (4p bracket), League (4p round-robin + playoff)
 - **Server-authoritative** state — Redis live sessions + PostgreSQL persistence
 - **Real-time** — WebSocket + SSE fallback, ordered event log + reconnect sync
-- **Modular monolith** — BCE slices (`boundary`, `control`, `entity`) with ADRs
+- **Modular monolith** — BCE slices (`boundary`, `control`, `entity`)
 - **Strong test discipline** — JaCoCo 85% backend gate, Jest coverage gate, Testcontainers IT, Playwright E2E (3 modes)
 
 ---
@@ -41,7 +41,7 @@ Browser-based **multiplayer football card auction draft** game. Players bid on c
 | Data | PostgreSQL 16, Redis 7, Flyway |
 | Frontend | React 18, TypeScript, TanStack Query, Zustand, Tailwind |
 | Real-time | WebSocket (primary), SSE fallback, REST event sync |
-| API | `/api/v2` canonical ([ADR-003](docs/adr/ADR-003-api-v2-migration.md)) |
+| API | `/api/v2` canonical; legacy `/api` v1 deprecated fallback |
 | Testing | JUnit 5, Testcontainers, Jest, Playwright |
 | Infra | Docker Compose (local), Railway (deploy) |
 
@@ -54,7 +54,6 @@ backend/          Java modular monolith — com.example.auction.<feature>
 frontend/         CRA app — src/features/ + src/shared/
 e2e/              Playwright smoke tests (duel, tournament, league)
 infra/            docker-compose.yml (Postgres 16, Redis 7)
-docs/             ADRs, test coverage matrix, architecture notes
 ```
 
 **Backend slices:** `lobby`, `session`, `bidding`, `simulation`, `competition`
@@ -107,8 +106,6 @@ REACT_APP_API_VERSION=v1
 | Frontend | `cd frontend && npm run test:coverage` | Jest thresholds 85/75/80/85 |
 | E2E (stack running) | `cd e2e && E2E_BASE_URL=http://localhost:3000 npm test` | Duel + tournament + league smoke |
 
-See [docs/test-coverage-matrix.md](docs/test-coverage-matrix.md) and [docs/test-coverage-backlog-phase5.md](docs/test-coverage-backlog-phase5.md).
-
 ---
 
 ## CI (GitHub Actions)
@@ -129,9 +126,7 @@ On every push/PR to `main`/`master`:
 - **PostgreSQL** — cards, competitions, match history, Flyway migrations
 - **Domain events** — `ApplicationEventPublisher` + `@TransactionalEventListener(AFTER_COMMIT)` + idempotent `ProcessedEvent` handlers
 - **Competition** — shared `CompetitionMatchCommandService` with league/tournament mode hooks
-- **Auth (MVP)** — opaque UUID bearer token ([ADR-002](docs/adr/ADR-002-anonymous-player-identity.md))
-
-Key ADRs: [docs/adr/](docs/adr/) — especially [ADR-005](docs/adr/ADR-005-game-mode-and-competition.md).
+- **Auth (MVP)** — opaque UUID bearer token on REST (`Authorization: Bearer`) and realtime (`?token=`)
 
 ---
 
@@ -145,7 +140,7 @@ Host selects **league** + **minimum OVR** (70 / 75 / 80) at room creation. Thres
 | Trendyol Super Lig | Available |
 | La Liga, Serie A, Bundesliga | Coming soon |
 
-Data pipeline: [docs/player-data-pipeline.md](docs/player-data-pipeline.md)
+Card data is loaded via Flyway migrations and optional local import scripts under `data/` and `scripts/` (gitignored).
 
 ---
 
