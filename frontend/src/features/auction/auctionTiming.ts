@@ -5,9 +5,12 @@ export const ROUND_TOTAL_SECONDS = ROUND_REVEAL_SECONDS + ROUND_BID_SECONDS;
 
 export function resolveRoundStartsAt(
   startsAt: string | null | undefined,
-  endsAt: string
+  endsAt: string,
+  serverClockOffsetMs = 0
 ): string | null {
   if (startsAt) return startsAt;
+  const serverSecondsLeft = computeServerSecondsLeft(endsAt, serverClockOffsetMs);
+  if (serverSecondsLeft > ROUND_TOTAL_SECONDS) return null;
   const endsMs = new Date(endsAt).getTime();
   if (Number.isNaN(endsMs)) return null;
   return new Date(endsMs - ROUND_TOTAL_SECONDS * 1000).toISOString();
@@ -23,7 +26,7 @@ export function isInCardRevealPhase(
   endsAt: string,
   serverClockOffsetMs = 0
 ): boolean {
-  const effectiveStartsAt = resolveRoundStartsAt(startsAt, endsAt);
+  const effectiveStartsAt = resolveRoundStartsAt(startsAt, endsAt, serverClockOffsetMs);
   if (!effectiveStartsAt) return false;
   const adjustedNow = Date.now() + serverClockOffsetMs;
   return adjustedNow < new Date(effectiveStartsAt).getTime() + ROUND_REVEAL_SECONDS * 1000;

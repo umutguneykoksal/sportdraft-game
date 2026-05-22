@@ -154,6 +154,9 @@ public class AuctionRoundLifecycle {
         if (Instant.now().isAfter(graceDeadline)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Round has already ended");
         }
+
+        SessionAccess.requireMember(session, userId);
+
         if (!AuctionRules.isBiddingOpen(round)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Bidding opens soon");
         }
@@ -164,7 +167,6 @@ public class AuctionRoundLifecycle {
             return AuctionRoundResponses.toResponseWithContext(round, roundCard, session, cardMap, userId);
         }
 
-        SessionAccess.requireMember(session, userId);
         ActivePlayer bidder = session.findPlayerByUserId(userId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN, "Player not found in session"));
         if (normalizeTurnForRound(round, session, cardMap)) {

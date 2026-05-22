@@ -109,6 +109,8 @@ class AuctionAntiSnipeIT extends AbstractIntegrationTest {
         AuctionRoundResponse round = auctionService.getAuctionState(ctx.sessionId(), ctx.user1()).currentRound();
         assertThat(round).isNotNull();
 
+        IntegrationAuctionTestSupport.openBiddingOnCurrentRound(sessionStore, ctx.sessionId());
+
         UUID bidder = round.currentTurnUserId() != null ? round.currentTurnUserId() : ctx.user1();
         return auctionService.placeBid(
             ctx.sessionId(),

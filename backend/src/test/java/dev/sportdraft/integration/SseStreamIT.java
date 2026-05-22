@@ -60,6 +60,7 @@ class SseStreamIT extends AbstractIntegrationTest {
         AuctionRoundResponse round = auctionService.getAuctionState(sessionId, user1).currentRound();
         assertThat(round).isNotNull();
         UUID bidder = round.currentTurnUserId() != null ? round.currentTurnUserId() : user1;
+        IntegrationAuctionTestSupport.openBiddingOnCurrentRound(sessionStore, sessionId);
         auctionService.placeBid(
             sessionId,
             bidder,

@@ -69,6 +69,7 @@ class CoreFlowIntegrationTest extends AbstractIntegrationTest {
 
         AuctionRoundResponse round = auctionService.getAuctionState(sessionId, user1).currentRound();
         assertThat(round).isNotNull();
+        IntegrationAuctionTestSupport.openBiddingOnCurrentRound(sessionStore, sessionId);
         AuctionRoundResponse afterBid = auctionService.placeBid(
             sessionId, user1, UUID.randomUUID().toString(),
             new PlaceBidRequest(round.roundId(), 2)

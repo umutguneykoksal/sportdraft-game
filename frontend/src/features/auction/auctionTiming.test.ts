@@ -32,6 +32,11 @@ describe("auctionTiming", () => {
     expect(computeDisplaySecondsLeft(startsAt, endsAt, afterReveal)).toBe(30);
   });
 
+  it("does not infer reveal when endsAt is far out (anti-snipe extension)", () => {
+    const endsAt = new Date(Date.now() + 60_000).toISOString();
+    expect(isInCardRevealPhase(null, endsAt, 0)).toBe(false);
+  });
+
   it("uses configured reveal length", () => {
     expect(ROUND_REVEAL_SECONDS).toBe(2);
   });

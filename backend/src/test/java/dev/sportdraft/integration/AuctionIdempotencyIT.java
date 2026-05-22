@@ -59,6 +59,7 @@ class AuctionIdempotencyIT extends AbstractIntegrationTest {
         String idempotencyKey = UUID.randomUUID().toString();
         PlaceBidRequest request = new PlaceBidRequest(round.roundId(), 2);
 
+        IntegrationAuctionTestSupport.openBiddingOnCurrentRound(sessionStore, sessionId);
         AuctionRoundResponse first = auctionService.placeBid(sessionId, user1, idempotencyKey, request);
         AuctionRoundResponse second = auctionService.placeBid(sessionId, user1, idempotencyKey, request);
 

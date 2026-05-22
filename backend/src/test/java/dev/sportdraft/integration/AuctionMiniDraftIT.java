@@ -54,6 +54,7 @@ class AuctionMiniDraftIT extends AbstractIntegrationTest {
             assertThat(current.status()).isEqualTo("OPEN");
 
             UUID bidder = current.currentTurnUserId() != null ? current.currentTurnUserId() : user1;
+            IntegrationAuctionTestSupport.openBiddingOnCurrentRound(sessionStore, sessionId);
             auctionService.placeBid(
                 sessionId,
                 bidder,

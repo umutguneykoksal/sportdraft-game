@@ -14,6 +14,7 @@ const baseRound = (overrides: Partial<AuctionRoundResponse> = {}): AuctionRoundR
   readyUserOneId: null,
   readyUserTwoId: null,
   endsAt: new Date(Date.now() + 60_000).toISOString(),
+  startsAt: new Date(Date.now() - 10_000).toISOString(),
   turnOpenAt: new Date(Date.now() + 60_000).toISOString(),
   status: "OPEN",
   opponentCanBid: true,
