@@ -61,4 +61,17 @@ class SessionMutationGuardTest {
                 assertThat(rse.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
             });
     }
+
+    @Test
+    void mutateRetriesWhenLockBusyThenSucceeds() {
+        UUID sessionId = UUID.randomUUID();
+        when(redis.opsForValue()).thenReturn(valueOps);
+        when(valueOps.setIfAbsent(anyString(), anyString(), eq(Duration.ofSeconds(5))))
+            .thenReturn(false, true);
+        when(redis.execute(any(), any(), any())).thenReturn(1L);
+
+        String result = guard.mutate(sessionId, () -> "done");
+
+        assertThat(result).isEqualTo("done");
+    }
 }
