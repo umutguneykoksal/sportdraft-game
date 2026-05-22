@@ -13,7 +13,6 @@ import com.example.auction.competition.entity.CompetitionRepository;
 import com.example.auction.competition.entity.CompetitionStatus;
 import com.example.auction.competition.entity.CompetitionType;
 import com.example.auction.competition.entity.LeaguePhase;
-import com.example.auction.session.entity.Formation;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
