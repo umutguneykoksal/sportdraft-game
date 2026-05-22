@@ -13,6 +13,7 @@ import com.example.auction.competition.entity.CompetitionRepository;
 import com.example.auction.competition.entity.CompetitionStatus;
 import com.example.auction.competition.entity.CompetitionType;
 import com.example.auction.competition.entity.LeaguePhase;
+import com.example.auction.session.entity.Formation;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -32,7 +33,6 @@ class LeaguePhaseCoordinatorTest {
     private CompetitionMatchRepository matchRepository;
     @Mock
     private CompetitionMatchViewRepository viewRepository;
-    @Mock
     private LeagueStandingsService standingsService;
     @Mock
     private CompetitionJson competitionJson;
@@ -48,6 +48,7 @@ class LeaguePhaseCoordinatorTest {
 
     @BeforeEach
     void setUp() {
+        standingsService = new LeagueStandingsService();
         coordinator = new LeaguePhaseCoordinator(
             competitionRepository,
             matchRepository,
@@ -55,6 +56,38 @@ class LeaguePhaseCoordinatorTest {
             standingsService,
             competitionJson
         );
+    }
+
+    @Test
+    void tryResolveAfterRoundRobin_singleChampionFinalizesLeague() {
+        CompetitionEntity competition = leagueCompetition(LeaguePhase.MATCHDAY_3);
+        List<CompetitionMatchEntity> matches = List.of(
+            completedMatch("MD1_A", p0, p1, 3, 0),
+            completedMatch("MD1_B", p2, p3, 1, 1),
+            completedMatch("MD2_A", p0, p2, 2, 0),
+            completedMatch("MD2_B", p1, p3, 2, 1),
+            completedMatch("MD3_A", p0, p3, 1, 0),
+            completedMatch("MD3_B", p1, p2, 0, 1)
+        );
+        CompetitionDraftSnapshot snapshot = new CompetitionDraftSnapshot(
+            sessionId,
+            42L,
+            List.of(
+                new CompetitionDraftSnapshot.PlayerSnapshot(p0, "P0", Formation.FOUR_FOUR_TWO, List.of()),
+                new CompetitionDraftSnapshot.PlayerSnapshot(p1, "P1", Formation.FOUR_FOUR_TWO, List.of()),
+                new CompetitionDraftSnapshot.PlayerSnapshot(p2, "P2", Formation.FOUR_FOUR_TWO, List.of()),
+                new CompetitionDraftSnapshot.PlayerSnapshot(p3, "P3", Formation.FOUR_FOUR_TWO, List.of())
+            )
+        );
+
+        when(matchRepository.findByCompetitionIdOrderBySortOrderAsc(competitionId)).thenReturn(matches);
+        when(competitionJson.readSnapshot(competition.getDraftSnapshotJson())).thenReturn(snapshot);
+        stubWatched(matches.get(4));
+        stubWatched(matches.get(5));
+
+        assertThat(coordinator.tryResolveAfterRoundRobin(competition)).isTrue();
+        assertThat(competition.getChampionUserId()).isEqualTo(p0);
+        assertThat(competition.getStatus()).isEqualTo(CompetitionStatus.COMPLETED);
     }
 
     @Test
@@ -161,6 +194,12 @@ class LeaguePhaseCoordinatorTest {
     }
 
     private CompetitionMatchEntity completedMatch(String roundKey, UUID home, UUID away) {
+        return completedMatch(roundKey, home, away, 1, 0);
+    }
+
+    private CompetitionMatchEntity completedMatch(
+        String roundKey, UUID home, UUID away, int homeScore, int awayScore
+    ) {
         CompetitionMatchEntity match = new CompetitionMatchEntity();
         match.setId(UUID.randomUUID());
         match.setCompetitionId(competitionId);
@@ -168,8 +207,8 @@ class LeaguePhaseCoordinatorTest {
         match.setHomeUserId(home);
         match.setAwayUserId(away);
         match.setStatus(CompetitionMatchStatus.COMPLETED);
-        match.setHomeScore(1);
-        match.setAwayScore(0);
+        match.setHomeScore(homeScore);
+        match.setAwayScore(awayScore);
         match.setSeed(1L);
         match.setSortOrder(1);
         return match;

@@ -129,6 +129,31 @@ class LeagueFixtureServiceTest {
         assertThat(snapshot.players()).hasSize(4);
     }
 
+    @Test
+    void isMandatoryWatchPending_trueForActiveMatchdayParticipant() {
+        CompetitionEntity competition = fixtureService.initializeLeague(draftEvent());
+        CompetitionMatchEntity match = new CompetitionMatchEntity();
+        match.setId(UUID.randomUUID());
+        match.setRoundKey("MD1_A");
+        match.setHomeUserId(p0);
+        match.setAwayUserId(p1);
+        match.setStatus(CompetitionMatchStatus.PENDING);
+
+        assertThat(fixtureService.isMandatoryWatchPending(competition, match, p0, false)).isTrue();
+        assertThat(fixtureService.isReplayAllowed(competition, match)).isFalse();
+    }
+
+    @Test
+    void matchFullyWatched_requiresTwoViews() {
+        CompetitionEntity competition = fixtureService.initializeLeague(draftEvent());
+        CompetitionMatchEntity match = new CompetitionMatchEntity();
+        match.setId(UUID.randomUUID());
+        match.setRoundKey("MD1_A");
+        when(viewRepository.countByMatchId(match.getId())).thenReturn(2L);
+
+        assertThat(fixtureService.matchFullyWatched(competition, match)).isTrue();
+    }
+
     private DraftCompletedEvent draftEvent() {
         return new DraftCompletedEvent(
             UUID.randomUUID(),

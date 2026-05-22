@@ -163,6 +163,102 @@ class SessionReadServiceTest {
     }
 
     @Test
+    void getMatchResult_memberFromArchive_returnsScores() throws Exception {
+        MatchHistory history = archivedMatchHistory();
+        when(sessionStore.findById(sessionId)).thenReturn(Optional.empty());
+        when(matchHistoryRepository.findBySessionId(sessionId)).thenReturn(Optional.of(history));
+        when(auctionService.buildTeamSnapshot(org.mockito.ArgumentMatchers.any(), eq(homeUserId))).thenReturn(
+            new AuctionService.TeamSnapshot(List.of(), List.of(), "4-4-2", "4-3-3")
+        );
+
+        ResponseEntity<?> response = sessionReadService.getMatchResult(sessionId, homeUserId);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+    }
+
+    @Test
+    void getMatchResult_corruptArchive_returnsScoresOnly() throws Exception {
+        MatchHistory history = new MatchHistory(
+            UUID.randomUUID(),
+            sessionId,
+            homeUserId,
+            awayUserId,
+            2,
+            1,
+            Formation.FOUR_FOUR_TWO.name(),
+            Formation.FOUR_THREE_THREE.name(),
+            123L,
+            Instant.now(),
+            "{not-json"
+        );
+        when(sessionStore.findById(sessionId)).thenReturn(Optional.empty());
+        when(matchHistoryRepository.findBySessionId(sessionId)).thenReturn(Optional.of(history));
+
+        ResponseEntity<?> response = sessionReadService.getMatchResult(sessionId, homeUserId);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+    }
+
+    @Test
+    void getMatchResult_finishedActiveSession_includesStats() {
+        ActiveSession session = activeSessionWithTimeline();
+        session.setStatus(SessionStatus.FINISHED);
+        session.setMatchWinnerUserId(homeUserId);
+        when(sessionStore.findById(sessionId)).thenReturn(Optional.of(session));
+        when(auctionService.buildTeamSnapshot(session, homeUserId)).thenReturn(
+            new AuctionService.TeamSnapshot(List.of(), List.of(), "4-4-2", "4-4-2")
+        );
+
+        ResponseEntity<?> response = sessionReadService.getMatchResult(sessionId, homeUserId);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+    }
+
+    @Test
+    void getMatchTimeline_memberFromArchive_returnsTimeline() throws Exception {
+        MatchHistory history = archivedMatchHistory();
+        when(sessionStore.findById(sessionId)).thenReturn(Optional.empty());
+        when(matchHistoryRepository.findBySessionId(sessionId)).thenReturn(Optional.of(history));
+
+        ResponseEntity<?> response = sessionReadService.getMatchTimeline(sessionId, homeUserId);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+    }
+
+    @Test
+    void getSpectateMatchTimeline_activeSession_returnsTimeline() {
+        ActiveSession session = activeSessionWithTimeline();
+        when(sessionStore.findById(sessionId)).thenReturn(Optional.of(session));
+
+        ResponseEntity<?> response = sessionReadService.getSpectateMatchTimeline(sessionId);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        @SuppressWarnings("unchecked")
+        List<MatchEvent> body = (List<MatchEvent>) response.getBody();
+        assertThat(body).hasSize(1);
+    }
+
+    @Test
+    void getSpectateMatchTimeline_fromArchive_returnsTimeline() throws Exception {
+        MatchHistory history = archivedMatchHistory();
+        when(sessionStore.findById(sessionId)).thenReturn(Optional.empty());
+        when(matchHistoryRepository.findBySessionId(sessionId)).thenReturn(Optional.of(history));
+
+        ResponseEntity<?> response = sessionReadService.getSpectateMatchTimeline(sessionId);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+    }
+
+    @Test
+    void spectate_unknownSession_throws404() {
+        when(sessionStore.findById(sessionId)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> sessionReadService.spectate(sessionId))
+            .isInstanceOf(ResponseStatusException.class)
+            .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND));
+    }
+
+    @Test
     void recordPing_delegatesToSseRegistry() {
         sessionReadService.recordPing(sessionId, homeUserId);
         verify(sseEmitterRegistry).recordPlayerPing(sessionId, homeUserId);

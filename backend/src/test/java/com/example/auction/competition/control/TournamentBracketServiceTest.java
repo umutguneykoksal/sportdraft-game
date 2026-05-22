@@ -141,6 +141,34 @@ class TournamentBracketServiceTest {
         assertThat(bracketService.matchFullyWatched(competition, match)).isTrue();
     }
 
+    @Test
+    void isTournamentParticipant_checksSnapshot() {
+        CompetitionEntity competition = savedCompetition();
+        UUID participant = p0;
+
+        assertThat(bracketService.isTournamentParticipant(competition, participant)).isTrue();
+        assertThat(bracketService.isTournamentParticipant(competition, UUID.randomUUID())).isFalse();
+    }
+
+    @Test
+    void scoresVisibleForViewer_hiddenUntilReplayPhase() {
+        CompetitionEntity competition = savedCompetition();
+        CompetitionMatchEntity match = semiMatch("SEMI_1", p0, p1);
+        match.setStatus(CompetitionMatchStatus.COMPLETED);
+
+        assertThat(bracketService.scoresVisibleForViewer(competition, match, false)).isFalse();
+    }
+
+    @Test
+    void isReplayAllowed_onlyInReplaysPhase() {
+        CompetitionEntity competition = savedCompetition();
+        CompetitionMatchEntity match = semiMatch("SEMI_1", p0, p1);
+        match.setStatus(CompetitionMatchStatus.COMPLETED);
+        competition.setTournamentPhase(TournamentPhase.REPLAYS);
+
+        assertThat(bracketService.isReplayAllowed(competition, match)).isTrue();
+    }
+
     private DraftCompletedEvent draftEvent() {
         return new DraftCompletedEvent(
             UUID.randomUUID(),

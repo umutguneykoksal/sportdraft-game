@@ -101,6 +101,38 @@ class AuctionRoundLifecycleTest {
     }
 
     @Test
+    void placeBid_successfulBid_persistsAndBroadcasts() {
+        ActiveSession session = auctioningSession();
+        ActiveRound round = addRound(session, RoundStatus.OPEN);
+        round.setCurrentTurnUserId(user1);
+        round.setTurnStartedAt(Instant.now());
+        when(sessionStore.getById(sessionId)).thenReturn(session);
+
+        lifecycle.placeBid(
+            sessionId, user1, UUID.randomUUID().toString(), new PlaceBidRequest(round.getId(), 1)
+        );
+
+        assertThat(round.getHighestBidCents()).isEqualTo(1);
+        verify(sessionStore).saveIfVersionMatch(eq(session), anyLong());
+        verify(sseEmitterRegistry).broadcast(eq(sessionId), eq("bid_placed"), any());
+    }
+
+    @Test
+    void passRound_delegatesToPassHandler() {
+        ActiveSession session = auctioningSession();
+        ActiveRound round = addRound(session, RoundStatus.OPEN);
+        round.setCurrentTurnUserId(user1);
+        round.setTurnStartedAt(Instant.now());
+        when(sessionStore.getById(sessionId)).thenReturn(session);
+        when(passHandler.pass(eq(session), anyLong(), eq(user1), eq(round), any()))
+            .thenReturn(new AuctionPassHandler.PassRoundResult(null, false));
+
+        lifecycle.passRound(sessionId, user1, round.getId());
+
+        verify(passHandler).pass(eq(session), anyLong(), eq(user1), eq(round), any());
+    }
+
+    @Test
     void startRound_rejectsWhenOpenRoundExists() {
         ActiveSession session = auctioningSession();
         addRound(session, RoundStatus.OPEN);
