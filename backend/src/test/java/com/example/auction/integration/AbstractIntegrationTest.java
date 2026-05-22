@@ -1,6 +1,8 @@
 package com.example.auction.integration;
 
 import com.example.auction.AuctionApplication;
+import org.junit.jupiter.api.BeforeEach;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.context.ImportTestcontainers;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
@@ -15,7 +17,7 @@ import org.testcontainers.utility.DockerImageName;
  * containers are removed when the JVM exits.
  */
 @SpringBootTest(
-    classes = AuctionApplication.class,
+    classes = {AuctionApplication.class, IntegrationTestAsyncConfig.class},
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT
 )
 @ImportTestcontainers
@@ -34,4 +36,12 @@ abstract class AbstractIntegrationTest {
     static final GenericContainer<?> REDIS =
         new GenericContainer<>(DockerImageName.parse("redis:7-alpine"))
             .withExposedPorts(6379);
+
+    @Autowired
+    private IntegrationTestStateCleaner stateCleaner;
+
+    @BeforeEach
+    void resetIntegrationState() {
+        stateCleaner.reset();
+    }
 }

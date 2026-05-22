@@ -49,6 +49,7 @@ class PersistenceInvariantIT extends AbstractIntegrationTest {
 
         await().atMost(10, SECONDS).until(() -> competitionRepository.findBySessionId(sessionId).isPresent());
 
+        assertThat(competitionRepository.findBySessionId(sessionId)).isPresent();
         assertThat(competitionRepository.findAll()).hasSize(1);
         assertThat(processedEventRepository.existsById(eventId)).isTrue();
         assertThat(processedEventRepository.count()).isEqualTo(1);
@@ -67,10 +68,8 @@ class PersistenceInvariantIT extends AbstractIntegrationTest {
         DraftCompletedEvent second = CompetitionTestFixtures.tournamentEvent(sessionId);
         eventPublisher.publishEvent(second);
 
-        await().during(1, SECONDS).atMost(3, SECONDS).until(() ->
-            competitionRepository.findAll().size() == 1
-        );
-
+        assertThat(competitionRepository.findBySessionId(sessionId)).isPresent();
+        assertThat(competitionRepository.findAll()).hasSize(1);
         assertThat(processedEventRepository.count()).isEqualTo(2);
     }
 
