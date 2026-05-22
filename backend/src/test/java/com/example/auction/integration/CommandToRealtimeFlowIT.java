@@ -78,7 +78,7 @@ class CommandToRealtimeFlowIT extends AbstractIntegrationTest {
             .toList();
         assertThat(seqs).isSorted();
 
-        assertThat(events.stream().map(event -> event.get("type")))
+        assertThat(events.stream().map(event -> event.get("eventType")))
             .anyMatch(type -> "round_started".equals(type) || "bid_placed".equals(type));
     }
 }
