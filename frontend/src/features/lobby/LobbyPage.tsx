@@ -232,6 +232,7 @@ export function LobbyPage() {
                 <button
                   key={mode}
                   type="button"
+                  data-testid={`lobby-mode-${mode}`}
                   onClick={() => setCreateGameMode(mode)}
                   className={`text-sm font-medium px-3 py-2 rounded-lg border transition-colors ${
                     createGameMode === mode
