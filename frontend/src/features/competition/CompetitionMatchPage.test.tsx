@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import type { CompetitionMatchOpenResponse, CompetitionResponse, MatchEvent } from "../../shared/api/contracts";
 import { CompetitionMatchPage } from "./CompetitionMatchPage";
+import { REACT_ROUTER_FUTURE_FLAGS } from "../../test/reactRouterFuture";
 import {
   ackCompetitionMatchWatch,
   openCompetitionMatch,
@@ -80,10 +81,7 @@ function renderPage(sessionId = "session-1", matchId = "match-1") {
   return render(
     <MemoryRouter
       initialEntries={[`/tournament/${sessionId}/match/${matchId}`]}
-      future={{
-        v7_startTransition: true,
-        v7_relativeSplatPath: true,
-      }}
+      future={REACT_ROUTER_FUTURE_FLAGS}
     >
       <Routes>
         <Route

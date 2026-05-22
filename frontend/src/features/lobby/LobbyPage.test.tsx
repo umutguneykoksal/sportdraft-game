@@ -1,5 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
+import { REACT_ROUTER_FUTURE_FLAGS } from "../../test/reactRouterFuture";
 import { LobbyPage } from "./LobbyPage";
 
 jest.mock("./hooks/useLobbyFlow", () => ({
@@ -31,7 +32,7 @@ jest.mock("./hooks/useLobbyFlow", () => ({
 describe("LobbyPage", () => {
   it("rendersCreateRoomControls", () => {
     render(
-      <MemoryRouter>
+      <MemoryRouter future={REACT_ROUTER_FUTURE_FLAGS}>
         <LobbyPage />
       </MemoryRouter>
     );

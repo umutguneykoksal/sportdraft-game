@@ -1,6 +1,8 @@
 import {
   computeDisplaySecondsLeft,
+  computeServerSecondsLeft,
   isInCardRevealPhase,
+  resolveRoundStartsAt,
   ROUND_BID_SECONDS,
   ROUND_REVEAL_SECONDS,
 } from "./auctionTiming";
@@ -39,5 +41,20 @@ describe("auctionTiming", () => {
 
   it("uses configured reveal length", () => {
     expect(ROUND_REVEAL_SECONDS).toBe(2);
+  });
+
+  it("returns explicit startsAt when provided", () => {
+    const startsAt = "2026-01-01T12:00:00.000Z";
+    const endsAt = "2026-01-01T12:00:32.000Z";
+    expect(resolveRoundStartsAt(startsAt, endsAt)).toBe(startsAt);
+  });
+
+  it("returns null when endsAt cannot be parsed", () => {
+    expect(resolveRoundStartsAt(null, "not-a-date", 0)).toBeNull();
+  });
+
+  it("computeServerSecondsLeft never goes below zero", () => {
+    const endsAt = new Date(Date.now() - 5000).toISOString();
+    expect(computeServerSecondsLeft(endsAt, 0)).toBe(0);
   });
 });
