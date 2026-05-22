@@ -28,7 +28,7 @@ export function AuctionPage() {
       <div className="bg-surface-card border-b border-white/10 px-4 py-3">
         <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2 sm:gap-4">
-            <h1 className="text-lg sm:text-xl font-bold text-white">Auction Draft</h1>
+            <h1 className="text-lg sm:text-xl font-bold text-white" data-testid="auction-page">Auction Draft</h1>
             <span className="text-xs bg-surface-elevated text-slate-400 px-2 py-1 rounded">
               {FORMATION_LABELS[state.myFormation]}
             </span>

@@ -1,0 +1,55 @@
+package com.example.auction.boundary.slice;
+
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+import com.example.auction.common.web.AuthTokenResolver;
+import com.example.auction.common.web.GlobalExceptionHandler;
+import com.example.auction.session.boundary.SessionQueryController;
+import com.example.auction.session.control.SessionReadService;
+import java.util.UUID;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.context.annotation.Import;
+import org.springframework.http.ResponseEntity;
+import org.springframework.test.web.servlet.MockMvc;
+
+@WebMvcTest(controllers = SessionQueryController.class)
+@Import({AuthTokenResolver.class, GlobalExceptionHandler.class})
+@AutoConfigureMockMvc(addFilters = false)
+class SessionQueryControllerSliceTest {
+
+    @Autowired
+    private MockMvc mockMvc;
+
+    @MockBean
+    private SessionReadService sessionReadService;
+
+    private final UUID userId = UUID.fromString("11111111-1111-1111-1111-111111111111");
+    private final UUID sessionId = UUID.fromString("22222222-2222-2222-2222-222222222222");
+
+    @Test
+    void getMatchResult_notFound_returns404() throws Exception {
+        when(sessionReadService.getMatchResult(eq(sessionId), eq(userId)))
+            .thenReturn(ResponseEntity.notFound().build());
+
+        mockMvc.perform(get("/api/v2/sessions/{sessionId}/match-result", sessionId)
+                .header("Authorization", "Bearer " + userId))
+            .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void getMatchTimeline_notFound_returns404() throws Exception {
+        when(sessionReadService.getMatchTimeline(eq(sessionId), eq(userId)))
+            .thenReturn(ResponseEntity.notFound().build());
+
+        mockMvc.perform(get("/api/v2/sessions/{sessionId}/match-timeline", sessionId)
+                .header("Authorization", "Bearer " + userId))
+            .andExpect(status().isNotFound());
+    }
+}

@@ -56,6 +56,20 @@ describe("tournamentFlow", () => {
     });
   });
 
+  it("routes viewer to mandatory semi watch before intermission", () => {
+    const data = competition({
+      matches: [
+        semi({ matchId: "semi-1", homeUserId: "me", watchedByMe: false, playable: true }),
+        semi({ matchId: "semi-2", roundKey: "SEMI_2", homeUserId: "p3", awayUserId: "p4", watchedByMe: true }),
+      ],
+    });
+    expect(resolveTournamentStep(data, "me")).toEqual({
+      kind: "watch",
+      matchId: "semi-1",
+      replay: false,
+    });
+  });
+
   it("shows intermission when phase is INTERMISSION", () => {
     const data = competition({
       tournamentPhase: "INTERMISSION",

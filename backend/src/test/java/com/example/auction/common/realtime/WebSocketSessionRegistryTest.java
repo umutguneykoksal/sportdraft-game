@@ -1,6 +1,7 @@
 package com.example.auction.common.realtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -14,6 +15,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.socket.WebSocketSession;
 
 @ExtendWith(MockitoExtension.class)
@@ -86,6 +89,21 @@ class WebSocketSessionRegistryTest {
 
         verify(connectionTracker, never()).onPlayerFullyDisconnected(eq(sessionId), eq(userId));
         verify(presenceChecker, never()).isPlayerPresent(sessionId, userId);
+    }
+
+    @Test
+    void register_rejectsInvalidToken() {
+        UUID sessionId = UUID.randomUUID();
+        URI uri = URI.create("ws://localhost/ws/sessions?sessionId=" + sessionId + "&token=not-a-uuid");
+        when(playerSession.getUri()).thenReturn(uri);
+
+        assertThatThrownBy(() -> registry.register(playerSession))
+            .isInstanceOf(ResponseStatusException.class)
+            .satisfies(ex -> {
+                ResponseStatusException rse = (ResponseStatusException) ex;
+                assertThat(rse.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+                assertThat(rse.getReason()).isEqualTo("Missing or invalid token");
+            });
     }
 
     @Test

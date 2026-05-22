@@ -1,8 +1,17 @@
 package com.example.auction.integration;
 
+import com.example.auction.bidding.control.AuctionService;
 import com.example.auction.bidding.control.CardCatalogService;
 import com.example.auction.bidding.entity.PlayerAttributes;
 import com.example.auction.bidding.entity.Position;
+import com.example.auction.competition.control.CompetitionMatchService;
+import com.example.auction.competition.control.LeagueFixtureService;
+import com.example.auction.competition.control.TournamentBracketService;
+import com.example.auction.competition.entity.CompetitionEntity;
+import com.example.auction.competition.entity.CompetitionMatchEntity;
+import com.example.auction.competition.entity.CompetitionMatchRepository;
+import com.example.auction.competition.entity.CompetitionMatchStatus;
+import com.example.auction.competition.entity.CompetitionRepository;
 import com.example.auction.lobby.control.LobbyService;
 import com.example.auction.session.entity.Formation;
 import com.example.auction.session.entity.GameMode;
@@ -82,6 +91,168 @@ final class CompetitionTestFixtures {
         session.setCountdownEndsAt(Instant.now().minusSeconds(1));
         sessionStore.saveIfVersionMatch(session, version);
         lobbyService.advanceTimedPhases();
+    }
+
+    static void watchMatch(
+        CompetitionMatchService service,
+        UUID sessionId,
+        CompetitionMatchEntity match
+    ) {
+        service.openMatch(sessionId, match.getId(), match.getHomeUserId(), false);
+        service.acknowledgeWatch(sessionId, match.getId(), match.getHomeUserId());
+        service.acknowledgeWatch(sessionId, match.getId(), match.getAwayUserId());
+    }
+
+    static void watchMatchWithAllParticipants(
+        CompetitionMatchService service,
+        UUID sessionId,
+        CompetitionMatchEntity match,
+        UUID... allUsers
+    ) {
+        service.openMatch(sessionId, match.getId(), match.getHomeUserId(), false);
+        for (UUID userId : allUsers) {
+            service.acknowledgeWatch(sessionId, match.getId(), userId);
+        }
+    }
+
+    static CompetitionEntity advanceTournamentIntermission(
+        TournamentBracketService bracketService,
+        CompetitionRepository competitionRepository,
+        CompetitionEntity competition
+    ) {
+        competition.setIntermissionEndsAt(Instant.now().minusSeconds(1));
+        competitionRepository.save(competition);
+        bracketService.tryStartFinalPhase(competition);
+        return competitionRepository.findById(competition.getId()).orElseThrow();
+    }
+
+    static CompetitionEntity advanceLeagueBreak(
+        LeagueFixtureService fixtureService,
+        CompetitionRepository competitionRepository,
+        CompetitionEntity competition
+    ) {
+        competition.setIntermissionEndsAt(Instant.now().minusSeconds(1));
+        competitionRepository.save(competition);
+        fixtureService.tryAdvanceFromBreak(competition);
+        return competitionRepository.findById(competition.getId()).orElseThrow();
+    }
+
+    static void completeDuelDraft(
+        AuctionService auctionService,
+        CardCatalogService catalog,
+        ActiveSessionStore sessionStore,
+        UUID sessionId,
+        UUID user1,
+        UUID user2
+    ) {
+        ActiveSession session = sessionStore.getById(sessionId);
+        fillFullRosters(session, catalog, sessionStore);
+        auctionService.ensureOpenRound(sessionId);
+        auctionService.confirmMatchStart(sessionId, user1);
+        auctionService.confirmMatchStart(sessionId, user2);
+    }
+
+    static void completeCompetitionDraft(
+        AuctionService auctionService,
+        CardCatalogService catalog,
+        ActiveSessionStore sessionStore,
+        UUID sessionId,
+        UUID... userIds
+    ) {
+        ActiveSession session = sessionStore.getById(sessionId);
+        fillFullRosters(session, catalog, sessionStore);
+        auctionService.ensureOpenRound(sessionId);
+        for (UUID userId : userIds) {
+            auctionService.confirmMatchStart(sessionId, userId);
+        }
+    }
+
+    static CompetitionMatchEntity requireMatch(
+        CompetitionMatchRepository matchRepository,
+        UUID competitionId,
+        String roundKey
+    ) {
+        return matchRepository.findByCompetitionIdAndRoundKey(competitionId, roundKey).orElseThrow();
+    }
+
+    static void watchMatchday(
+        CompetitionMatchService service,
+        CompetitionMatchRepository matchRepository,
+        UUID sessionId,
+        UUID competitionId,
+        int matchday
+    ) {
+        watchMatch(service, sessionId, requireMatch(matchRepository, competitionId, "MD" + matchday + "_A"));
+        watchMatch(service, sessionId, requireMatch(matchRepository, competitionId, "MD" + matchday + "_B"));
+    }
+
+    static void forceResult(
+        CompetitionMatchRepository matchRepository,
+        CompetitionMatchEntity match,
+        int homeScore,
+        int awayScore
+    ) {
+        match.setHomeScore(homeScore);
+        match.setAwayScore(awayScore);
+        match.setStatus(CompetitionMatchStatus.COMPLETED);
+        if (homeScore > awayScore) {
+            match.setWinnerUserId(match.getHomeUserId());
+        } else if (awayScore > homeScore) {
+            match.setWinnerUserId(match.getAwayUserId());
+        } else {
+            match.setWinnerUserId(null);
+        }
+        matchRepository.save(match);
+    }
+
+    static void forceDraw(CompetitionMatchRepository matchRepository, CompetitionMatchEntity match) {
+        forceResult(matchRepository, match, 1, 1);
+    }
+
+    static void openSimulateAndForceResult(
+        CompetitionMatchService service,
+        CompetitionMatchRepository matchRepository,
+        UUID sessionId,
+        CompetitionMatchEntity match,
+        int homeScore,
+        int awayScore
+    ) {
+        service.openMatch(sessionId, match.getId(), match.getHomeUserId(), false);
+        CompetitionMatchEntity updated = matchRepository.findById(match.getId()).orElseThrow();
+        forceResult(matchRepository, updated, homeScore, awayScore);
+    }
+
+    static void watchMatchWithForcedResult(
+        CompetitionMatchService service,
+        CompetitionMatchRepository matchRepository,
+        UUID sessionId,
+        CompetitionMatchEntity match,
+        int homeScore,
+        int awayScore
+    ) {
+        openSimulateAndForceResult(service, matchRepository, sessionId, match, homeScore, awayScore);
+        CompetitionMatchEntity completed = matchRepository.findById(match.getId()).orElseThrow();
+        watchMatch(service, sessionId, completed);
+    }
+
+    static void watchMatchdayWithResults(
+        CompetitionMatchService service,
+        CompetitionMatchRepository matchRepository,
+        UUID sessionId,
+        UUID competitionId,
+        int matchday,
+        int[][] scores
+    ) {
+        watchMatchWithForcedResult(
+            service, matchRepository, sessionId,
+            requireMatch(matchRepository, competitionId, "MD" + matchday + "_A"),
+            scores[0][0], scores[0][1]
+        );
+        watchMatchWithForcedResult(
+            service, matchRepository, sessionId,
+            requireMatch(matchRepository, competitionId, "MD" + matchday + "_B"),
+            scores[1][0], scores[1][1]
+        );
     }
 
     static void fillFullRosters(

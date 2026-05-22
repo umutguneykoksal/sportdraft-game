@@ -79,6 +79,26 @@ describe("CompetitionMatchPage", () => {
     expect(screen.getByRole("button", { name: /Back to hub/i })).toBeInTheDocument();
   });
 
+  it("blocks navigation until mandatory watch completes", async () => {
+    mockedOpen.mockResolvedValue({
+      matchId: "match-1",
+      roundKey: "SEMI_1",
+      homeUserId: "home-1",
+      awayUserId: "away-1",
+      homeNickname: "Home",
+      awayNickname: "Away",
+      homeScore: 1,
+      awayScore: 0,
+      timeline: [{ minute: 10, type: "GOAL", teamId: "home-1", playerName: "Striker", detail: "Goal" }],
+    });
+
+    renderPage();
+
+    expect(await screen.findByRole("button", { name: /Finish watching/i })).toBeInTheDocument();
+    expect(screen.queryByText("Hub")).not.toBeInTheDocument();
+    expect(mockedAck).not.toHaveBeenCalled();
+  });
+
   it("acks watch and navigates to hub", async () => {
     mockedOpen.mockResolvedValue({
       matchId: "match-1",

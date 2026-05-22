@@ -75,6 +75,7 @@ function RoomCard({
       <div className="flex gap-2 shrink-0">
         {canJoin && (
           <button
+            data-testid={`lobby-join-${room.sessionId}`}
             onClick={onJoin}
             disabled={loading}
             className="bg-accent hover:bg-blue-600 disabled:opacity-50 text-white font-semibold py-2 px-5 rounded-lg text-sm transition-colors"
@@ -114,6 +115,7 @@ function FormationCard({
 
   return (
     <button
+      data-testid={`lobby-formation-${formation}`}
       onClick={onSelect}
       disabled={disabled}
       className={`
@@ -292,6 +294,7 @@ export function LobbyPage() {
             <label className="block text-slate-400 text-sm mb-2">Choose your nickname</label>
             <div className="flex gap-3">
               <input
+                data-testid="lobby-nickname-input"
                 value={nicknameInput}
                 onChange={(e) => setNicknameInput(e.target.value)}
                 maxLength={20}
@@ -299,6 +302,7 @@ export function LobbyPage() {
                 className="flex-1 bg-surface-elevated border border-white/10 rounded-lg px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-accent text-lg"
               />
               <button
+                data-testid="lobby-create-room"
                 onClick={onCreateRoom}
                 disabled={loading || !canCreateRoom}
                 className="bg-accent hover:bg-blue-600 disabled:opacity-50 text-white font-bold py-3 px-6 rounded-xl text-lg transition-colors whitespace-nowrap"
@@ -456,6 +460,7 @@ export function LobbyPage() {
               {/* Start + Leave buttons */}
               <div className="flex gap-3 justify-center">
                 <button
+                  data-testid="lobby-confirm-formation-ready"
                   onClick={handleStartAuction}
                   disabled={loading || snapshot.matchStartConfirmedByMe}
                   className={`font-bold py-3 px-8 rounded-xl text-lg transition-colors ${

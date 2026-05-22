@@ -27,3 +27,7 @@ logging:
   level:
     root: WARN
     com.example.auction: INFO
+
+app:
+  session:
+    disconnect-timeout-seconds: 1

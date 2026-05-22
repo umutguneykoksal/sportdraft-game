@@ -91,11 +91,11 @@ class CompetitionMatchFlowIntegrationTest extends AbstractIntegrationTest {
             CompetitionTestFixtures.tournamentEvent(sessionId)
         );
 
-        CompetitionMatchEntity semi1 = requireMatch(competition.getId(), "SEMI_1");
-        CompetitionMatchEntity semi2 = requireMatch(competition.getId(), "SEMI_2");
+        CompetitionMatchEntity semi1 = CompetitionTestFixtures.requireMatch(matchRepository, competition.getId(), "SEMI_1");
+        CompetitionMatchEntity semi2 = CompetitionTestFixtures.requireMatch(matchRepository, competition.getId(), "SEMI_2");
 
-        watchSemi(sessionId, semi1);
-        watchSemi(sessionId, semi2);
+        CompetitionTestFixtures.watchMatch(competitionMatchService, sessionId, semi1);
+        CompetitionTestFixtures.watchMatch(competitionMatchService, sessionId, semi2);
 
         CompetitionEntity updated = competitionRepository.findById(competition.getId()).orElseThrow();
         assertThat(updated.getTournamentPhase()).isEqualTo(TournamentPhase.INTERMISSION);
@@ -136,7 +136,7 @@ class CompetitionMatchFlowIntegrationTest extends AbstractIntegrationTest {
         CompetitionEntity competition = tournamentBracketService.initializeTournament(
             CompetitionTestFixtures.tournamentEvent(sessionId)
         );
-        CompetitionMatchEntity semi1 = requireMatch(competition.getId(), "SEMI_1");
+        CompetitionMatchEntity semi1 = CompetitionTestFixtures.requireMatch(matchRepository, competition.getId(), "SEMI_1");
 
         assertThatThrownBy(() -> competitionMatchService.openMatch(
             sessionId, semi1.getId(), CompetitionTestFixtures.USER_1, true
@@ -167,11 +167,11 @@ class CompetitionMatchFlowIntegrationTest extends AbstractIntegrationTest {
             CompetitionTestFixtures.leagueEvent(sessionId)
         );
 
-        CompetitionMatchEntity md1A = requireMatch(competition.getId(), "MD1_A");
-        CompetitionMatchEntity md1B = requireMatch(competition.getId(), "MD1_B");
+        CompetitionMatchEntity md1A = CompetitionTestFixtures.requireMatch(matchRepository, competition.getId(), "MD1_A");
+        CompetitionMatchEntity md1B = CompetitionTestFixtures.requireMatch(matchRepository, competition.getId(), "MD1_B");
 
-        watchMatch(sessionId, md1A);
-        watchMatch(sessionId, md1B);
+        CompetitionTestFixtures.watchMatch(competitionMatchService, sessionId, md1A);
+        CompetitionTestFixtures.watchMatch(competitionMatchService, sessionId, md1B);
 
         CompetitionEntity updated = competitionRepository.findById(competition.getId()).orElseThrow();
         assertThat(updated.getLeaguePhase()).isEqualTo(LeaguePhase.BREAK_AFTER_MD1);
@@ -183,17 +183,4 @@ class CompetitionMatchFlowIntegrationTest extends AbstractIntegrationTest {
         sessionStore.save(session);
     }
 
-    private void watchSemi(UUID sessionId, CompetitionMatchEntity semi) {
-        watchMatch(sessionId, semi);
-    }
-
-    private void watchMatch(UUID sessionId, CompetitionMatchEntity match) {
-        competitionMatchService.openMatch(sessionId, match.getId(), match.getHomeUserId(), false);
-        competitionMatchService.acknowledgeWatch(sessionId, match.getId(), match.getHomeUserId());
-        competitionMatchService.acknowledgeWatch(sessionId, match.getId(), match.getAwayUserId());
-    }
-
-    private CompetitionMatchEntity requireMatch(UUID competitionId, String roundKey) {
-        return matchRepository.findByCompetitionIdAndRoundKey(competitionId, roundKey).orElseThrow();
-    }
 }
