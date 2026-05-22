@@ -1,104 +1,12 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { toast } from "sonner";
 import { useLobbyFlow } from "./hooks/useLobbyFlow";
+import { LobbyEntryPanel } from "./components/LobbyEntryPanel";
 import { FORMATION_LABELS, FORMATION_DOTS } from "../../shared/formations";
-import type { Formation, GameMode, LobbyRoomResponse, PoolLeagueId, PoolMinRating } from "../../shared/api/contracts";
-import { GAME_MODE_LABELS, MIN_POOL_CARD_COUNT, POOL_LEAGUE_OPTIONS, POOL_MIN_RATING_OPTIONS, SESSION_STATUS_LABELS, poolLeagueLabel } from "../../shared/api/contracts";
+import type { Formation } from "../../shared/api/contracts";
+import { GAME_MODE_LABELS, SESSION_STATUS_LABELS, poolLeagueLabel } from "../../shared/api/contracts";
 import { saveNickname } from "../../shared/session";
-
-const STATUS_BADGE_COLORS: Record<string, string> = {
-  WAITING: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
-  COUNTDOWN: "bg-amber-500/20 text-amber-400 border-amber-500/30",
-  FORMATION_SELECT: "bg-blue-500/20 text-blue-400 border-blue-500/30",
-  AUCTIONING: "bg-purple-500/20 text-purple-400 border-purple-500/30",
-  MATCH_START_PENDING: "bg-orange-500/20 text-orange-400 border-orange-500/30",
-  FINALIZING: "bg-slate-500/20 text-slate-400 border-slate-500/30",
-  AWAITING_RESULT: "bg-slate-500/20 text-slate-400 border-slate-500/30",
-};
-
-function StatusBadge({ status }: { status: string }) {
-  const colors = STATUS_BADGE_COLORS[status] ?? "bg-slate-500/20 text-slate-400 border-slate-500/30";
-  const label = SESSION_STATUS_LABELS[status as keyof typeof SESSION_STATUS_LABELS] ?? status;
-  return (
-    <span className={`text-xs font-medium px-2.5 py-1 rounded-full border ${colors}`}>
-      {label}
-    </span>
-  );
-}
-
-function RoomCard({
-  room,
-  onJoin,
-  onSpectate,
-  loading,
-}: {
-  room: LobbyRoomResponse;
-  onJoin: () => void;
-  onSpectate: () => void;
-  loading: boolean;
-}) {
-  const maxPlayers = room.maxPlayers ?? 2;
-  const canJoin = room.status === "WAITING" && room.playerCount < maxPlayers;
-  const canSpectate = room.status !== "WAITING" && room.status !== "COUNTDOWN";
-
-  return (
-    <div className="bg-surface-card rounded-xl border border-white/10 p-4 flex flex-col sm:flex-row items-start sm:items-center gap-3 transition-all hover:border-white/20">
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-          <StatusBadge status={room.status} />
-          {room.gameMode && (
-            <span className="text-xs font-medium px-2 py-0.5 rounded-full border bg-violet-500/20 text-violet-300 border-violet-500/30">
-              {GAME_MODE_LABELS[room.gameMode as GameMode] ?? room.gameMode}
-            </span>
-          )}
-          {room.minPoolRating != null && room.minPoolRating > 0 && (
-            <span className="text-xs font-medium px-2 py-0.5 rounded-full border bg-slate-500/20 text-slate-300 border-slate-500/30">
-              OVR {room.minPoolRating}+
-            </span>
-          )}
-          {room.poolLeague && (
-            <span className="text-xs font-medium px-2 py-0.5 rounded-full border bg-emerald-500/20 text-emerald-300 border-emerald-500/30">
-              {poolLeagueLabel(room.poolLeague)}
-            </span>
-          )}
-          <span className="text-slate-500 text-xs">
-            {room.playerCount}/{maxPlayers} players
-            {room.spectatorCount > 0 && ` · ${room.spectatorCount} watching`}
-          </span>
-        </div>
-        <p className="text-white font-medium truncate">
-          {room.playerNicknames.length > 0
-            ? room.playerNicknames.join(" vs ")
-            : "Empty room"}
-        </p>
-      </div>
-      <div className="flex gap-2 shrink-0">
-        {canJoin && (
-          <button
-            data-testid={`lobby-join-${room.sessionId}`}
-            onClick={onJoin}
-            disabled={loading}
-            className="bg-accent hover:bg-blue-600 disabled:opacity-50 text-white font-semibold py-2 px-5 rounded-lg text-sm transition-colors"
-          >
-            Join
-          </button>
-        )}
-        {canSpectate && (
-          <button
-            onClick={onSpectate}
-            disabled={loading}
-            className="bg-slate-700/50 border border-slate-500/30 text-slate-300 hover:bg-slate-700/70 disabled:opacity-50 font-semibold py-2 px-5 rounded-lg text-sm transition-colors"
-          >
-            Spectate
-          </button>
-        )}
-        {!canJoin && !canSpectate && room.status === "COUNTDOWN" && (
-          <span className="text-xs text-slate-500 py-2 px-3">Starting...</span>
-        )}
-      </div>
-    </div>
-  );
-}
 
 function FormationCard({
   formation,
@@ -168,7 +76,6 @@ export function LobbyPage() {
     rooms,
     loading,
     error,
-    isConnected,
     showReconnecting,
     countdownSecondsLeft,
     formations,
@@ -198,6 +105,20 @@ export function LobbyPage() {
   const canCreateRoom = nicknameReady
     && (!poolMinRatingOptionsLoaded || hasSelectablePoolRating);
 
+  useEffect(() => {
+    if (error) {
+      toast.error(error);
+    }
+  }, [error]);
+
+  useEffect(() => {
+    if (showReconnecting) {
+      toast.loading("Reconnecting live updates...", { id: "lobby-reconnect" });
+      return;
+    }
+    toast.dismiss("lobby-reconnect");
+  }, [showReconnecting]);
+
   const onCreateRoom = () => {
     const trimmed = nicknameInput.trim().substring(0, 20);
     saveNickname(trimmed);
@@ -211,145 +132,30 @@ export function LobbyPage() {
   };
 
   return (
-    <div className="min-h-screen bg-surface flex flex-col items-center px-4 py-8">
-      {/* Header */}
-      <div className="text-center mb-8">
-        <h1 className="text-4xl font-extrabold text-white tracking-tight">
-          SportDraft
-        </h1>
-        <p className="text-slate-400 mt-2">
-          Bid on cards, build your XI, play the match
-        </p>
-      </div>
-
-      {/* Not in a session: show nickname + create room + room list */}
+    <div className="min-h-screen lobby-bg flex flex-col items-center px-4 py-8 sm:py-12">
       {!isInSession && (
-        <div className="w-full max-w-2xl space-y-6">
-          {/* Nickname + Create Room */}
-          <div className="bg-surface-card rounded-xl border border-white/10 p-5">
-            <label className="block text-slate-400 text-sm mb-2">Game mode</label>
-            <div className="flex flex-wrap gap-2 mb-4">
-              {(["DUEL", "TOURNAMENT", "LEAGUE"] as GameMode[]).map((mode) => (
-                <button
-                  key={mode}
-                  type="button"
-                  data-testid={`lobby-mode-${mode}`}
-                  onClick={() => setCreateGameMode(mode)}
-                  className={`text-sm font-medium px-3 py-2 rounded-lg border transition-colors ${
-                    createGameMode === mode
-                      ? "bg-accent border-accent text-white"
-                      : "bg-surface-elevated border-white/10 text-slate-300 hover:border-white/30"
-                  }`}
-                >
-                  {GAME_MODE_LABELS[mode]}
-                </button>
-              ))}
-            </div>
-            <label className="block text-slate-400 text-sm mb-2">Card pool — league</label>
-            <select
-              value={createPoolLeague}
-              onChange={(e) => setCreatePoolLeague(e.target.value as PoolLeagueId)}
-              className="w-full mb-4 bg-surface-elevated border border-white/10 rounded-lg px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-accent"
-            >
-              {POOL_LEAGUE_OPTIONS.map((option) => (
-                <option key={option.id} value={option.id} disabled={!option.enabled}>
-                  {option.label}{!option.enabled ? " (coming soon)" : ""}
-                </option>
-              ))}
-            </select>
-            <label className="block text-slate-400 text-sm mb-2">Card pool — minimum overall</label>
-            <div className="flex flex-wrap gap-2 mb-4">
-              {POOL_MIN_RATING_OPTIONS.map((rating) => {
-                const option = poolMinRatingOptions.find((o) => o.minRating === rating);
-                const selectable = !poolMinRatingOptionsLoaded || (option?.selectable ?? false);
-                const cardCount = option?.cardCount;
-                return (
-                  <button
-                    key={rating}
-                    type="button"
-                    onClick={() => selectable && setCreateMinPoolRating(rating)}
-                    disabled={!selectable}
-                    title={
-                      !selectable && cardCount != null
-                        ? `${cardCount} players available (need ${MIN_POOL_CARD_COUNT}+)`
-                        : undefined
-                    }
-                    className={`text-sm font-medium px-3 py-2 rounded-lg border transition-colors ${
-                      createMinPoolRating === rating
-                        ? "bg-card-gold/20 border-card-gold/50 text-card-gold"
-                        : selectable
-                          ? "bg-surface-elevated border-white/10 text-slate-300 hover:border-white/30"
-                          : "bg-surface-elevated/50 border-white/5 text-slate-600 cursor-not-allowed"
-                    }`}
-                  >
-                    {rating}+ OVR{!selectable && poolMinRatingOptionsLoaded ? " (unavailable)" : ""}
-                  </button>
-                );
-              })}
-            </div>
-            <p className="text-slate-500 text-xs mb-4">
-              Only {poolLeagueLabel(createPoolLeague)} cards rated {createMinPoolRating} or higher appear in the auction.
-              {poolMinRatingOptionsLoaded && (
-                <> Each threshold needs at least {MIN_POOL_CARD_COUNT} eligible players.</>
-              )}
-            </p>
-            <label className="block text-slate-400 text-sm mb-2">Choose your nickname</label>
-            <div className="flex gap-3">
-              <input
-                data-testid="lobby-nickname-input"
-                value={nicknameInput}
-                onChange={(e) => setNicknameInput(e.target.value)}
-                maxLength={20}
-                placeholder="Enter nickname..."
-                className="flex-1 bg-surface-elevated border border-white/10 rounded-lg px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-accent text-lg"
-              />
-              <button
-                data-testid="lobby-create-room"
-                onClick={onCreateRoom}
-                disabled={loading || !canCreateRoom}
-                className="bg-accent hover:bg-blue-600 disabled:opacity-50 text-white font-bold py-3 px-6 rounded-xl text-lg transition-colors whitespace-nowrap"
-              >
-                {loading ? "Creating..." : "Create Room"}
-              </button>
-            </div>
-            {poolMinRatingOptionsLoaded && !hasSelectablePoolRating && (
-              <p className="text-red-400 text-xs mt-1">
-                No rating threshold has enough players for {poolLeagueLabel(createPoolLeague)} (need {MIN_POOL_CARD_COUNT}+).
-              </p>
-            )}
-            {nicknameInput.trim().length > 0 && nicknameInput.trim().length < 2 && (
-              <p className="text-red-400 text-xs mt-1">Minimum 2 characters</p>
-            )}
-          </div>
-
-          {/* Room List */}
-          <div>
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-lg font-semibold text-white">Active Rooms</h2>
-              <span className="text-slate-500 text-xs">Auto-refreshes every 3s</span>
-            </div>
-            {rooms.length === 0 ? (
-              <div className="bg-surface-card rounded-xl border border-white/10 p-8 text-center">
-                <p className="text-slate-500">No active rooms. Create one to get started!</p>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {rooms.map((room) => (
-                  <RoomCard
-                    key={room.sessionId}
-                    room={room}
-                    onJoin={() => onJoinRoom(room.sessionId)}
-                    onSpectate={() => navigate(`/spectate/${room.sessionId}`)}
-                    loading={loading || !nicknameReady}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
+        <LobbyEntryPanel
+          nicknameInput={nicknameInput}
+          onNicknameChange={setNicknameInput}
+          nicknameReady={nicknameReady}
+          createGameMode={createGameMode}
+          onCreateGameModeChange={setCreateGameMode}
+          createPoolLeague={createPoolLeague}
+          onCreatePoolLeagueChange={setCreatePoolLeague}
+          createMinPoolRating={createMinPoolRating}
+          onCreateMinPoolRatingChange={setCreateMinPoolRating}
+          poolMinRatingOptions={poolMinRatingOptions}
+          poolMinRatingOptionsLoaded={poolMinRatingOptionsLoaded}
+          hasSelectablePoolRating={hasSelectablePoolRating}
+          canCreateRoom={canCreateRoom}
+          loading={loading}
+          rooms={rooms}
+          onCreateRoom={onCreateRoom}
+          onJoinRoom={onJoinRoom}
+          onSpectateRoom={(sessionId) => navigate(`/spectate/${sessionId}`)}
+        />
       )}
 
-      {/* Player info when in session */}
       {isInSession && (
         <div className="bg-surface-card rounded-xl border border-white/10 p-4 mb-6 w-full max-w-md text-center">
           <p className="text-slate-400 text-sm">Playing as</p>
@@ -359,7 +165,6 @@ export function LobbyPage() {
 
       {isInSession && (
         <div className="w-full max-w-2xl space-y-6">
-          {/* Status Bar */}
           <div className="bg-surface-card rounded-xl border border-white/10 p-4 flex flex-wrap items-center justify-between gap-4">
             <div>
               <span className="text-slate-400 text-sm">Status</span>
@@ -392,7 +197,6 @@ export function LobbyPage() {
             </div>
           </div>
 
-          {/* Lobby Countdown */}
           {status === "COUNTDOWN" && countdownSecondsLeft !== null && countdownSecondsLeft > 0 && (
             <div className="text-center">
               <div className="inline-flex items-center justify-center w-24 h-24 rounded-full border-4 border-accent bg-surface-card">
@@ -402,7 +206,6 @@ export function LobbyPage() {
             </div>
           )}
 
-          {/* Waiting for opponent */}
           {status === "WAITING" && (
             <div className="text-center py-8">
               <div className="inline-block animate-pulse">
@@ -417,7 +220,6 @@ export function LobbyPage() {
             </div>
           )}
 
-          {/* Formation Selection */}
           {status === "FORMATION_SELECT" && (
             <div className="space-y-6">
               <div>
@@ -437,7 +239,6 @@ export function LobbyPage() {
                 </div>
               </div>
 
-              {/* One player ready — wait for opponent, no countdown */}
               {snapshot.matchStartReadyCount >= 1
                 && snapshot.matchStartReadyCount < maxPlayers && (
                 <p className="text-center text-slate-400 text-sm">
@@ -447,7 +248,6 @@ export function LobbyPage() {
                 </p>
               )}
 
-              {/* Both ready — 5s countdown before auction */}
               {snapshot.matchStartReadyCount === maxPlayers
                 && countdownSecondsLeft !== null
                 && countdownSecondsLeft > 0 && (
@@ -459,7 +259,6 @@ export function LobbyPage() {
                 </div>
               )}
 
-              {/* Start + Leave buttons */}
               <div className="flex gap-3 justify-center">
                 <button
                   data-testid="lobby-confirm-formation-ready"
@@ -486,7 +285,6 @@ export function LobbyPage() {
             </div>
           )}
 
-          {/* Leave Button (non-formation phases) */}
           {status !== "FORMATION_SELECT" && (
             <div className="text-center">
               <button
@@ -498,20 +296,6 @@ export function LobbyPage() {
               </button>
             </div>
           )}
-        </div>
-      )}
-
-      {/* Error */}
-      {error && (
-        <div className="mt-4 bg-red-900/30 border border-red-500/30 text-red-400 px-4 py-2 rounded-lg">
-          {error}
-        </div>
-      )}
-
-      {/* Connection Warning */}
-      {showReconnecting && (
-        <div className="mt-4 bg-amber-900/30 border border-amber-500/30 text-amber-400 px-4 py-2 rounded-lg">
-          Reconnecting live updates...
         </div>
       )}
     </div>
