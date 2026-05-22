@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
-  ackTournamentMatchWatch,
-  openTournamentMatch,
+  ackCompetitionMatchWatch,
+  openCompetitionMatch,
   type CompetitionMatchOpenResponse,
   type MatchEvent,
 } from "../../shared/api";
@@ -45,7 +45,7 @@ export function CompetitionMatchPage({ config }: Props) {
     let cancelled = false;
     (async () => {
       try {
-        const data = await openTournamentMatch(sessionId, matchId, isReplay);
+        const data = await openCompetitionMatch(sessionId, matchId, isReplay);
         if (!cancelled) setPayload(data);
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : "Failed to load match");
@@ -72,7 +72,7 @@ export function CompetitionMatchPage({ config }: Props) {
     }
     setAckInFlight(true);
     try {
-      await ackTournamentMatchWatch(sessionId, matchId);
+      await ackCompetitionMatchWatch(sessionId, matchId);
       navigate(config.hubPath(sessionId));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to save watch progress");

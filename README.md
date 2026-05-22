@@ -78,14 +78,24 @@ Player cards live in Postgres (`card.pool_league`, `card.rating`, club, national
 
 See [docs/player-data-pipeline.md](docs/player-data-pipeline.md) and [data/processed/README.md](data/processed/README.md).
 
-## Deploy
+## CI (GitHub Actions)
 
-Production runs on **Railway** (separate backend + frontend services). No GitHub Actions CI in this repo — run tests locally before deploy:
+Every push to `main`/`master`, every pull request, and manual **Actions → CI → Run workflow** runs:
+
+| Job | Command | Notes |
+|-----|---------|--------|
+| Backend | `mvn verify` | Unit + integration tests via Testcontainers (Postgres 16 + Redis 7) |
+| Frontend | `npm test -- --watchAll=false` | Includes `CompetitionMatchPage` smoke test |
+
+Integration tests need Docker on the runner — GitHub-hosted `ubuntu-latest` provides it. Local IT without Docker: push a branch and check the Actions tab, or use `mvn test -Pskip-it` for unit-only.
 
 ```bash
-cd backend && mvn verify          # unit + integration (Docker required for IT)
+cd backend && mvn verify          # unit + integration (Docker required locally for IT)
+cd backend && mvn test -Pskip-it  # unit only when Docker is unavailable
 cd frontend && npm test -- --watchAll=false
 ```
+
+## Deploy
 
 ## Architecture
 

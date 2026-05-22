@@ -35,7 +35,7 @@ public class LeagueFixtureService {
     private final CompetitionMatchViewRepository viewRepository;
     private final CompetitionMatchSimulator matchSimulator;
     private final CompetitionJson competitionJson;
-    private final LeagueStandingsService standingsService;
+    private final LeaguePhaseCoordinator phaseCoordinator;
 
     public LeagueFixtureService(
         CompetitionRepository competitionRepository,
@@ -43,14 +43,14 @@ public class LeagueFixtureService {
         CompetitionMatchViewRepository viewRepository,
         CompetitionMatchSimulator matchSimulator,
         CompetitionJson competitionJson,
-        LeagueStandingsService standingsService
+        LeaguePhaseCoordinator phaseCoordinator
     ) {
         this.competitionRepository = competitionRepository;
         this.matchRepository = matchRepository;
         this.viewRepository = viewRepository;
         this.matchSimulator = matchSimulator;
         this.competitionJson = competitionJson;
-        this.standingsService = standingsService;
+        this.phaseCoordinator = phaseCoordinator;
     }
 
     @Transactional
@@ -66,7 +66,7 @@ public class LeagueFixtureService {
         competition.setStatus(CompetitionStatus.IN_PROGRESS);
         competition.setLeaguePhase(LeaguePhase.MATCHDAY_1);
         competition.setCreatedAt(Instant.now());
-        competition.setDraftSnapshotJson(competitionJson.writeSnapshot(TournamentDraftSnapshot.from(event)));
+        competition.setDraftSnapshotJson(competitionJson.writeSnapshot(CompetitionDraftSnapshot.from(event)));
         competitionRepository.save(competition);
 
         List<UUID> order = event.players().stream().map(DraftCompletedEvent.DraftPlayerRoster::userId).toList();
@@ -147,112 +147,36 @@ public class LeagueFixtureService {
     }
 
     public boolean matchParticipantsWatched(CompetitionMatchEntity match) {
-        return viewRepository.existsByMatchIdAndUserId(match.getId(), match.getHomeUserId())
-            && viewRepository.existsByMatchIdAndUserId(match.getId(), match.getAwayUserId());
+        return phaseCoordinator.matchParticipantsWatched(match);
     }
 
     public boolean matchdayReadyToAdvance(CompetitionEntity competition, int matchday) {
-        List<CompetitionMatchEntity> dayMatches = matchRepository.findByCompetitionIdOrderBySortOrderAsc(competition.getId())
-            .stream()
-            .filter(m -> LeagueRules.belongsToMatchday(m.getRoundKey(), matchday))
-            .toList();
-        if (dayMatches.size() != 2) {
-            return false;
-        }
-        return dayMatches.stream().allMatch(m -> m.getStatus() == CompetitionMatchStatus.COMPLETED)
-            && dayMatches.stream().allMatch(this::matchParticipantsWatched);
+        return phaseCoordinator.matchdayReadyToAdvance(competition, matchday);
     }
 
     @Transactional
     public boolean tryStartMatchdayBreak(CompetitionEntity competition) {
-        LeaguePhase phase = competition.getLeaguePhase();
-        int md = phase.matchdayNumber();
-        if (!LeaguePhaseMachine.canEvaluateMatchdayBreak(phase)) {
-            return false;
-        }
-        if (!matchdayReadyToAdvance(competition, md)) {
-            return false;
-        }
-        if (md >= 3) {
-            return tryResolveAfterRoundRobin(competition);
-        }
-        competition.setLeaguePhase(phase.breakAfterMatchday());
-        competition.setIntermissionEndsAt(Instant.now().plusSeconds(INTERMISSION_SECONDS));
-        competitionRepository.save(competition);
-        return true;
+        return phaseCoordinator.tryStartMatchdayBreak(competition);
     }
 
     @Transactional
     public boolean tryAdvanceFromBreak(CompetitionEntity competition) {
-        LeaguePhase phase = competition.getLeaguePhase();
-        if (!LeaguePhaseMachine.canAdvanceFromBreak(phase, competition.getIntermissionEndsAt(), Instant.now())) {
-            return false;
-        }
-        competition.setLeaguePhase(phase.nextMatchdayPhase());
-        competition.setIntermissionEndsAt(null);
-        competitionRepository.save(competition);
-        return true;
+        return phaseCoordinator.tryAdvanceFromBreak(competition);
     }
 
     @Transactional
     public boolean tryResolveAfterRoundRobin(CompetitionEntity competition) {
-        if (competition.getLeaguePhase() != LeaguePhase.MATCHDAY_3) {
-            return false;
-        }
-        if (!matchdayReadyToAdvance(competition, 3)) {
-            return false;
-        }
-
-        TournamentDraftSnapshot snapshot = readSnapshot(competition);
-        List<CompetitionMatchEntity> matches = matchRepository.findByCompetitionIdOrderBySortOrderAsc(competition.getId());
-        LeagueStandingsService.ChampionshipResolution resolution =
-            standingsService.resolveChampionship(snapshot, matches);
-
-        return switch (resolution) {
-            case LeagueStandingsService.ChampionshipResolution.InProgress ignored -> false;
-            case LeagueStandingsService.ChampionshipResolution.SingleChampion sc ->
-                finalizeSingleChampion(competition, sc.userId());
-            case LeagueStandingsService.ChampionshipResolution.CoChampions cc ->
-                finalizeCoChampions(competition, cc.userIds());
-            case LeagueStandingsService.ChampionshipResolution.PlayoffRequired pr ->
-                startPlayoff(competition, pr, snapshot);
-        };
+        return phaseCoordinator.tryResolveAfterRoundRobin(competition);
     }
 
     @Transactional
     public CompetitionEntity tryCompletePlayoff(CompetitionEntity competition) {
-        if (competition.getLeaguePhase() != LeaguePhase.CHAMPIONSHIP_PLAYOFF) {
-            return competition;
-        }
-        CompetitionMatchEntity playoff = matchRepository
-            .findByCompetitionIdAndRoundKey(competition.getId(), LeagueRules.PLAYOFF_ROUND_KEY)
-            .orElse(null);
-        if (playoff == null
-            || playoff.getStatus() != CompetitionMatchStatus.COMPLETED
-            || !matchParticipantsWatched(playoff)) {
-            return competition;
-        }
-        LeagueCompletion.markSingleChampion(competition, playoff.getWinnerUserId());
-        return competitionRepository.save(competition);
+        return phaseCoordinator.tryCompletePlayoff(competition);
     }
 
     @Transactional
     public void createPlayoffFinal(CompetitionEntity competition, UUID homeUserId, UUID awayUserId, long seed) {
-        if (matchRepository.findByCompetitionIdAndRoundKey(competition.getId(), LeagueRules.PLAYOFF_ROUND_KEY)
-            .isPresent()) {
-            return;
-        }
-        matchRepository.save(createMatch(
-            competition.getId(),
-            LeagueRules.PLAYOFF_ROUND_KEY,
-            homeUserId,
-            awayUserId,
-            seed,
-            7
-        ));
-        competition.setLeaguePhase(LeaguePhase.CHAMPIONSHIP_PLAYOFF);
-        competition.setIntermissionEndsAt(null);
-        competitionRepository.save(competition);
+        phaseCoordinator.createPlayoffFinal(competition, homeUserId, awayUserId, seed);
     }
 
     public int requiredWatchers(CompetitionEntity competition, CompetitionMatchEntity match) {
@@ -263,33 +187,12 @@ public class LeagueFixtureService {
         return viewRepository.countByMatchId(match.getId()) >= requiredWatchers(competition, match);
     }
 
-    public TournamentDraftSnapshot readSnapshot(CompetitionEntity competition) {
+    public CompetitionDraftSnapshot readSnapshot(CompetitionEntity competition) {
         return competitionJson.readSnapshot(competition.getDraftSnapshotJson());
     }
 
     public List<UUID> readCoChampionIds(CompetitionEntity competition) {
         return competitionJson.readUuidList(competition.getCoChampionUserIdsJson());
-    }
-
-    private boolean finalizeSingleChampion(CompetitionEntity competition, UUID championUserId) {
-        LeagueCompletion.markSingleChampion(competition, championUserId);
-        competitionRepository.save(competition);
-        return true;
-    }
-
-    private boolean finalizeCoChampions(CompetitionEntity competition, List<UUID> userIds) {
-        LeagueCompletion.markCoChampions(competition, competitionJson, userIds);
-        competitionRepository.save(competition);
-        return true;
-    }
-
-    private boolean startPlayoff(
-        CompetitionEntity competition,
-        LeagueStandingsService.ChampionshipResolution.PlayoffRequired pr,
-        TournamentDraftSnapshot snapshot
-    ) {
-        createPlayoffFinal(competition, pr.homeUserId(), pr.awayUserId(), snapshot.seed() + 6);
-        return true;
     }
 
     private CompetitionMatchEntity createMatch(

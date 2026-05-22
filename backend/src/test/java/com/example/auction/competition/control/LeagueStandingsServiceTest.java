@@ -17,7 +17,7 @@ class LeagueStandingsServiceTest {
     private UUID p1;
     private UUID p2;
     private UUID p3;
-    private TournamentDraftSnapshot snapshot;
+    private CompetitionDraftSnapshot snapshot;
 
     @BeforeEach
     void setUp() {
@@ -26,7 +26,7 @@ class LeagueStandingsServiceTest {
         p1 = UUID.randomUUID();
         p2 = UUID.randomUUID();
         p3 = UUID.randomUUID();
-        snapshot = new TournamentDraftSnapshot(
+        snapshot = new CompetitionDraftSnapshot(
             UUID.randomUUID(),
             1L,
             List.of(
@@ -86,8 +86,8 @@ class LeagueStandingsServiceTest {
         assertThat(leader.goalsFor()).isEqualTo(2);
     }
 
-    private static TournamentDraftSnapshot.PlayerSnapshot player(UUID id, String nick) {
-        return new TournamentDraftSnapshot.PlayerSnapshot(
+    private static CompetitionDraftSnapshot.PlayerSnapshot player(UUID id, String nick) {
+        return new CompetitionDraftSnapshot.PlayerSnapshot(
             id,
             nick,
             Formation.FOUR_FOUR_TWO,

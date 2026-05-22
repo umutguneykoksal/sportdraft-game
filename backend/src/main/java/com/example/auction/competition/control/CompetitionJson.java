@@ -15,7 +15,7 @@ public class CompetitionJson {
         this.objectMapper = objectMapper;
     }
 
-    public String writeSnapshot(TournamentDraftSnapshot snapshot) {
+    public String writeSnapshot(CompetitionDraftSnapshot snapshot) {
         try {
             return objectMapper.writeValueAsString(snapshot);
         } catch (Exception e) {
@@ -23,9 +23,9 @@ public class CompetitionJson {
         }
     }
 
-    public TournamentDraftSnapshot readSnapshot(String json) {
+    public CompetitionDraftSnapshot readSnapshot(String json) {
         try {
-            return objectMapper.readValue(json, TournamentDraftSnapshot.class);
+            return objectMapper.readValue(json, CompetitionDraftSnapshot.class);
         } catch (Exception e) {
             throw new IllegalStateException("Failed to deserialize tournament snapshot", e);
         }

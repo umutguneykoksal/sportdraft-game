@@ -33,6 +33,8 @@ public class AuctionRoundLifecycle {
     private final MeterRegistry meterRegistry;
     private final AuctionSettlementService settlement;
     private final AuctionMatchTransition matchTransition;
+    private final AuctionTurnNormalizer turnNormalizer;
+    private final AuctionPassHandler passHandler;
 
     public AuctionRoundLifecycle(
         ActiveSessionStore sessionStore,
@@ -40,7 +42,8 @@ public class AuctionRoundLifecycle {
         SseEmitterRegistry sseEmitterRegistry,
         MeterRegistry meterRegistry,
         AuctionSettlementService settlement,
-        AuctionMatchTransition matchTransition
+        AuctionMatchTransition matchTransition,
+        AuctionPassHandler passHandler
     ) {
         this.sessionStore = sessionStore;
         this.cardCatalog = cardCatalog;
@@ -48,6 +51,8 @@ public class AuctionRoundLifecycle {
         this.meterRegistry = meterRegistry;
         this.settlement = settlement;
         this.matchTransition = matchTransition;
+        this.turnNormalizer = new AuctionTurnNormalizer(settlement);
+        this.passHandler = passHandler;
     }
 
     AuctionRoundResponse startRound(ActiveSession session) {
@@ -258,51 +263,12 @@ public class AuctionRoundLifecycle {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Not your turn");
         }
 
-        boolean callerIsHighestBidder = round.getHighestBidderId() != null
-            && session.findPlayerByUserId(userId)
-                .map(p -> p.getId().equals(round.getHighestBidderId())).orElse(false);
-
-        if (callerIsHighestBidder) {
-            Optional<UUID> nextBidder = AuctionRules.findNextEligibleBidder(session, round, roundCard, cardMap, userId);
-            if (nextBidder.isEmpty()) {
-                settlement.closeRound(round, session, vBefore, cardMap);
-                return session.findOpenRound()
-                    .map(r -> AuctionRoundResponses.toResponseWithContext(r, cardMap.get(r.getCardId()), session, cardMap, userId))
-                    .orElse(AuctionRoundResponses.toResponse(round, roundCard, session, cardMap));
-            }
-            round.setCurrentTurnUserId(nextBidder.get());
-            sessionStore.saveIfVersionMatch(session, vBefore);
-            AuctionRoundResponse response = AuctionRoundResponses.toResponseWithContext(round, roundCard, session, cardMap, userId);
+        AuctionPassHandler.PassRoundResult result = passHandler.pass(session, vBefore, userId, round, cardMap);
+        if (result.broadcastTurnPassed()) {
             sseEmitterRegistry.broadcast(sessionId, "turn_passed",
                 Map.of("round", AuctionRoundResponses.toResponse(round, roundCard, session, cardMap), "userId", userId));
-            return response;
         }
-
-        round.registerPass(userId);
-
-        if (round.getHighestBidderId() != null) {
-            if (AuctionRules.maySettleLeadingRound(session, round, roundCard, cardMap)) {
-                settlement.closeRound(round, session, vBefore, cardMap);
-                return session.findOpenRound()
-                    .map(r -> AuctionRoundResponses.toResponseWithContext(r, cardMap.get(r.getCardId()), session, cardMap, userId))
-                    .orElse(AuctionRoundResponses.toResponse(round, roundCard, session, cardMap));
-            }
-        }
-
-        Optional<UUID> nextBidder = AuctionRules.findNextEligibleBidder(session, round, roundCard, cardMap, userId);
-        if (nextBidder.isPresent()) {
-            round.setCurrentTurnUserId(nextBidder.get());
-            sessionStore.saveIfVersionMatch(session, vBefore);
-            AuctionRoundResponse response = AuctionRoundResponses.toResponseWithContext(round, roundCard, session, cardMap, userId);
-            sseEmitterRegistry.broadcast(sessionId, "turn_passed",
-                Map.of("round", AuctionRoundResponses.toResponse(round, roundCard, session, cardMap), "userId", userId));
-            return response;
-        }
-
-        settlement.closeRound(round, session, vBefore, cardMap);
-        return session.findOpenRound()
-            .map(r -> AuctionRoundResponses.toResponseWithContext(r, cardMap.get(r.getCardId()), session, cardMap, userId))
-            .orElse(AuctionRoundResponses.toResponse(round, roundCard, session, cardMap));
+        return result.response();
     }
 
     void maybeStartNextRound(ActiveSession session) {
@@ -324,57 +290,6 @@ public class AuctionRoundLifecycle {
     }
 
     boolean normalizeTurnForRound(ActiveRound round, ActiveSession session, Map<UUID, Card> cardMap) {
-        if (round.getStatus() != RoundStatus.OPEN || round.getCurrentTurnUserId() == null) {
-            return round.getStatus() != RoundStatus.OPEN;
-        }
-        Card roundCard = cardMap.get(round.getCardId());
-        UUID currentTurnUserId = round.getCurrentTurnUserId();
-        ActivePlayer currentPlayer = session.findPlayerByUserId(currentTurnUserId).orElse(null);
-        long minimumAllowed = round.getHighestBidCents() == 0
-            ? AuctionTiming.STARTING_BID
-            : round.getHighestBidCents() + AuctionTiming.MIN_INCREMENT;
-
-        boolean currentCanBid = currentPlayer != null
-            && !round.hasUserPassed(currentTurnUserId)
-            && AuctionRules.canPlayerBidRound(currentPlayer, roundCard, minimumAllowed, cardMap);
-        if (currentCanBid) {
-            return false;
-        }
-
-        if (round.getHighestBidderId() != null) {
-            if (AuctionRules.maySettleLeadingRound(session, round, roundCard, cardMap)) {
-                settlement.settleRoundInline(round, session, cardMap);
-                return round.getStatus() != RoundStatus.OPEN;
-            }
-            Optional<UUID> nextBidder = AuctionRules.findNextEligibleBidder(
-                session, round, roundCard, cardMap, currentTurnUserId
-            );
-            if (nextBidder.isPresent()) {
-                round.setCurrentTurnUserId(nextBidder.get());
-                return false;
-            }
-            Optional<UUID> nextActor = AuctionRules.findNextNonPassedParticipant(
-                session, round, currentTurnUserId, true
-            );
-            if (nextActor.isPresent()) {
-                round.setCurrentTurnUserId(nextActor.get());
-                return false;
-            }
-            if (AuctionRules.maySettleLeadingRound(session, round, roundCard, cardMap)) {
-                settlement.settleRoundInline(round, session, cardMap);
-            }
-            return round.getStatus() != RoundStatus.OPEN;
-        }
-
-        Optional<UUID> nextBidder = AuctionRules.findNextEligibleBidder(
-            session, round, roundCard, cardMap, currentTurnUserId
-        );
-        if (nextBidder.isPresent()) {
-            round.setCurrentTurnUserId(nextBidder.get());
-            return false;
-        }
-
-        round.markPassed();
-        return true;
+        return turnNormalizer.normalizeTurnForRound(round, session, cardMap);
     }
 }

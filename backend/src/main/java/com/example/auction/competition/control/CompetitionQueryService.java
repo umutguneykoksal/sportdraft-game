@@ -89,7 +89,7 @@ public class CompetitionQueryService {
         bracketService.ensureFinalMatch(competition);
 
         ActiveSession session = sessionStore.findById(competition.getSessionId()).orElse(null);
-        TournamentDraftSnapshot snapshot = bracketService.readSnapshot(competition);
+        CompetitionDraftSnapshot snapshot = bracketService.readSnapshot(competition);
 
         List<CompetitionMatchResponse> matchResponses = matchRepository
             .findByCompetitionIdOrderBySortOrderAsc(competition.getId())
@@ -121,7 +121,7 @@ public class CompetitionQueryService {
 
     private CompetitionResponse buildLeagueResponse(CompetitionEntity competition, UUID viewerUserId) {
         ActiveSession session = sessionStore.findById(competition.getSessionId()).orElse(null);
-        TournamentDraftSnapshot snapshot = leagueFixtureService.readSnapshot(competition);
+        CompetitionDraftSnapshot snapshot = leagueFixtureService.readSnapshot(competition);
         List<CompetitionMatchEntity> allMatches =
             matchRepository.findByCompetitionIdOrderBySortOrderAsc(competition.getId());
 
@@ -160,7 +160,7 @@ public class CompetitionQueryService {
         CompetitionEntity competition,
         CompetitionMatchEntity match,
         UUID viewerUserId,
-        TournamentDraftSnapshot snapshot,
+        CompetitionDraftSnapshot snapshot,
         ActiveSession session,
         CompetitionVisibilityPolicy policy
     ) {
@@ -198,7 +198,7 @@ public class CompetitionQueryService {
     }
 
     private String nickname(
-        TournamentDraftSnapshot snapshot,
+        CompetitionDraftSnapshot snapshot,
         ActiveSession session,
         UUID userId
     ) {
@@ -210,18 +210,18 @@ public class CompetitionQueryService {
         }
         return snapshot.players().stream()
             .filter(p -> p.userId().equals(userId))
-            .map(TournamentDraftSnapshot.PlayerSnapshot::nickname)
+            .map(CompetitionDraftSnapshot.PlayerSnapshot::nickname)
             .findFirst()
             .orElse(null);
     }
 
-    private String championNickname(TournamentDraftSnapshot snapshot, UUID championUserId) {
+    private String championNickname(CompetitionDraftSnapshot snapshot, UUID championUserId) {
         if (championUserId == null) {
             return null;
         }
         return snapshot.players().stream()
             .filter(p -> p.userId().equals(championUserId))
-            .map(TournamentDraftSnapshot.PlayerSnapshot::nickname)
+            .map(CompetitionDraftSnapshot.PlayerSnapshot::nickname)
             .findFirst()
             .orElse(null);
     }

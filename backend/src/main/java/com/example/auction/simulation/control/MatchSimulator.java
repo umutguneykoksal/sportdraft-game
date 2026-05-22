@@ -19,6 +19,16 @@ import org.springframework.stereotype.Component;
 @Component
 public class MatchSimulator {
 
+    private final PenaltyShootoutResolver penaltyShootoutResolver = new PenaltyShootoutResolver();
+
+    private record TeamContext(
+        UUID teamId,
+        List<SessionFinalizedEvent.RatedCard> roster,
+        List<SessionFinalizedEvent.RatedCard> opposingRoster
+    ) {}
+
+    private record ScorePair(int homeGoals, int awayGoals) {}
+
     /**
      * Simulates a match and returns full result with timeline.
      */
@@ -47,35 +57,27 @@ public class MatchSimulator {
         boolean allowDraws
     ) {
         Random rng = new Random(seed);
-
-        double homeAttack = attackScore(homeFormation, homeRoster);
-        double awayAttack = attackScore(awayFormation, awayRoster);
-        double homeDefense = defenseScore(homeFormation, homeRoster);
-        double awayDefense = defenseScore(awayFormation, awayRoster);
-
-        double homeLambda = clamp(1.4 * (homeAttack / Math.max(awayDefense, 1.0)), 0.2, 4.5);
-        double awayLambda = clamp(1.4 * (awayAttack / Math.max(homeDefense, 1.0)), 0.2, 4.5);
-
-        int homeGoals = poissonSample(homeLambda, rng);
-        int awayGoals = poissonSample(awayLambda, rng);
+        ScorePair score = computeScore(rng, homeFormation, awayFormation, homeRoster, awayRoster);
 
         List<MatchEvent> timeline = generateTimeline(
-            rng, homeGoals, awayGoals,
+            rng, score.homeGoals(), score.awayGoals(),
             homeRoster, awayRoster,
             homeTeamId, awayTeamId
         );
 
         int homePenaltyGoals = 0;
         int awayPenaltyGoals = 0;
-        if (homeGoals == awayGoals && !allowDraws) {
-            PenaltyOutcome pens = resolvePenaltyShootout(
+        if (score.homeGoals() == score.awayGoals() && !allowDraws) {
+            PenaltyShootoutResolver.Outcome pens = penaltyShootoutResolver.resolve(
                 rng, timeline, homeRoster, awayRoster, homeTeamId, awayTeamId
             );
             homePenaltyGoals = pens.homePenaltyGoals();
             awayPenaltyGoals = pens.awayPenaltyGoals();
         }
 
-        return new SimulationResult(homeGoals, awayGoals, timeline, homePenaltyGoals, awayPenaltyGoals);
+        return new SimulationResult(
+            score.homeGoals(), score.awayGoals(), timeline, homePenaltyGoals, awayPenaltyGoals
+        );
     }
 
     /**
@@ -88,8 +90,17 @@ public class MatchSimulator {
         List<SessionFinalizedEvent.RatedCard> homeRoster,
         List<SessionFinalizedEvent.RatedCard> awayRoster
     ) {
-        Random rng = new Random(seed);
+        ScorePair score = computeScore(new Random(seed), homeFormation, awayFormation, homeRoster, awayRoster);
+        return new Score(score.homeGoals(), score.awayGoals());
+    }
 
+    private ScorePair computeScore(
+        Random rng,
+        Formation homeFormation,
+        Formation awayFormation,
+        List<SessionFinalizedEvent.RatedCard> homeRoster,
+        List<SessionFinalizedEvent.RatedCard> awayRoster
+    ) {
         double homeAttack = attackScore(homeFormation, homeRoster);
         double awayAttack = attackScore(awayFormation, awayRoster);
         double homeDefense = defenseScore(homeFormation, homeRoster);
@@ -98,9 +109,7 @@ public class MatchSimulator {
         double homeLambda = clamp(1.4 * (homeAttack / Math.max(awayDefense, 1.0)), 0.2, 4.5);
         double awayLambda = clamp(1.4 * (awayAttack / Math.max(homeDefense, 1.0)), 0.2, 4.5);
 
-        int homeGoals = poissonSample(homeLambda, rng);
-        int awayGoals = poissonSample(awayLambda, rng);
-        return new Score(homeGoals, awayGoals);
+        return new ScorePair(poissonSample(homeLambda, rng), poissonSample(awayLambda, rng));
     }
 
     private List<MatchEvent> generateTimeline(
@@ -112,55 +121,21 @@ public class MatchSimulator {
     ) {
         List<MatchEvent> events = new ArrayList<>();
 
-        // Kick-off
         events.add(MatchEvent.generic(0, MatchEventType.KICK_OFF, "Match begins"));
 
-        // Generate goal minutes (distributed across 90 minutes, avoiding half-time)
-        List<Integer> homeGoalMinutes = generateGoalMinutes(rng, homeGoals);
-        List<Integer> awayGoalMinutes = generateGoalMinutes(rng, awayGoals);
+        TeamContext home = new TeamContext(homeTeamId, homeRoster, awayRoster);
+        TeamContext away = new TeamContext(awayTeamId, awayRoster, homeRoster);
 
-        // Add goals with preceding shots
-        for (int minute : homeGoalMinutes) {
-            addGoalSequence(events, rng, minute, homeTeamId, homeRoster, awayRoster, true);
-        }
-        for (int minute : awayGoalMinutes) {
-            addGoalSequence(events, rng, minute, awayTeamId, awayRoster, homeRoster, false);
-        }
+        addGoalsForTeam(events, rng, home, generateGoalMinutes(rng, homeGoals));
+        addGoalsForTeam(events, rng, away, generateGoalMinutes(rng, awayGoals));
 
-        // Add missed shots / saved shots - ensure both teams have some
-        int homeShotsExtra = 2 + rng.nextInt(4); // 2-5 extra shots for home
-        int awayShotsExtra = 2 + rng.nextInt(4); // 2-5 extra shots for away
-        
-        for (int i = 0; i < homeShotsExtra; i++) {
-            int minute = 1 + rng.nextInt(89);
-            if (minute == 45) minute = 44;
-            addMissedShot(events, rng, minute, homeTeamId, homeRoster);
-        }
-        for (int i = 0; i < awayShotsExtra; i++) {
-            int minute = 1 + rng.nextInt(89);
-            if (minute == 45) minute = 44;
-            addMissedShot(events, rng, minute, awayTeamId, awayRoster);
-        }
+        addExtraShotsForTeam(events, rng, home, 2 + rng.nextInt(4));
+        addExtraShotsForTeam(events, rng, away, 2 + rng.nextInt(4));
 
-        // Add fouls - ensure both teams commit some
-        int homeFouls = 1 + rng.nextInt(3); // 1-3 fouls for home
-        int awayFouls = 1 + rng.nextInt(3); // 1-3 fouls for away
-        
-        for (int i = 0; i < homeFouls; i++) {
-            int minute = 5 + rng.nextInt(80);
-            if (minute == 45) minute = 46;
-            addFoul(events, rng, minute, homeTeamId, homeRoster);
-        }
-        for (int i = 0; i < awayFouls; i++) {
-            int minute = 5 + rng.nextInt(80);
-            if (minute == 45) minute = 46;
-            addFoul(events, rng, minute, awayTeamId, awayRoster);
-        }
+        addFoulsForTeam(events, rng, home, 1 + rng.nextInt(3));
+        addFoulsForTeam(events, rng, away, 1 + rng.nextInt(3));
 
-        // Half-time
         events.add(MatchEvent.generic(45, MatchEventType.HALF_TIME, "Half-time"));
-
-        // Full-time
         events.add(MatchEvent.generic(90, MatchEventType.FULL_TIME,
             "Full-time: " + homeGoals + " - " + awayGoals));
 
@@ -168,122 +143,45 @@ public class MatchSimulator {
         return events;
     }
 
-    private record PenaltyOutcome(int homePenaltyGoals, int awayPenaltyGoals) {}
-
-    /**
-     * Appends penalty shoot-out events to the timeline and returns the penalty scoreline.
-     */
-    private PenaltyOutcome resolvePenaltyShootout(
-        Random rng,
-        List<MatchEvent> events,
-        List<SessionFinalizedEvent.RatedCard> homeRoster,
-        List<SessionFinalizedEvent.RatedCard> awayRoster,
-        UUID homeTeamId,
-        UUID awayTeamId
-    ) {
-        events.add(MatchEvent.generic(91, MatchEventType.PENALTIES_START, "Penalty shoot-out begins"));
-
-        SessionFinalizedEvent.RatedCard homeKeeper = pickKeeper(homeRoster);
-        SessionFinalizedEvent.RatedCard awayKeeper = pickKeeper(awayRoster);
-
-        int homePens = 0;
-        int awayPens = 0;
-        int kick = 0;
-
-        for (int round = 0; round < 5; round++) {
-            kick++;
-            homePens += takePenaltyKick(events, rng, 91 + kick, homeTeamId, homeRoster, awayKeeper);
-            if (isPenaltyShootoutDecided(homePens, awayPens, round + 1, 5)) {
-                break;
-            }
-            kick++;
-            awayPens += takePenaltyKick(events, rng, 91 + kick, awayTeamId, awayRoster, homeKeeper);
-            if (isPenaltyShootoutDecided(homePens, awayPens, round + 1, 5)) {
-                break;
-            }
-        }
-
-        while (homePens == awayPens) {
-            kick++;
-            homePens += takePenaltyKick(events, rng, 91 + kick, homeTeamId, homeRoster, awayKeeper);
-            if (homePens != awayPens) {
-                break;
-            }
-            kick++;
-            awayPens += takePenaltyKick(events, rng, 91 + kick, awayTeamId, awayRoster, homeKeeper);
-        }
-
-        String winner = homePens > awayPens ? "Home" : "Away";
-        events.add(MatchEvent.generic(
-            91 + kick + 1,
-            MatchEventType.PENALTIES_END,
-            winner + " wins on penalties " + homePens + " - " + awayPens
-        ));
-
-        events.sort(Comparator.comparingInt(MatchEvent::minute));
-        return new PenaltyOutcome(homePens, awayPens);
-    }
-
-    private boolean isPenaltyShootoutDecided(int homePens, int awayPens, int roundsCompleted, int totalRounds) {
-        int remainingHome = totalRounds - roundsCompleted;
-        int remainingAway = totalRounds - roundsCompleted;
-        if (homePens > awayPens + remainingAway) {
-            return true;
-        }
-        return awayPens > homePens + remainingHome;
-    }
-
-    private int takePenaltyKick(
+    private void addGoalsForTeam(
         List<MatchEvent> events,
         Random rng,
-        int minute,
-        UUID teamId,
-        List<SessionFinalizedEvent.RatedCard> attackers,
-        SessionFinalizedEvent.RatedCard opposingKeeper
+        TeamContext team,
+        List<Integer> goalMinutes
     ) {
-        SessionFinalizedEvent.RatedCard taker = pickPenaltyTaker(rng, attackers);
-        double keeperDef = opposingKeeper.attributes() != null
-            ? opposingKeeper.attributes().defending()
-            : opposingKeeper.rating();
-        double takerShoot = taker.attributes() != null
-            ? taker.attributes().shooting()
-            : taker.rating();
-        double successChance = clamp(0.72 + (takerShoot - keeperDef) * 0.004, 0.38, 0.92);
-
-        if (rng.nextDouble() < successChance) {
-            events.add(MatchEvent.forPlayer(
-                minute, MatchEventType.PENALTY_SCORED, teamId,
-                taker.id(), getPlayerName(taker),
-                "Scores from the spot!"
-            ));
-            return 1;
+        for (int minute : goalMinutes) {
+            addGoalSequence(events, rng, minute, team.teamId(), team.roster(), team.opposingRoster());
         }
-        events.add(MatchEvent.forPlayer(
-            minute, MatchEventType.PENALTY_MISSED, teamId,
-            taker.id(), getPlayerName(taker),
-            "Penalty saved / missed!"
-        ));
-        return 0;
     }
 
-    private SessionFinalizedEvent.RatedCard pickPenaltyTaker(
+    private void addExtraShotsForTeam(
+        List<MatchEvent> events,
         Random rng,
-        List<SessionFinalizedEvent.RatedCard> roster
+        TeamContext team,
+        int count
     ) {
-        List<SessionFinalizedEvent.RatedCard> candidates = roster.stream()
-            .filter(c -> c.position() != Position.GK)
-            .sorted(Comparator.comparingInt((SessionFinalizedEvent.RatedCard c) -> {
-                if (c.attributes() != null) {
-                    return c.attributes().shooting();
-                }
-                return c.rating();
-            }).reversed())
-            .toList();
-        if (candidates.isEmpty()) {
-            return roster.get(rng.nextInt(roster.size()));
+        for (int i = 0; i < count; i++) {
+            int minute = 1 + rng.nextInt(89);
+            if (minute == 45) {
+                minute = 44;
+            }
+            addMissedShot(events, rng, minute, team.teamId(), team.roster());
         }
-        int pool = Math.min(5, candidates.size());
-        return candidates.get(rng.nextInt(pool));
+    }
+
+    private void addFoulsForTeam(
+        List<MatchEvent> events,
+        Random rng,
+        TeamContext team,
+        int count
+    ) {
+        for (int i = 0; i < count; i++) {
+            int minute = 5 + rng.nextInt(80);
+            if (minute == 45) {
+                minute = 46;
+            }
+            addFoul(events, rng, minute, team.teamId(), team.roster());
+        }
     }
 
     private List<Integer> generateGoalMinutes(Random rng, int goals) {
@@ -291,8 +189,8 @@ public class MatchSimulator {
         for (int i = 0; i < goals; i++) {
             int minute;
             do {
-                minute = 1 + rng.nextInt(89); // 1-89
-            } while (minute == 45 || minutes.contains(minute)); // Avoid half-time and duplicates
+                minute = 1 + rng.nextInt(89);
+            } while (minute == 45 || minutes.contains(minute));
             minutes.add(minute);
         }
         Collections.sort(minutes);
@@ -302,12 +200,10 @@ public class MatchSimulator {
     private void addGoalSequence(
         List<MatchEvent> events, Random rng, int minute,
         UUID teamId, List<SessionFinalizedEvent.RatedCard> attackers,
-        List<SessionFinalizedEvent.RatedCard> defenders, boolean isHome
+        List<SessionFinalizedEvent.RatedCard> defenders
     ) {
-        // Pick a scorer (prefer forwards/midfielders)
         SessionFinalizedEvent.RatedCard scorer = pickAttacker(rng, attackers);
-        
-        // 40% chance of a saved shot before the goal (same minute - 1)
+
         if (minute > 1 && rng.nextDouble() < 0.4) {
             SessionFinalizedEvent.RatedCard shooter = pickAttacker(rng, attackers);
             SessionFinalizedEvent.RatedCard keeper = pickKeeper(defenders);
@@ -320,7 +216,6 @@ public class MatchSimulator {
             ));
         }
 
-        // The goal
         String[] goalDetails = {
             "Goal! Great finish",
             "Goal! Powerful shot",
@@ -341,7 +236,7 @@ public class MatchSimulator {
     ) {
         SessionFinalizedEvent.RatedCard shooter = pickAttacker(rng, attackers);
         boolean saved = rng.nextBoolean();
-        
+
         if (saved) {
             String[] details = {"Shot saved", "Good save", "Diving save", "Comfortable save"};
             events.add(MatchEvent.forPlayer(
@@ -373,7 +268,6 @@ public class MatchSimulator {
     }
 
     private SessionFinalizedEvent.RatedCard pickAttacker(Random rng, List<SessionFinalizedEvent.RatedCard> roster) {
-        // Prefer FWD, CAM, CM for goals/shots
         List<SessionFinalizedEvent.RatedCard> attackers = roster.stream()
             .filter(c -> c.position() == Position.FWD || c.position() == Position.CAM || c.position() == Position.CM)
             .toList();
@@ -423,12 +317,6 @@ public class MatchSimulator {
         return weightedStrength(formation, roster, DEFENSE_WEIGHT, PlayerStrength::defense) * formation.getDefenseMod();
     }
 
-    /**
-     * Computes a weighted average rating using only positions the formation
-     * actually contains. Each position's contribution scales by its slot count
-     * and role-based weight, so formations without CDM/CAM are not penalised
-     * by phantom 40-rated defaults.
-     */
     @FunctionalInterface
     private interface StrengthFn {
         double apply(Position position, PlayerAttributes attrs);

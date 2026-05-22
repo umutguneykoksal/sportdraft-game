@@ -19,11 +19,11 @@ public class LeagueStandingsService {
     public static final String PLAYOFF_ROUND_KEY = LeagueRules.PLAYOFF_ROUND_KEY;
 
     public List<LeagueStandingRow> computeStandings(
-        TournamentDraftSnapshot snapshot,
+        CompetitionDraftSnapshot snapshot,
         List<CompetitionMatchEntity> matches
     ) {
         Map<UUID, MutableStanding> rows = new HashMap<>();
-        for (TournamentDraftSnapshot.PlayerSnapshot player : snapshot.players()) {
+        for (CompetitionDraftSnapshot.PlayerSnapshot player : snapshot.players()) {
             rows.put(player.userId(), new MutableStanding(player.userId(), player.nickname()));
         }
 
@@ -55,7 +55,7 @@ public class LeagueStandingsService {
     }
 
     public ChampionshipResolution resolveChampionship(
-        TournamentDraftSnapshot snapshot,
+        CompetitionDraftSnapshot snapshot,
         List<CompetitionMatchEntity> matches
     ) {
         List<CompetitionMatchEntity> roundRobin = roundRobinMatches(matches);
@@ -97,12 +97,12 @@ public class LeagueStandingsService {
     }
 
     private static ChampionshipResolution playoffFromTiedLeaders(
-        TournamentDraftSnapshot snapshot,
+        CompetitionDraftSnapshot snapshot,
         List<LeagueStandingRow> leaders
     ) {
         UUID first = leaders.get(0).userId();
         UUID second = leaders.get(1).userId();
-        List<UUID> turnOrder = snapshot.players().stream().map(TournamentDraftSnapshot.PlayerSnapshot::userId).toList();
+        List<UUID> turnOrder = snapshot.players().stream().map(CompetitionDraftSnapshot.PlayerSnapshot::userId).toList();
         UUID home = turnOrder.indexOf(first) <= turnOrder.indexOf(second) ? first : second;
         UUID away = home.equals(first) ? second : first;
         return ChampionshipResolution.playoffRequired(home, away);

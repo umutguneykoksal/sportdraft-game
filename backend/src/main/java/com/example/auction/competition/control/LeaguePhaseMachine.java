@@ -18,8 +18,4 @@ final class LeaguePhaseMachine {
         }
         return intermissionEndsAt != null && !now.isBefore(intermissionEndsAt);
     }
-
-    static boolean shouldResolveRoundRobin(LeaguePhase phase, int matchday) {
-        return phase == LeaguePhase.MATCHDAY_3 && matchday >= 3;
-    }
 }

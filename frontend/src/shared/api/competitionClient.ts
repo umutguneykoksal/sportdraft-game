@@ -9,7 +9,7 @@ export async function getCompetitionBySession(sessionId: string): Promise<Compet
   return parseOrThrow<CompetitionResponse>(response, `getCompetition failed: ${response.status}`);
 }
 
-export async function openTournamentMatch(
+export async function openCompetitionMatch(
   sessionId: string,
   matchId: string,
   replay = false
@@ -21,11 +21,11 @@ export async function openTournamentMatch(
   );
   return parseOrThrow<CompetitionMatchOpenResponse>(
     response,
-    `openTournamentMatch failed: ${response.status}`
+    `openCompetitionMatch failed: ${response.status}`
   );
 }
 
-export async function ackTournamentMatchWatch(
+export async function ackCompetitionMatchWatch(
   sessionId: string,
   matchId: string
 ): Promise<CompetitionResponse> {
@@ -33,5 +33,11 @@ export async function ackTournamentMatchWatch(
     `${getApiBase()}${getApiPrefix()}/sessions/${sessionId}/competition/matches/${matchId}/ack-watch`,
     { method: "POST", headers: authHeaders() }
   );
-  return parseOrThrow<CompetitionResponse>(response, `ackTournamentMatchWatch failed: ${response.status}`);
+  return parseOrThrow<CompetitionResponse>(response, `ackCompetitionMatchWatch failed: ${response.status}`);
 }
+
+/** @deprecated Use openCompetitionMatch */
+export const openTournamentMatch = openCompetitionMatch;
+
+/** @deprecated Use ackCompetitionMatchWatch */
+export const ackTournamentMatchWatch = ackCompetitionMatchWatch;

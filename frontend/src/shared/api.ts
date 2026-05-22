@@ -32,6 +32,8 @@ export { startRound, placeBid, readyNextRound, passRound, getAuctionState } from
 export { getMatchResult, getMatchTimeline } from "./api/matchClient";
 export {
   getCompetitionBySession,
+  openCompetitionMatch,
+  ackCompetitionMatchWatch,
   openTournamentMatch,
   ackTournamentMatchWatch,
 } from "./api/competitionClient";

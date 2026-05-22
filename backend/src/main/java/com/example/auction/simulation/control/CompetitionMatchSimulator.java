@@ -1,7 +1,7 @@
 package com.example.auction.simulation.control;
 
 import com.example.auction.competition.control.CompetitionJson;
-import com.example.auction.competition.control.TournamentDraftSnapshot;
+import com.example.auction.competition.control.CompetitionDraftSnapshot;
 import com.example.auction.competition.entity.CompetitionMatchEntity;
 import com.example.auction.competition.entity.CompetitionMatchRepository;
 import com.example.auction.competition.entity.CompetitionMatchStatus;
@@ -30,7 +30,7 @@ public class CompetitionMatchSimulator {
     }
 
     public SimulationResult simulateIfNeeded(
-        TournamentDraftSnapshot snapshot,
+        CompetitionDraftSnapshot snapshot,
         CompetitionMatchEntity match,
         boolean allowDraws
     ) {

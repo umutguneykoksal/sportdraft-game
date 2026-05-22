@@ -69,7 +69,7 @@ class CompetitionMatchCommandService {
         hooks.validateOpen(competition, match, userId, replay, watched);
 
         SimulationResult result = hooks.simulateIfNeeded(competition, match);
-        TournamentDraftSnapshot snapshot = hooks.readSnapshot(competition);
+        CompetitionDraftSnapshot snapshot = hooks.readSnapshot(competition);
         int required = hooks.requiredWatchers(competition, match);
         boolean showScores = replay || watched;
 

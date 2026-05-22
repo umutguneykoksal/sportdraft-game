@@ -22,7 +22,7 @@ interface CompetitionMatchModeHooks {
 
     SimulationResult simulateIfNeeded(CompetitionEntity competition, CompetitionMatchEntity match);
 
-    TournamentDraftSnapshot readSnapshot(CompetitionEntity competition);
+    CompetitionDraftSnapshot readSnapshot(CompetitionEntity competition);
 
     int requiredWatchers(CompetitionEntity competition, CompetitionMatchEntity match);
 

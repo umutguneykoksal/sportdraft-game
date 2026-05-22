@@ -7,15 +7,15 @@ final class CompetitionMatchSupport {
 
     private CompetitionMatchSupport() {}
 
-    static String nickname(TournamentDraftSnapshot snapshot, UUID userId) {
+    static String nickname(CompetitionDraftSnapshot snapshot, UUID userId) {
         return snapshot.players().stream()
             .filter(p -> p.userId().equals(userId))
-            .map(TournamentDraftSnapshot.PlayerSnapshot::nickname)
+            .map(CompetitionDraftSnapshot.PlayerSnapshot::nickname)
             .findFirst()
             .orElse("Player");
     }
 
-    static String formation(TournamentDraftSnapshot snapshot, UUID userId) {
+    static String formation(CompetitionDraftSnapshot snapshot, UUID userId) {
         return snapshot.players().stream()
             .filter(p -> p.userId().equals(userId))
             .map(p -> p.formation().name())

@@ -79,7 +79,7 @@ class TournamentMatchModeHooks implements CompetitionMatchModeHooks {
     }
 
     @Override
-    public TournamentDraftSnapshot readSnapshot(CompetitionEntity competition) {
+    public CompetitionDraftSnapshot readSnapshot(CompetitionEntity competition) {
         return bracketService.readSnapshot(competition);
     }
 
