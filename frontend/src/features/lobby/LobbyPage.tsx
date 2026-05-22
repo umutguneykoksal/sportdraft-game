@@ -169,6 +169,7 @@ export function LobbyPage() {
     loading,
     error,
     isConnected,
+    showReconnecting,
     countdownSecondsLeft,
     formations,
     handleCreateRoom,
@@ -508,7 +509,7 @@ export function LobbyPage() {
       )}
 
       {/* Connection Warning */}
-      {isInSession && !isConnected && (
+      {showReconnecting && (
         <div className="mt-4 bg-amber-900/30 border border-amber-500/30 text-amber-400 px-4 py-2 rounded-lg">
           Reconnecting live updates...
         </div>

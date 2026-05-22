@@ -48,6 +48,7 @@ export function useLobbyFlow() {
   const { events, isConnected } = useSessionStream(sessionId);
   const restoredRef = useRef(false);
   const prevConnectedRef = useRef(false);
+  const wasEverConnectedRef = useRef(false);
   const seenEventIdsRef = useRef(new Set<string>());
   const sessionIdRef = useRef(sessionId);
   sessionIdRef.current = sessionId;
@@ -64,7 +65,13 @@ export function useLobbyFlow() {
 
   useEffect(() => {
     seenEventIdsRef.current.clear();
+    wasEverConnectedRef.current = false;
   }, [sessionId]);
+
+  if (isConnected) {
+    wasEverConnectedRef.current = true;
+  }
+  const showReconnecting = !!sessionId && wasEverConnectedRef.current && !isConnected;
 
   // 1. Restore session on mount
   useEffect(() => {
@@ -290,6 +297,7 @@ export function useLobbyFlow() {
     loading,
     error,
     isConnected,
+    showReconnecting,
     countdownSecondsLeft,
     formations: ALL_FORMATIONS,
     handleCreateRoom,
