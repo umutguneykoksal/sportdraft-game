@@ -6,6 +6,9 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -27,6 +30,8 @@ jobs:
 
       - name: Verify backend (Testcontainers IT on runner Docker)
         working-directory: backend
+        env:
+          TESTCONTAINERS_RYUK_DISABLED: true
         run: mvn -B verify
 
   frontend:
