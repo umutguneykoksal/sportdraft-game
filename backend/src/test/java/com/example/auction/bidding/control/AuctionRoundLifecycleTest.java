@@ -3,6 +3,7 @@ package com.example.auction.bidding.control;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
@@ -72,6 +73,31 @@ class AuctionRoundLifecycleTest {
         );
         Card roundCard = new Card(roundCardId, "Striker", Position.FWD, 85);
         lenient().when(cardCatalog.getCardMap()).thenReturn(Map.of(roundCardId, roundCard));
+    }
+
+    @Test
+    void startRound_happyPath_createsOpenRound() {
+        ActiveSession session = auctioningSession();
+        session.setCardPool(List.of(roundCardId));
+        session.setCardPoolIndex(0);
+
+        var response = lifecycle.startRound(session);
+
+        assertThat(response).isNotNull();
+        assertThat(session.findOpenRound()).isPresent();
+        verify(sessionStore).saveIfVersionMatch(eq(session), anyLong());
+        verify(sseEmitterRegistry).broadcast(eq(sessionId), eq("round_started"), any());
+    }
+
+    @Test
+    void ensureOpenRound_startsRoundWhenNoneOpen() {
+        ActiveSession session = auctioningSession();
+        session.setCardPool(List.of(roundCardId));
+        session.setCardPoolIndex(0);
+
+        lifecycle.ensureOpenRound(session);
+
+        assertThat(session.findOpenRound()).isPresent();
     }
 
     @Test

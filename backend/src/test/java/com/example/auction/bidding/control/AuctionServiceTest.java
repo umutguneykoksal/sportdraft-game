@@ -5,12 +5,12 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.lenient;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.example.auction.bidding.boundary.PlaceBidRequest;
 import com.example.auction.session.entity.Formation;
+import com.example.auction.session.entity.GameMode;
 import com.example.auction.session.entity.SessionStatus;
 import com.example.auction.session.redis.ActivePlayer;
 import com.example.auction.session.redis.ActiveRound;
@@ -19,6 +19,7 @@ import com.example.auction.session.redis.ActiveSessionStore;
 import com.example.auction.session.redis.SessionMutationGuard;
 import com.example.auction.bidding.entity.RoundStatus;
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.function.Supplier;
@@ -152,6 +153,84 @@ class AuctionServiceTest {
                 ResponseStatusException rse = (ResponseStatusException) ex;
                 assertThat(rse.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
             });
+    }
+
+    @Test
+    void confirmMatchStart_delegatesToMatchTransition() {
+        UUID sessionId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        ActiveSession session = new ActiveSession(sessionId, SessionStatus.MATCH_START_PENDING, Instant.now());
+        when(sessionStore.getById(sessionId)).thenReturn(session);
+
+        auctionService.confirmMatchStart(sessionId, userId);
+
+        verify(matchTransition).confirmMatchStart(session, userId);
+    }
+
+    @Test
+    void ensureOpenRound_delegatesToRoundLifecycle() {
+        UUID sessionId = UUID.randomUUID();
+        ActiveSession session = new ActiveSession(sessionId, SessionStatus.AUCTIONING, Instant.now());
+        when(sessionStore.getById(sessionId)).thenReturn(session);
+
+        auctionService.ensureOpenRound(sessionId);
+
+        verify(roundLifecycle).ensureOpenRound(session);
+    }
+
+    @Test
+    void buildSpectateSnapshot_returnsHomeAndAwayTeams() {
+        UUID sessionId = UUID.randomUUID();
+        UUID homeId = UUID.randomUUID();
+        UUID awayId = UUID.randomUUID();
+        ActiveSession session = new ActiveSession(sessionId, SessionStatus.AUCTIONING, Instant.now(), GameMode.DUEL);
+        session.getPlayers().add(new ActivePlayer(UUID.randomUUID(), homeId, "Home", Formation.FOUR_FOUR_TWO, 80));
+        session.getPlayers().add(new ActivePlayer(UUID.randomUUID(), awayId, "Away", Formation.FOUR_THREE_THREE, 70));
+        session.setHomeScore(2);
+        session.setAwayScore(1);
+        when(cardCatalog.getCardMap()).thenReturn(Map.of());
+
+        AuctionService.SpectateSnapshot snapshot = auctionService.buildSpectateSnapshot(session);
+
+        assertThat(List.of(snapshot.homeNickname(), snapshot.awayNickname()))
+            .containsExactlyInAnyOrder("Home", "Away");
+        assertThat(snapshot.homeScore()).isEqualTo(2);
+        assertThat(snapshot.awayScore()).isEqualTo(1);
+    }
+
+    @Test
+    void getAuctionState_tournamentModeIncludesPlayerViews() {
+        UUID sessionId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        ActiveSession session = new ActiveSession(sessionId, SessionStatus.AUCTIONING, Instant.now(), GameMode.TOURNAMENT);
+        session.setTurnOrder(List.of(userId, UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID()));
+        for (int i = 0; i < 4; i++) {
+            session.getPlayers().add(new ActivePlayer(
+                UUID.randomUUID(), session.getTurnOrder().get(i), "P" + i, Formation.FOUR_FOUR_TWO, 100
+            ));
+        }
+        when(sessionStore.getById(sessionId)).thenReturn(session);
+        when(cardCatalog.getCardMap()).thenReturn(Map.of());
+
+        var state = auctionService.getAuctionState(sessionId, userId);
+
+        assertThat(state.players()).hasSize(4);
+    }
+
+    @Test
+    void buildTeamSnapshot_returnsBothTeams() {
+        UUID sessionId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID opponentId = UUID.randomUUID();
+        ActiveSession session = new ActiveSession(sessionId, SessionStatus.AUCTIONING, Instant.now());
+        session.getPlayers().add(new ActivePlayer(UUID.randomUUID(), userId, "Me", Formation.FOUR_FOUR_TWO, 100));
+        session.getPlayers().add(new ActivePlayer(UUID.randomUUID(), opponentId, "Opp", Formation.FOUR_THREE_THREE, 100));
+        when(cardCatalog.getCardMap()).thenReturn(Map.of());
+
+        AuctionService.TeamSnapshot teams = auctionService.buildTeamSnapshot(session, userId);
+
+        assertThat(teams.myFormation()).isEqualTo(Formation.FOUR_FOUR_TWO.name());
+        assertThat(teams.opponentFormation()).isEqualTo(Formation.FOUR_THREE_THREE.name());
     }
 
     @Test
