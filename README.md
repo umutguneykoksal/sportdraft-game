@@ -84,13 +84,13 @@ Every push to `main`/`master`, every pull request, and manual **Actions → CI �
 
 | Job | Command | Notes |
 |-----|---------|--------|
-| Backend | `mvn verify` | Unit + integration tests via Testcontainers (Postgres 16 + Redis 7) |
+| Backend | `mvn verify` | Unit + IT via **Testcontainers** (ephemeral Postgres 16 + Redis 7 Docker containers) |
 | Frontend | `npm test -- --watchAll=false` | Includes `CompetitionMatchPage` smoke test |
 
-Integration tests need Docker on the runner — GitHub-hosted `ubuntu-latest` provides it. Local IT without Docker: push a branch and check the Actions tab, or use `mvn test -Pskip-it` for unit-only.
+Integration tests start their own Docker containers (same path locally and on GitHub Actions). Postgres database `auction_it` is created per test JVM; Flyway applies migrations; containers are destroyed when the JVM exits.
 
 ```bash
-cd backend && mvn verify          # unit + integration (Docker required locally for IT)
+cd backend && mvn verify          # unit + IT (Docker required)
 cd backend && mvn test -Pskip-it  # unit only when Docker is unavailable
 cd frontend && npm test -- --watchAll=false
 ```

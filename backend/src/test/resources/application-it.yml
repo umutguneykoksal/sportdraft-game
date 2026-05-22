@@ -4,6 +4,11 @@ spring:
       on-profile: it
   main:
     banner-mode: off
+  flyway:
+    enabled: true
+  jpa:
+    hibernate:
+      ddl-auto: validate
   task:
     scheduling:
       enabled: false

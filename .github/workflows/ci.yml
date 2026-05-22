@@ -28,7 +28,7 @@ jobs:
           distribution: "temurin"
           cache: maven
 
-      - name: Verify backend (Testcontainers IT on runner Docker)
+      - name: Verify backend (Testcontainers Postgres + Redis)
         working-directory: backend
         env:
           TESTCONTAINERS_RYUK_DISABLED: true
