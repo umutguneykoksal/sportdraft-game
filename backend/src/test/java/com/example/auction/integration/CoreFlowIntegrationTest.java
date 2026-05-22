@@ -67,7 +67,8 @@ class CoreFlowIntegrationTest extends AbstractIntegrationTest {
         SessionSnapshotResponse auctioning = lobbyService.getSnapshot(sessionId, user1);
         assertThat(auctioning.status()).isEqualTo(SessionStatus.AUCTIONING);
 
-        AuctionRoundResponse round = auctionService.startRound(sessionId, user1);
+        AuctionRoundResponse round = auctionService.getAuctionState(sessionId, user1).currentRound();
+        assertThat(round).isNotNull();
         AuctionRoundResponse afterBid = auctionService.placeBid(
             sessionId, user1, UUID.randomUUID().toString(),
             new PlaceBidRequest(round.roundId(), 2)

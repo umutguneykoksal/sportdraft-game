@@ -61,7 +61,8 @@ class CommandToRealtimeFlowIT extends AbstractIntegrationTest {
 
         assertThat(lobbyService.getSnapshot(sessionId, user1).status()).isEqualTo(SessionStatus.AUCTIONING);
 
-        AuctionRoundResponse round = auctionService.startRound(sessionId, user1);
+        AuctionRoundResponse round = auctionService.getAuctionState(sessionId, user1).currentRound();
+        assertThat(round).isNotNull();
         auctionService.placeBid(
             sessionId,
             user1,
