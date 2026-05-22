@@ -342,17 +342,18 @@ public class LobbyService {
     }
 
     private void advanceFormationPhases(Instant now) {
+        List<UUID> auctionStartedSessionIds = new ArrayList<>();
         for (ActiveSession snapshot : sessionStore.findByStatus(SessionStatus.FORMATION_SELECT)) {
             UUID sessionId = snapshot.getId();
             try {
-                mutationGuard.mutateVoid(sessionId, () -> {
+                boolean auctionStarted = Boolean.TRUE.equals(mutationGuard.mutate(sessionId, () -> {
                     ActiveSession session = sessionStore.getById(sessionId);
                     if (session.getStatus() != SessionStatus.FORMATION_SELECT) {
-                        return;
+                        return false;
                     }
                     if (session.getCountdownEndsAt() == null || session.getCountdownEndsAt().isAfter(now)
                         || !session.areAllMatchStartReady()) {
-                        return;
+                        return false;
                     }
                     long vBefore = session.getVersion();
                     if (session.playerCount() == session.getMaxPlayers()) {
@@ -363,15 +364,21 @@ public class LobbyService {
                             sessionId, "auctioning_started",
                             Map.of("sessionId", sessionId)
                         );
-                        auctionService.ensureOpenRound(sessionId);
-                    } else {
-                        session.moveToWaiting();
-                        sessionStore.saveIfVersionMatch(session, vBefore);
+                        return true;
                     }
-                });
+                    session.moveToWaiting();
+                    sessionStore.saveIfVersionMatch(session, vBefore);
+                    return false;
+                }));
+                if (auctionStarted) {
+                    auctionStartedSessionIds.add(sessionId);
+                }
             } catch (ActiveSessionStore.OptimisticLockException ignored) {
                 // Retry on next scheduler tick.
             }
+        }
+        for (UUID sessionId : auctionStartedSessionIds) {
+            auctionService.ensureOpenRound(sessionId);
         }
     }
 
