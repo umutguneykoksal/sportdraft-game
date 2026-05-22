@@ -62,13 +62,7 @@ public class ActiveSessionStore {
             if oldStatus ~= '' and oldStatus ~= newStatus then
                 redis.call('SREM', 'sessions:status:' .. oldStatus, idStr)
             end
-            if newStatus ~= 'FINISHED' then
-                redis.call('SADD', 'sessions:status:' .. newStatus, idStr)
-            else
-                if oldStatus ~= '' then
-                    redis.call('SREM', 'sessions:status:' .. oldStatus, idStr)
-                end
-            end
+            redis.call('SADD', 'sessions:status:' .. newStatus, idStr)
             return 1
             """;
         SAVE_WITH_INDEXES_SCRIPT = new DefaultRedisScript<>(lua, Long.class);
@@ -290,11 +284,7 @@ public class ActiveSessionStore {
         if (oldStatus != null && oldStatus != newStatus) {
             redis.opsForSet().remove(STATUS_INDEX_PREFIX + oldStatus.name(), idStr);
         }
-        if (newStatus != SessionStatus.FINISHED) {
-            redis.opsForSet().add(STATUS_INDEX_PREFIX + newStatus.name(), idStr);
-        } else if (oldStatus != null) {
-            redis.opsForSet().remove(STATUS_INDEX_PREFIX + oldStatus.name(), idStr);
-        }
+        redis.opsForSet().add(STATUS_INDEX_PREFIX + newStatus.name(), idStr);
     }
 
     private String key(UUID sessionId) {

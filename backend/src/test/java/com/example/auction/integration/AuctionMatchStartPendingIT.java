@@ -40,9 +40,10 @@ class AuctionMatchStartPendingIT extends AbstractIntegrationTest {
         lobbyService.joinLobby(user2, "Pending2");
         CompetitionTestFixtures.advanceToAuctioning(lobbyService, sessionStore, sessionId, user1, user2);
 
+        auctionService.ensureOpenRound(sessionId);
+
         ActiveSession session = sessionStore.getById(sessionId);
         CompetitionTestFixtures.fillFullRosters(session, cardCatalog, sessionStore);
-        auctionService.ensureOpenRound(sessionId);
 
         AuctionRoundResponse round = auctionService.getAuctionState(sessionId, user1).currentRound();
         assertThat(round).isNotNull();

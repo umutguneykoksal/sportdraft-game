@@ -120,10 +120,11 @@ final class CompetitionTestFixtures {
         CompetitionRepository competitionRepository,
         CompetitionEntity competition
     ) {
-        competition.setIntermissionEndsAt(Instant.now().minusSeconds(1));
-        competitionRepository.save(competition);
-        bracketService.tryStartFinalPhase(competition);
-        return competitionRepository.findById(competition.getId()).orElseThrow();
+        CompetitionEntity fresh = competitionRepository.findById(competition.getId()).orElseThrow();
+        fresh.setIntermissionEndsAt(Instant.now().minusSeconds(1));
+        competitionRepository.save(fresh);
+        bracketService.tryStartFinalPhase(fresh);
+        return competitionRepository.findById(fresh.getId()).orElseThrow();
     }
 
     static CompetitionEntity advanceLeagueBreak(
@@ -131,10 +132,11 @@ final class CompetitionTestFixtures {
         CompetitionRepository competitionRepository,
         CompetitionEntity competition
     ) {
-        competition.setIntermissionEndsAt(Instant.now().minusSeconds(1));
-        competitionRepository.save(competition);
-        fixtureService.tryAdvanceFromBreak(competition);
-        return competitionRepository.findById(competition.getId()).orElseThrow();
+        CompetitionEntity fresh = competitionRepository.findById(competition.getId()).orElseThrow();
+        fresh.setIntermissionEndsAt(Instant.now().minusSeconds(1));
+        competitionRepository.save(fresh);
+        fixtureService.tryAdvanceFromBreak(fresh);
+        return competitionRepository.findById(fresh.getId()).orElseThrow();
     }
 
     static void completeDuelDraft(
@@ -230,9 +232,10 @@ final class CompetitionTestFixtures {
         int homeScore,
         int awayScore
     ) {
-        openSimulateAndForceResult(service, matchRepository, sessionId, match, homeScore, awayScore);
-        CompetitionMatchEntity completed = matchRepository.findById(match.getId()).orElseThrow();
-        watchMatch(service, sessionId, completed);
+        service.openMatch(sessionId, match.getId(), match.getHomeUserId(), false);
+        forceResult(matchRepository, matchRepository.findById(match.getId()).orElseThrow(), homeScore, awayScore);
+        service.acknowledgeWatch(sessionId, match.getId(), match.getHomeUserId());
+        service.acknowledgeWatch(sessionId, match.getId(), match.getAwayUserId());
     }
 
     static void watchMatchdayWithResults(

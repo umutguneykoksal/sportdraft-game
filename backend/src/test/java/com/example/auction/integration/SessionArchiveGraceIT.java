@@ -52,7 +52,8 @@ class SessionArchiveGraceIT extends AbstractIntegrationTest {
             sessionStore.getById(sessionId).getStatus() == SessionStatus.FINISHED
         );
 
-        backdateFinishedObservation(sessionId, Instant.now().minusSeconds(180));
+        clearFinishedObservation(sessionId);
+        backdateFinishedObservation(sessionId, Instant.now().minusSeconds(300));
         cleanupScheduler.archiveFinishedSessions();
 
         assertThat(sessionStore.findById(sessionId)).isEmpty();
@@ -60,10 +61,17 @@ class SessionArchiveGraceIT extends AbstractIntegrationTest {
     }
 
     @SuppressWarnings("unchecked")
-    private void backdateFinishedObservation(UUID sessionId, Instant observedAt) throws Exception {
+    private ConcurrentHashMap<UUID, Instant> finishedObservedAtMap() throws Exception {
         Field field = SessionDisconnectCleanupScheduler.class.getDeclaredField("finishedObservedAt");
         field.setAccessible(true);
-        ConcurrentHashMap<UUID, Instant> map = (ConcurrentHashMap<UUID, Instant>) field.get(cleanupScheduler);
-        map.put(sessionId, observedAt);
+        return (ConcurrentHashMap<UUID, Instant>) field.get(cleanupScheduler);
+    }
+
+    private void clearFinishedObservation(UUID sessionId) throws Exception {
+        finishedObservedAtMap().remove(sessionId);
+    }
+
+    private void backdateFinishedObservation(UUID sessionId, Instant observedAt) throws Exception {
+        finishedObservedAtMap().put(sessionId, observedAt);
     }
 }

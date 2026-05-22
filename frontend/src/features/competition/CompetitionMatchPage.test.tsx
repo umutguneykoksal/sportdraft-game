@@ -1,6 +1,7 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
+import type { CompetitionMatchOpenResponse, CompetitionResponse, MatchEvent } from "../../shared/api/contracts";
 import { CompetitionMatchPage } from "./CompetitionMatchPage";
 import {
   ackCompetitionMatchWatch,
@@ -29,9 +30,61 @@ const pageConfig = {
   backLabel: "Back to hub",
 };
 
+const goalEvent: MatchEvent = {
+  minute: 10,
+  type: "GOAL",
+  teamId: "home-1",
+  playerId: "player-1",
+  playerName: "Striker",
+  detail: "Goal",
+};
+
+function openMatchResponse(overrides: Partial<CompetitionMatchOpenResponse> = {}): CompetitionMatchOpenResponse {
+  return {
+    matchId: "match-1",
+    roundKey: "SEMI_1",
+    homeUserId: "home-1",
+    awayUserId: "away-1",
+    homeNickname: "Home",
+    awayNickname: "Away",
+    homeFormation: "FOUR_FOUR_TWO",
+    awayFormation: "FOUR_THREE_THREE",
+    timeline: [goalEvent],
+    homeScore: 1,
+    awayScore: 0,
+    homePenaltyScore: null,
+    awayPenaltyScore: null,
+    watchedByMe: false,
+    replay: false,
+    allPlayersWatched: false,
+    watchCount: 0,
+    requiredWatchers: 2,
+    ...overrides,
+  };
+}
+
+const ackResponse: CompetitionResponse = {
+  competitionId: "comp-1",
+  sessionId: "session-1",
+  type: "TOURNAMENT",
+  status: "ACTIVE",
+  tournamentPhase: "SEMIS",
+  intermissionEndsAt: null,
+  replaysUnlocked: false,
+  championUserId: null,
+  championNickname: null,
+  matches: [],
+};
+
 function renderPage(sessionId = "session-1", matchId = "match-1") {
   return render(
-    <MemoryRouter initialEntries={[`/tournament/${sessionId}/match/${matchId}`]}>
+    <MemoryRouter
+      initialEntries={[`/tournament/${sessionId}/match/${matchId}`]}
+      future={{
+        v7_startTransition: true,
+        v7_relativeSplatPath: true,
+      }}
+    >
       <Routes>
         <Route
           path="/tournament/:sessionId/match/:matchId"
@@ -49,17 +102,7 @@ describe("CompetitionMatchPage", () => {
   });
 
   it("shows loading then match payload", async () => {
-    mockedOpen.mockResolvedValue({
-      matchId: "match-1",
-      roundKey: "SEMI_1",
-      homeUserId: "home-1",
-      awayUserId: "away-1",
-      homeNickname: "Home",
-      awayNickname: "Away",
-      homeScore: 1,
-      awayScore: 0,
-      timeline: [{ minute: 10, type: "GOAL", teamId: "home-1", playerName: "Striker", detail: "Goal" }],
-    });
+    mockedOpen.mockResolvedValue(openMatchResponse());
 
     renderPage();
 
@@ -80,17 +123,7 @@ describe("CompetitionMatchPage", () => {
   });
 
   it("blocks navigation until mandatory watch completes", async () => {
-    mockedOpen.mockResolvedValue({
-      matchId: "match-1",
-      roundKey: "SEMI_1",
-      homeUserId: "home-1",
-      awayUserId: "away-1",
-      homeNickname: "Home",
-      awayNickname: "Away",
-      homeScore: 1,
-      awayScore: 0,
-      timeline: [{ minute: 10, type: "GOAL", teamId: "home-1", playerName: "Striker", detail: "Goal" }],
-    });
+    mockedOpen.mockResolvedValue(openMatchResponse());
 
     renderPage();
 
@@ -100,22 +133,14 @@ describe("CompetitionMatchPage", () => {
   });
 
   it("acks watch and navigates to hub", async () => {
-    mockedOpen.mockResolvedValue({
-      matchId: "match-1",
-      roundKey: "SEMI_1",
-      homeUserId: "home-1",
-      awayUserId: "away-1",
-      homeNickname: "Home",
-      awayNickname: "Away",
-      homeScore: 2,
-      awayScore: 1,
-      timeline: [{ minute: 55, type: "GOAL", teamId: "home-1", playerName: "Striker", detail: "Goal" }],
-    });
-    mockedAck.mockResolvedValue({
-      competitionId: "comp-1",
-      sessionId: "session-1",
-      matches: [],
-    });
+    mockedOpen.mockResolvedValue(
+      openMatchResponse({
+        homeScore: 2,
+        awayScore: 1,
+        timeline: [{ ...goalEvent, minute: 55 }],
+      })
+    );
+    mockedAck.mockResolvedValue(ackResponse);
 
     renderPage();
 

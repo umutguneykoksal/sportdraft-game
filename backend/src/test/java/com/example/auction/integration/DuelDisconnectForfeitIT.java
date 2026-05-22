@@ -10,8 +10,10 @@ import com.example.auction.session.control.SessionDisconnectCleanupScheduler;
 import com.example.auction.session.entity.SessionStatus;
 import com.example.auction.session.redis.ActiveSession;
 import com.example.auction.session.redis.ActiveSessionStore;
+import java.lang.reflect.Field;
 import java.time.Instant;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 
@@ -30,7 +32,7 @@ class DuelDisconnectForfeitIT extends AbstractIntegrationTest {
     private SessionDisconnectCleanupScheduler disconnectCleanupScheduler;
 
     @Test
-    void duelDisconnectDuringAuction_awardsForfeitWin() {
+    void duelDisconnectDuringAuction_awardsForfeitWin() throws Exception {
         UUID user1 = UUID.randomUUID();
         UUID user2 = UUID.randomUUID();
 
@@ -42,8 +44,9 @@ class DuelDisconnectForfeitIT extends AbstractIntegrationTest {
 
         connectionTracker.onPlayerConnected(sessionId, user2);
         connectionTracker.onPlayerFullyDisconnected(sessionId, user1);
+        backdatePlayerDisconnect(sessionId, user1, Instant.now().minusSeconds(2));
 
-        await().atMost(3, SECONDS).pollDelay(1100, java.util.concurrent.TimeUnit.MILLISECONDS).until(() -> {
+        await().atMost(3, SECONDS).until(() -> {
             disconnectCleanupScheduler.cleanupDisconnectedSessions();
             return sessionStore.findById(sessionId)
                 .map(s -> s.getStatus() == SessionStatus.FINISHED)
@@ -63,5 +66,13 @@ class DuelDisconnectForfeitIT extends AbstractIntegrationTest {
             assertThat(session.getHomeScore()).isEqualTo(0);
             assertThat(session.getAwayScore()).isEqualTo(3);
         }
+    }
+
+    @SuppressWarnings("unchecked")
+    private void backdatePlayerDisconnect(UUID sessionId, UUID userId, Instant disconnectedAt) throws Exception {
+        Field field = RealtimeConnectionTracker.class.getDeclaredField("playerDisconnectedAt");
+        field.setAccessible(true);
+        ConcurrentHashMap<String, Instant> map = (ConcurrentHashMap<String, Instant>) field.get(connectionTracker);
+        map.put(sessionId + ":" + userId, disconnectedAt);
     }
 }

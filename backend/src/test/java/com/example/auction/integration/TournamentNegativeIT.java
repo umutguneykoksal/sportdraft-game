@@ -78,7 +78,11 @@ class TournamentNegativeIT extends AbstractIntegrationTest {
             sessionId, semi1.getId(), CompetitionTestFixtures.USER_3, false
         ))
             .isInstanceOf(ResponseStatusException.class)
-            .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode()).isEqualTo(HttpStatus.CONFLICT));
+            .satisfies(ex -> {
+                ResponseStatusException rse = (ResponseStatusException) ex;
+                assertThat(rse.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+                assertThat(rse.getReason()).isEqualTo("You can only watch your own semi-final");
+            });
     }
 
     private void seedSession(UUID sessionId) {
