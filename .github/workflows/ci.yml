@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   backend:
-    name: Backend (unit + IT)
+    name: Backend
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
@@ -55,7 +55,7 @@ jobs:
           npm run test:coverage
 
   e2e:
-    name: Playwright E2E (optional)
+    name: Playwright E2E
     runs-on: ubuntu-latest
     timeout-minutes: 15
     continue-on-error: true
