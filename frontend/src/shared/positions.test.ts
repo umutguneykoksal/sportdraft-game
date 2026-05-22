@@ -1,4 +1,4 @@
-import type { AuctionTeamCardResponse } from "../api/contracts";
+import type { AuctionTeamCardResponse } from "./api/contracts";
 import { orderedEligiblePositions, openEligibleHighlights } from "./positions";
 
 describe("positions helpers", () => {

@@ -32,6 +32,7 @@ const baseRound: AuctionRoundResponse = {
   readyUserOneId: null,
   readyUserTwoId: null,
   endsAt: new Date().toISOString(),
+  startsAt: null,
   turnOpenAt: null,
   status: "OPEN",
   opponentCanBid: true,
