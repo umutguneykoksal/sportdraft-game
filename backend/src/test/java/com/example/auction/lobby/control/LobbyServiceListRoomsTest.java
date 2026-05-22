@@ -43,7 +43,8 @@ class LobbyServiceListRoomsTest {
             sseEmitterRegistry,
             cardCatalog,
             eventLog,
-            auctionService
+            auctionService,
+            LobbyServiceTestSupport.passthroughMutationGuard()
         );
     }
 

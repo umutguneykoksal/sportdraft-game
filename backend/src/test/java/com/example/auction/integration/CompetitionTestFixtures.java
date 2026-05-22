@@ -73,10 +73,7 @@ final class CompetitionTestFixtures {
         UUID sessionId,
         UUID... userIds
     ) {
-        ActiveSession session = sessionStore.getById(sessionId);
-        long version = session.getVersion();
-        session.moveToCountdown(Instant.now().minusSeconds(1));
-        sessionStore.saveIfVersionMatch(session, version);
+        backdateCountdown(sessionStore, sessionId);
         lobbyService.advanceTimedPhases();
 
         for (UUID userId : userIds) {
@@ -86,11 +83,28 @@ final class CompetitionTestFixtures {
             lobbyService.confirmFormationReady(sessionId, userId);
         }
 
-        session = sessionStore.getById(sessionId);
-        version = session.getVersion();
-        session.setCountdownEndsAt(Instant.now().minusSeconds(1));
-        sessionStore.saveIfVersionMatch(session, version);
+        backdateCountdown(sessionStore, sessionId);
         lobbyService.advanceTimedPhases();
+    }
+
+    private static void backdateCountdown(ActiveSessionStore sessionStore, UUID sessionId) {
+        for (int attempt = 0; attempt < 5; attempt++) {
+            ActiveSession session = sessionStore.getById(sessionId);
+            long version = session.getVersion();
+            if (session.getStatus() == SessionStatus.WAITING) {
+                session.moveToCountdown(Instant.now().minusSeconds(1));
+            } else {
+                session.setCountdownEndsAt(Instant.now().minusSeconds(1));
+            }
+            try {
+                sessionStore.saveIfVersionMatch(session, version);
+                return;
+            } catch (ActiveSessionStore.OptimisticLockException ex) {
+                if (attempt == 4) {
+                    throw ex;
+                }
+            }
+        }
     }
 
     static void watchMatch(

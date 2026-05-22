@@ -9,11 +9,9 @@ import com.example.auction.bidding.control.CardCatalogService;
 import com.example.auction.lobby.boundary.SessionSnapshotResponse;
 import com.example.auction.lobby.control.LobbyService;
 import com.example.auction.session.control.SessionReadService;
-import com.example.auction.session.entity.Formation;
 import com.example.auction.session.entity.SessionStatus;
 import com.example.auction.session.redis.ActiveSession;
 import com.example.auction.session.redis.ActiveSessionStore;
-import java.time.Instant;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -47,22 +45,7 @@ class DuelMatchFlowIT extends AbstractIntegrationTest {
         UUID sessionId = secondJoin.sessionId();
         assertThat(firstJoin.sessionId()).isEqualTo(sessionId);
 
-        ActiveSession session = sessionStore.getById(sessionId);
-        long version = session.getVersion();
-        session.moveToCountdown(Instant.now().minusSeconds(1));
-        sessionStore.saveIfVersionMatch(session, version);
-        lobbyService.advanceTimedPhases();
-
-        lobbyService.selectFormation(sessionId, user1, Formation.FOUR_FOUR_TWO);
-        lobbyService.selectFormation(sessionId, user2, Formation.FOUR_THREE_THREE);
-        lobbyService.confirmFormationReady(sessionId, user1);
-        lobbyService.confirmFormationReady(sessionId, user2);
-
-        session = sessionStore.getById(sessionId);
-        version = session.getVersion();
-        session.setCountdownEndsAt(Instant.now().minusSeconds(1));
-        sessionStore.saveIfVersionMatch(session, version);
-        lobbyService.advanceTimedPhases();
+        CompetitionTestFixtures.advanceToAuctioning(lobbyService, sessionStore, sessionId, user1, user2);
 
         assertThat(lobbyService.getSnapshot(sessionId, user1).status()).isEqualTo(SessionStatus.AUCTIONING);
 

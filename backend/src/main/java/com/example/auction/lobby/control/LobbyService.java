@@ -20,6 +20,7 @@ import com.example.auction.session.redis.ActivePlayer;
 import com.example.auction.session.control.SessionAccess;
 import com.example.auction.session.redis.ActiveSession;
 import com.example.auction.session.redis.ActiveSessionStore;
+import com.example.auction.session.redis.SessionMutationGuard;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
@@ -54,15 +55,18 @@ public class LobbyService {
     private final CardCatalogService cardCatalog;
     private final SessionEventLog eventLog;
     private final AuctionService auctionService;
+    private final SessionMutationGuard mutationGuard;
 
     public LobbyService(ActiveSessionStore sessionStore, SseEmitterRegistry sseEmitterRegistry,
                          CardCatalogService cardCatalog, SessionEventLog eventLog,
-                         @Lazy AuctionService auctionService) {
+                         @Lazy AuctionService auctionService,
+                         SessionMutationGuard mutationGuard) {
         this.sessionStore = sessionStore;
         this.sseEmitterRegistry = sseEmitterRegistry;
         this.cardCatalog = cardCatalog;
         this.eventLog = eventLog;
         this.auctionService = auctionService;
+        this.mutationGuard = mutationGuard;
     }
 
     public PoolMinRatingOptionsResponse getPoolMinRatingOptions(String poolLeague) {
@@ -302,41 +306,71 @@ public class LobbyService {
 
     public void advanceTimedPhases() {
         Instant now = Instant.now();
+        advanceCountdownPhases(now);
+        advanceFormationPhases(now);
+    }
 
-        for (ActiveSession session : sessionStore.findByStatus(SessionStatus.COUNTDOWN)) {
-            if (session.getCountdownEndsAt() != null && !session.getCountdownEndsAt().isAfter(now)) {
-                long vBefore = session.getVersion();
-                if (session.playerCount() == session.getMaxPlayers()) {
-                    session.moveToFormationSelect(null);
-                    sessionStore.saveIfVersionMatch(session, vBefore);
-                    sseEmitterRegistry.broadcast(
-                        session.getId(), "formation_phase_started",
-                        Map.of("sessionId", session.getId())
-                    );
-                } else {
-                    session.moveToWaiting();
-                    sessionStore.saveIfVersionMatch(session, vBefore);
-                }
+    private void advanceCountdownPhases(Instant now) {
+        for (ActiveSession snapshot : sessionStore.findByStatus(SessionStatus.COUNTDOWN)) {
+            UUID sessionId = snapshot.getId();
+            try {
+                mutationGuard.mutateVoid(sessionId, () -> {
+                    ActiveSession session = sessionStore.getById(sessionId);
+                    if (session.getStatus() != SessionStatus.COUNTDOWN) {
+                        return;
+                    }
+                    if (session.getCountdownEndsAt() == null || session.getCountdownEndsAt().isAfter(now)) {
+                        return;
+                    }
+                    long vBefore = session.getVersion();
+                    if (session.playerCount() == session.getMaxPlayers()) {
+                        session.moveToFormationSelect(null);
+                        sessionStore.saveIfVersionMatch(session, vBefore);
+                        sseEmitterRegistry.broadcast(
+                            sessionId, "formation_phase_started",
+                            Map.of("sessionId", sessionId)
+                        );
+                    } else {
+                        session.moveToWaiting();
+                        sessionStore.saveIfVersionMatch(session, vBefore);
+                    }
+                });
+            } catch (ActiveSessionStore.OptimisticLockException ignored) {
+                // Retry on next scheduler tick (same pattern as AuctionRoundScheduler).
             }
         }
+    }
 
-        for (ActiveSession session : sessionStore.findByStatus(SessionStatus.FORMATION_SELECT)) {
-            if (session.getCountdownEndsAt() != null && !session.getCountdownEndsAt().isAfter(now)
-                && session.areAllMatchStartReady()) {
-                long vBefore = session.getVersion();
-                if (session.playerCount() == session.getMaxPlayers()) {
-                    session.getPlayers().forEach(ActivePlayer::confirmDefaultFormationIfMissing);
-                    session.moveToAuctioning(buildShuffledCardPool(session));
-                    sessionStore.saveIfVersionMatch(session, vBefore);
-                    sseEmitterRegistry.broadcast(
-                        session.getId(), "auctioning_started",
-                        Map.of("sessionId", session.getId())
-                    );
-                    auctionService.ensureOpenRound(session.getId());
-                } else {
-                    session.moveToWaiting();
-                    sessionStore.saveIfVersionMatch(session, vBefore);
-                }
+    private void advanceFormationPhases(Instant now) {
+        for (ActiveSession snapshot : sessionStore.findByStatus(SessionStatus.FORMATION_SELECT)) {
+            UUID sessionId = snapshot.getId();
+            try {
+                mutationGuard.mutateVoid(sessionId, () -> {
+                    ActiveSession session = sessionStore.getById(sessionId);
+                    if (session.getStatus() != SessionStatus.FORMATION_SELECT) {
+                        return;
+                    }
+                    if (session.getCountdownEndsAt() == null || session.getCountdownEndsAt().isAfter(now)
+                        || !session.areAllMatchStartReady()) {
+                        return;
+                    }
+                    long vBefore = session.getVersion();
+                    if (session.playerCount() == session.getMaxPlayers()) {
+                        session.getPlayers().forEach(ActivePlayer::confirmDefaultFormationIfMissing);
+                        session.moveToAuctioning(buildShuffledCardPool(session));
+                        sessionStore.saveIfVersionMatch(session, vBefore);
+                        sseEmitterRegistry.broadcast(
+                            sessionId, "auctioning_started",
+                            Map.of("sessionId", sessionId)
+                        );
+                        auctionService.ensureOpenRound(sessionId);
+                    } else {
+                        session.moveToWaiting();
+                        sessionStore.saveIfVersionMatch(session, vBefore);
+                    }
+                });
+            } catch (ActiveSessionStore.OptimisticLockException ignored) {
+                // Retry on next scheduler tick.
             }
         }
     }

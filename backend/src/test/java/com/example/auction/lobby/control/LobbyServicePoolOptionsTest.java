@@ -38,7 +38,8 @@ class LobbyServicePoolOptionsTest {
             sseEmitterRegistry,
             cardCatalog,
             eventLog,
-            auctionService
+            auctionService,
+            LobbyServiceTestSupport.passthroughMutationGuard()
         );
     }
 

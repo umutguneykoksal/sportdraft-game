@@ -59,7 +59,8 @@ class LobbyServiceCommandTest {
             sseEmitterRegistry,
             cardCatalog,
             eventLog,
-            auctionService
+            auctionService,
+            LobbyServiceTestSupport.passthroughMutationGuard()
         );
     }
 
@@ -234,6 +235,7 @@ class LobbyServiceCommandTest {
         session.moveToCountdown(Instant.now().minusSeconds(1));
         when(sessionStore.findByStatus(SessionStatus.COUNTDOWN)).thenReturn(List.of(session));
         when(sessionStore.findByStatus(SessionStatus.FORMATION_SELECT)).thenReturn(List.of());
+        when(sessionStore.getById(sessionId)).thenReturn(session);
 
         lobbyService.advanceTimedPhases();
 
@@ -251,6 +253,7 @@ class LobbyServiceCommandTest {
         UUID cardId = UUID.randomUUID();
         when(sessionStore.findByStatus(SessionStatus.COUNTDOWN)).thenReturn(List.of());
         when(sessionStore.findByStatus(SessionStatus.FORMATION_SELECT)).thenReturn(List.of(session));
+        when(sessionStore.getById(sessionId)).thenReturn(session);
         when(cardCatalog.getCardIdsForPool(session.getPoolLeague(), session.getMinPoolRating()))
             .thenReturn(List.of(cardId));
 

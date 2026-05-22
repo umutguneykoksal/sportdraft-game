@@ -43,7 +43,8 @@ class LobbyServicePoolGuardTest {
             sseEmitterRegistry,
             cardCatalog,
             eventLog,
-            auctionService
+            auctionService,
+            LobbyServiceTestSupport.passthroughMutationGuard()
         );
         when(sessionStore.findAllActiveIds()).thenReturn(java.util.List.of());
     }
