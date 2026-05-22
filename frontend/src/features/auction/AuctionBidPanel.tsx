@@ -251,23 +251,23 @@ export function AuctionBidPanel(props: AuctionBidPanelProps) {
             </div>
           )}
 
+          {!interactionLocked && (
           <div
             className={`mt-3 text-center text-sm font-medium py-2 rounded-lg transition-colors duration-300 ${
               mySquadFull
                 ? "bg-accent-green/10 text-accent-green"
-                : inCardReveal || interactionLocked
+                : inTimerGrace
                   ? "bg-amber-500/10 text-amber-400"
-                  : inTimerGrace
+                  : turnIsOpen
                     ? "bg-amber-500/10 text-amber-400"
-                    : turnIsOpen
-                      ? "bg-amber-500/10 text-amber-400"
-                      : isMyTurn
-                        ? "bg-accent/10 text-accent"
-                        : "bg-surface-elevated text-slate-400"
+                    : isMyTurn
+                      ? "bg-accent/10 text-accent"
+                      : "bg-surface-elevated text-slate-400"
             }`}
           >
             {turnStatusMessage()}
           </div>
+          )}
         </div>
       )}
 
