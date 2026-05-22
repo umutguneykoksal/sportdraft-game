@@ -19,7 +19,6 @@ export type AuctionBidPanelProps = {
   controlsLocked: boolean;
   interactionLocked: boolean;
   inCardReveal: boolean;
-  showFirstCardIntro: boolean;
   loading: boolean;
   canBid: boolean;
   couldBid: boolean;
@@ -54,7 +53,6 @@ export function AuctionBidPanel(props: AuctionBidPanelProps) {
     controlsLocked,
     interactionLocked,
     inCardReveal,
-    showFirstCardIntro,
     loading,
     canBid,
     couldBid,
@@ -76,19 +74,7 @@ export function AuctionBidPanel(props: AuctionBidPanelProps) {
 
   return (
     <div className="space-y-4">
-      {showFirstCardIntro && round && auctionPhaseActive && (
-        <div
-          className="bg-surface-card rounded-xl border border-accent/30 p-8 text-center animate-fade-in min-h-[280px] flex flex-col items-center justify-center"
-          role="status"
-          aria-live="polite"
-        >
-          <p className="text-xs uppercase tracking-[0.2em] text-accent mb-3">Auction live</p>
-          <p className="text-2xl sm:text-3xl font-bold text-white">Bidding is starting…</p>
-          <p className="text-sm text-slate-400 mt-3 max-w-xs">First player card coming up</p>
-        </div>
-      )}
-
-      {round && auctionPhaseActive && !showFirstCardIntro && (
+      {round && auctionPhaseActive && roundIsOpen && (
         <div
           key={round.roundId}
           className="bg-surface-card rounded-xl border border-white/10 p-4 animate-fade-in"
@@ -285,9 +271,9 @@ export function AuctionBidPanel(props: AuctionBidPanelProps) {
         </div>
       )}
 
-      {auctionPhaseActive && !round && (
+      {auctionPhaseActive && (!round || !roundIsOpen) && (
         <div className="bg-surface-card rounded-xl border border-white/10 p-6 text-center">
-          <p className="text-slate-400 animate-pulse">Starting next round...</p>
+          <p className="text-slate-400 animate-pulse">Next card coming up…</p>
         </div>
       )}
 

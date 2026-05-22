@@ -44,26 +44,6 @@ function mapCards(raw: AuctionTeamCardResponse[]): AuctionTeamCardResponse[] {
   }));
 }
 
-function auctionIntroStorageKey(sessionId: string) {
-  return `auction-intro-seen:${sessionId}`;
-}
-
-function hasSeenAuctionIntro(sessionId: string) {
-  try {
-    return sessionStorage.getItem(auctionIntroStorageKey(sessionId)) === "1";
-  } catch {
-    return false;
-  }
-}
-
-function markAuctionIntroSeen(sessionId: string) {
-  try {
-    sessionStorage.setItem(auctionIntroStorageKey(sessionId), "1");
-  } catch {
-    // ignore storage failures
-  }
-}
-
 export function useAuctionPageState(sessionId: string | undefined) {
   const navigate = useNavigate();
   const myUserId = getClientUserId();
@@ -76,7 +56,6 @@ export function useAuctionPageState(sessionId: string | undefined) {
   const [timeExtended, setTimeExtended] = useState(false);
   const [inGracePeriod, setInGracePeriod] = useState(false);
   const [inCardReveal, setInCardReveal] = useState(false);
-  const previousInCardRevealRef = useRef(false);
   const previousRoundIdRef = useRef<string | null>(null);
   const countdownRoundIdRef = useRef<string | null>(null);
   const previousSecondsLeftRef = useRef<number>(0);
@@ -156,14 +135,6 @@ export function useAuctionPageState(sessionId: string | undefined) {
 
   const opponentSpent = opponentTeam.reduce((sum, c) => sum + c.amountCents, 0);
   const opponentBudget = 100 - opponentSpent;
-  const totalRosterCards = multiPlayerMode
-    ? playerViews.reduce((sum, p) => sum + p.rosterSize, 0)
-    : myTeam.length + opponentTeam.length;
-  const showFirstCardIntro =
-    inCardReveal
-    && totalRosterCards === 0
-    && !!sessionId
-    && !hasSeenAuctionIntro(sessionId);
 
   const turnOrderEntries: TurnOrderEntry[] = multiPlayerMode
     ? buildTurnOrderEntries(
@@ -217,7 +188,6 @@ export function useAuctionPageState(sessionId: string | undefined) {
   const minimumBid = round ? Math.max(1, round.highestBidCents + 1) : 1;
 
   const turnStatusMessage = (): string => {
-    if (showFirstCardIntro) return "Bidding is starting…";
     if (mySquadFull) return "Squad full (11/11)";
     if (inCardReveal) return "New card — bidding opens soon";
     if (controlsLocked) return loading ? "Submitting…" : "Settling round…";
@@ -353,14 +323,6 @@ export function useAuctionPageState(sessionId: string | undefined) {
       }
     };
   }, []);
-
-  useEffect(() => {
-    if (!sessionId) return;
-    if (previousInCardRevealRef.current && !inCardReveal && totalRosterCards === 0) {
-      markAuctionIntroSeen(sessionId);
-    }
-    previousInCardRevealRef.current = inCardReveal;
-  }, [inCardReveal, sessionId, totalRosterCards]);
 
   useEffect(() => {
     if (!round || round.status !== "OPEN") {
@@ -630,7 +592,6 @@ export function useAuctionPageState(sessionId: string | undefined) {
     isMyTurn,
     inTimerGrace,
     inCardReveal,
-    showFirstCardIntro,
     loading,
     timerPercent,
     timerColor,

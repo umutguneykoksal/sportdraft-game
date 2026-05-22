@@ -122,7 +122,6 @@ export function AuctionPage() {
               controlsLocked={state.controlsLocked}
               interactionLocked={state.interactionLocked}
               inCardReveal={state.inCardReveal}
-              showFirstCardIntro={state.showFirstCardIntro}
               loading={state.loading}
               canBid={state.canBid}
               couldBid={state.couldBid}
@@ -166,7 +165,6 @@ export function AuctionPage() {
               controlsLocked={state.controlsLocked}
               interactionLocked={state.interactionLocked}
               inCardReveal={state.inCardReveal}
-              showFirstCardIntro={state.showFirstCardIntro}
               loading={state.loading}
               canBid={state.canBid}
               couldBid={state.couldBid}
