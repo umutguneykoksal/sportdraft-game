@@ -8,7 +8,7 @@ Duel (2p), tournament bracket (4p), and league with standings + optional playoff
 
 Built and maintained by [Umut Guney Koksal](https://github.com/umutguneykoksal).
 
-![CI](https://github.com/umutguneykoksal/football-card-auction-game/actions/workflows/ci.yml/badge.svg)
+![CI](https://github.com/umutguneykoksal/sportdraft-game/actions/workflows/ci.yml/badge.svg)
 ![Java 21](https://img.shields.io/badge/Java-21-orange)
 ![Spring Boot 3.3](https://img.shields.io/badge/Spring%20Boot-3.3-green)
 ![React 18](https://img.shields.io/badge/React-18-61dafb)
