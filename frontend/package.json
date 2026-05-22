@@ -31,7 +31,37 @@
     "start:prod": "serve -s build -l tcp://0.0.0.0:$PORT",
     "build": "react-scripts build",
     "test": "react-scripts test",
+    "test:coverage": "react-scripts test --coverage --watchAll=false",
     "eject": "react-scripts eject"
+  },
+  "jest": {
+    "collectCoverageFrom": [
+      "src/features/**/*.ts",
+      "src/shared/api/**/*.ts",
+      "src/shared/realtime/eventDispatch.ts",
+      "src/shared/realtime/transportFactory.ts",
+      "src/shared/realtime/constants.ts",
+      "src/shared/realtime/syncConstants.ts",
+      "src/shared/session.ts",
+      "src/shared/formations.ts",
+      "src/shared/positions.ts",
+      "!src/**/*.d.ts",
+      "!src/**/model/**",
+      "!src/features/**/useAuctionPageState.ts",
+      "!src/features/**/useSpectateMatchReplay.ts",
+      "!src/features/**/useLobbyFlow.ts",
+      "!src/features/**/useAuctionOrchestrator.ts",
+      "!src/features/**/useMatchFlow.ts",
+      "!src/shared/realtime/eventDispatch.ts"
+    ],
+    "coverageThreshold": {
+      "global": {
+        "lines": 85,
+        "branches": 75,
+        "functions": 80,
+        "statements": 85
+      }
+    }
   },
   "browserslist": {
     "production": [

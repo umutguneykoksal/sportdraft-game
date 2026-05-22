@@ -2,6 +2,9 @@ package com.example.auction.session.control;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.example.auction.bidding.control.AuctionService;
@@ -15,6 +18,8 @@ import com.example.auction.session.redis.ActivePlayer;
 import com.example.auction.session.redis.ActiveSession;
 import com.example.auction.session.redis.ActiveSessionStore;
 import com.example.auction.simulation.control.MatchResultRecoveryService;
+import com.example.auction.simulation.entity.MatchEvent;
+import com.example.auction.simulation.entity.MatchEventType;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import java.time.Instant;
@@ -103,6 +108,76 @@ class SessionReadServiceTest {
                 assertThat(rse.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
                 assertThat(rse.getReason()).isEqualTo("Player not found in session");
             });
+    }
+
+    @Test
+    void getMatchTimeline_memberFromActiveSession_returnsTimeline() {
+        ActiveSession session = activeSessionWithTimeline();
+        when(sessionStore.findById(sessionId)).thenReturn(Optional.of(session));
+
+        ResponseEntity<?> response = sessionReadService.getMatchTimeline(sessionId, homeUserId);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        @SuppressWarnings("unchecked")
+        List<MatchEvent> body = (List<MatchEvent>) response.getBody();
+        assertThat(body).hasSize(1);
+    }
+
+    @Test
+    void getMatchResult_activeSession_triggersRecovery() {
+        ActiveSession session = activeSessionWithTimeline();
+        session.setStatus(SessionStatus.FINALIZING);
+        when(sessionStore.findById(sessionId)).thenReturn(Optional.of(session));
+        when(matchResultRecoveryService.recoverIfMissing(sessionId)).thenReturn(true);
+        when(auctionService.buildTeamSnapshot(session, homeUserId)).thenReturn(
+            new AuctionService.TeamSnapshot(List.of(), List.of(), "4-4-2", "4-4-2")
+        );
+
+        ResponseEntity<?> response = sessionReadService.getMatchResult(sessionId, homeUserId);
+
+        verify(matchResultRecoveryService).recoverIfMissing(sessionId);
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+    }
+
+    @Test
+    void spectate_delegatesToAuctionService() {
+        ActiveSession session = activeSessionWithTimeline();
+        when(sessionStore.findById(sessionId)).thenReturn(Optional.of(session));
+        when(auctionService.buildSpectateSnapshot(session)).thenReturn(
+            new AuctionService.SpectateSnapshot(
+                SessionStatus.AUCTIONING.name(),
+                null,
+                List.of(), List.of(),
+                Formation.FOUR_FOUR_TWO.name(), Formation.FOUR_FOUR_TWO.name(),
+                homeUserId, awayUserId,
+                "Home", "Away",
+                50L, 50L,
+                1, 0
+            )
+        );
+
+        var response = sessionReadService.spectate(sessionId);
+
+        assertThat(response.status()).isEqualTo(SessionStatus.AUCTIONING.name());
+        assertThat(response.homeNickname()).isEqualTo("Home");
+    }
+
+    @Test
+    void recordPing_delegatesToSseRegistry() {
+        sessionReadService.recordPing(sessionId, homeUserId);
+        verify(sseEmitterRegistry).recordPlayerPing(sessionId, homeUserId);
+    }
+
+    private ActiveSession activeSessionWithTimeline() {
+        ActiveSession session = new ActiveSession(sessionId, SessionStatus.FINISHED, Instant.now(), GameMode.DUEL);
+        session.setHomeScore(1);
+        session.setAwayScore(0);
+        session.getPlayers().add(new ActivePlayer(UUID.randomUUID(), homeUserId, "Home", Formation.FOUR_FOUR_TWO, 0));
+        session.getPlayers().add(new ActivePlayer(UUID.randomUUID(), awayUserId, "Away", Formation.FOUR_FOUR_TWO, 0));
+        session.setMatchTimeline(List.of(
+            MatchEvent.forPlayer(10, MatchEventType.GOAL, homeUserId, UUID.randomUUID(), "Striker", "Goal")
+        ));
+        return session;
     }
 
     private MatchHistory archivedMatchHistory() throws Exception {

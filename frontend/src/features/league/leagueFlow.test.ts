@@ -2,6 +2,7 @@ import {
   findMyMatchdayMatch,
   formatLeagueMatchScore,
   matchdayFromPhase,
+  matchdayLabel,
   resolveLeagueStep,
 } from "./leagueFlow";
 import type { CompetitionMatchResponse, CompetitionResponse } from "../../shared/api/contracts";
@@ -80,8 +81,35 @@ describe("leagueFlow", () => {
 
   it("finds matchday from phase", () => {
     expect(matchdayFromPhase("MATCHDAY_2")).toBe(2);
+    expect(matchdayFromPhase("MATCHDAY_3")).toBe(3);
+    expect(matchdayFromPhase("COMPLETED")).toBe(0);
     expect(findMyMatchdayMatch([match({ roundKey: "MD2_B", awayUserId: "me" })], "MATCHDAY_2", "me")?.roundKey).toBe(
       "MD2_B"
     );
+  });
+
+  it("routesToPlayoffFinalWhenPlayable", () => {
+    const data = competition({
+      leaguePhase: "CHAMPIONSHIP_PLAYOFF",
+      matches: [match({ roundKey: "PLAYOFF_FINAL", playable: true, matchId: "final-1" })],
+    });
+    expect(resolveLeagueStep(data, "me")).toEqual({
+      kind: "watch",
+      matchId: "final-1",
+      replay: false,
+    });
+  });
+
+  it("showsWaitingAfterPlayoffWatched", () => {
+    const data = competition({
+      leaguePhase: "CHAMPIONSHIP_PLAYOFF",
+      matches: [match({ roundKey: "PLAYOFF_FINAL", playable: false, watchedByMe: true })],
+    });
+    expect(resolveLeagueStep(data, "me")).toEqual({ kind: "waiting", phase: "CHAMPIONSHIP_PLAYOFF" });
+  });
+
+  it("matchdayLabel_formatsRoundKey", () => {
+    expect(matchdayLabel("PLAYOFF_FINAL")).toBe("Championship decider");
+    expect(matchdayLabel("MD1_A")).toBe("MD1 A");
   });
 });

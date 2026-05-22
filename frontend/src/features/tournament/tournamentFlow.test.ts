@@ -56,6 +56,21 @@ describe("tournamentFlow", () => {
     });
   });
 
+  it("shows waiting after semi watched", () => {
+    const data = competition({
+      matches: [semi({ homeUserId: "me", playable: false, watchedByMe: true })],
+    });
+    expect(resolveTournamentStep(data, "me")).toEqual({ kind: "waiting", phase: "SEMIS" });
+  });
+
+  it("shows waiting after final watched", () => {
+    const data = competition({
+      tournamentPhase: "FINAL",
+      matches: [semi({ matchId: "final", roundKey: "FINAL", homeUserId: "me", playable: false, watchedByMe: true })],
+    });
+    expect(resolveTournamentStep(data, "me")).toEqual({ kind: "waiting", phase: "FINAL" });
+  });
+
   it("routes viewer to mandatory semi watch before intermission", () => {
     const data = competition({
       matches: [

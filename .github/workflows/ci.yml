@@ -52,7 +52,7 @@ jobs:
         working-directory: frontend
         run: |
           npm ci
-          npm test -- --watchAll=false
+          npm run test:coverage
 
   e2e:
     name: Playwright E2E (optional)

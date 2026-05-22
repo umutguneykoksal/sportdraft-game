@@ -1,5 +1,6 @@
 import {
   ackCompetitionMatchWatch,
+  getCompetitionBySession,
   openCompetitionMatch,
 } from "./competitionClient";
 
@@ -17,6 +18,16 @@ describe("competitionClient", () => {
   afterEach(() => {
     global.fetch = originalFetch;
     localStorage.removeItem("sessionToken");
+  });
+
+  it("loads competition by session", async () => {
+    const data = await getCompetitionBySession("session-1");
+
+    expect(data.competitionId).toBe("c1");
+    expect(global.fetch).toHaveBeenCalledWith(
+      expect.stringContaining("/sessions/session-1/competition"),
+      expect.any(Object)
+    );
   });
 
   it("opens competition match via POST", async () => {

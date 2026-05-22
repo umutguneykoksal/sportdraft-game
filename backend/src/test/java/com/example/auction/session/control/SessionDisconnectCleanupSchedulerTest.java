@@ -98,6 +98,70 @@ class SessionDisconnectCleanupSchedulerTest {
             .isEqualTo(Duration.ofSeconds(240));
     }
 
+    @Test
+    void cleanupDisconnectedSessions_awardsForfeitWhenOnePlayerDisconnected() {
+        UUID winnerId = UUID.randomUUID();
+        UUID loserId = UUID.randomUUID();
+        ActiveSession session = duelAuctionSession(winnerId, loserId);
+
+        when(sessionStore.findAllActiveIds()).thenReturn(List.of(sessionId));
+        when(sessionStore.findById(sessionId)).thenReturn(Optional.of(session));
+        when(sseEmitterRegistry.hasActivePlayerEmitter(sessionId, winnerId)).thenReturn(true);
+        when(sseEmitterRegistry.hasActivePlayerEmitter(sessionId, loserId)).thenReturn(false);
+        when(sseEmitterRegistry.isPlayerDisconnectedLongerThan(
+            eq(sessionId), eq(loserId), eq(Duration.ofSeconds(60))
+        )).thenReturn(true);
+
+        scheduler.cleanupDisconnectedSessions();
+
+        verify(sessionStore).saveIfVersionMatch(eq(session), any(Long.class));
+        verify(sessionArchiver).archive(session);
+        verify(sseEmitterRegistry).forgetSession(sessionId);
+        verify(eventLog).forget(sessionId);
+        assertThat(session.getStatus()).isEqualTo(SessionStatus.FINISHED);
+    }
+
+    @Test
+    void archiveFinishedSessions_archivesDuelAfterGracePeriod() throws Exception {
+        ActiveSession session = duelAuctionSession(UUID.randomUUID(), UUID.randomUUID());
+        session.moveToFinished();
+
+        when(sessionStore.findByStatus(SessionStatus.FINISHED)).thenReturn(List.of(session));
+        when(sessionStore.exists(sessionId)).thenReturn(true);
+
+        scheduler.archiveFinishedSessions();
+        backdateFinishedObservation(sessionId, Instant.now().minusSeconds(300));
+        scheduler.archiveFinishedSessions();
+
+        verify(sessionArchiver).archive(session);
+        verify(sseEmitterRegistry).forgetSession(sessionId);
+        verify(eventLog).forget(sessionId);
+    }
+
+    @SuppressWarnings("unchecked")
+    private void backdateFinishedObservation(UUID sessionId, Instant observedAt) throws Exception {
+        var field = SessionDisconnectCleanupScheduler.class.getDeclaredField("finishedObservedAt");
+        field.setAccessible(true);
+        var map = (java.util.concurrent.ConcurrentHashMap<UUID, Instant>) field.get(scheduler);
+        map.put(sessionId, observedAt);
+    }
+
+    private ActiveSession duelAuctionSession(UUID user1, UUID user2) {
+        ActiveSession session = new ActiveSession(
+            sessionId,
+            SessionStatus.AUCTIONING,
+            Instant.now(),
+            GameMode.DUEL
+        );
+        session.getPlayers().add(new ActivePlayer(
+            UUID.randomUUID(), user1, "Home", Formation.FOUR_FOUR_TWO, 100L
+        ));
+        session.getPlayers().add(new ActivePlayer(
+            UUID.randomUUID(), user2, "Away", Formation.FOUR_FOUR_TWO, 100L
+        ));
+        return session;
+    }
+
     private ActiveSession tournamentWaitingSession() {
         ActiveSession session = new ActiveSession(
             sessionId,

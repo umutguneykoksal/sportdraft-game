@@ -5,8 +5,11 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.example.auction.bidding.boundary.PlaceBidRequest;
 import com.example.auction.session.entity.Formation;
 import com.example.auction.session.entity.SessionStatus;
 import com.example.auction.session.redis.ActivePlayer;
@@ -16,6 +19,7 @@ import com.example.auction.session.redis.ActiveSessionStore;
 import com.example.auction.session.redis.SessionMutationGuard;
 import com.example.auction.bidding.entity.RoundStatus;
 import java.time.Instant;
+import java.util.Map;
 import java.util.UUID;
 import java.util.function.Supplier;
 import org.junit.jupiter.api.BeforeEach;
@@ -23,10 +27,13 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
 @ExtendWith(MockitoExtension.class)
+@MockitoSettings(strictness = Strictness.LENIENT)
 class AuctionServiceTest {
 
     @Mock
@@ -60,6 +67,47 @@ class AuctionServiceTest {
             roundLifecycle,
             matchTransition
         );
+    }
+
+    @Test
+    void placeBid_delegatesToRoundLifecycle() {
+        UUID sessionId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID roundId = UUID.randomUUID();
+        PlaceBidRequest request = new PlaceBidRequest(roundId, 5);
+        when(roundLifecycle.placeBid(sessionId, userId, "key-1", request)).thenReturn(null);
+
+        auctionService.placeBid(sessionId, userId, "key-1", request);
+
+        verify(roundLifecycle).placeBid(sessionId, userId, "key-1", request);
+    }
+
+    @Test
+    void passRound_delegatesToRoundLifecycle() {
+        UUID sessionId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID roundId = UUID.randomUUID();
+        when(roundLifecycle.passRound(sessionId, userId, roundId)).thenReturn(null);
+
+        auctionService.passRound(sessionId, userId, roundId);
+
+        verify(roundLifecycle).passRound(sessionId, userId, roundId);
+    }
+
+    @Test
+    void getAuctionState_returnsStateForMember() {
+        UUID sessionId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        ActiveSession session = new ActiveSession(sessionId, SessionStatus.AUCTIONING, Instant.now());
+        session.getPlayers().add(new ActivePlayer(UUID.randomUUID(), userId, "P1", Formation.FOUR_FOUR_TWO, 100));
+        session.getPlayers().add(new ActivePlayer(UUID.randomUUID(), UUID.randomUUID(), "P2", Formation.FOUR_FOUR_TWO, 100));
+        when(sessionStore.getById(sessionId)).thenReturn(session);
+        when(cardCatalog.getCardMap()).thenReturn(Map.of());
+
+        var state = auctionService.getAuctionState(sessionId, userId);
+
+        assertThat(state.version()).isEqualTo(session.getVersion());
+        assertThat(state.myFormation()).isEqualTo(Formation.FOUR_FOUR_TWO.name());
     }
 
     @Test
