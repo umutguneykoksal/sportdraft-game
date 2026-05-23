@@ -102,19 +102,19 @@ export function LobbyPage() {
       )}
 
       {isInSession && snapshot && (
-        <div className="h-full w-full max-w-3xl">
+        <div className="h-[min(680px,calc(100dvh-2rem))] w-full max-w-4xl">
           <LobbySessionPanel
-          nickname={session.nickname}
-          snapshot={snapshot}
-          maxPlayers={maxPlayers}
-          gameMode={gameMode}
-          countdownSecondsLeft={countdownSecondsLeft}
-          formations={formations}
-          loading={loading}
-          onChooseFormation={chooseFormation}
-          onStartAuction={handleStartAuction}
-          onLeave={handleLeave}
-        />
+            nickname={session.nickname}
+            snapshot={snapshot}
+            maxPlayers={maxPlayers}
+            gameMode={gameMode}
+            countdownSecondsLeft={countdownSecondsLeft}
+            formations={formations}
+            loading={loading}
+            onChooseFormation={chooseFormation}
+            onStartAuction={handleStartAuction}
+            onLeave={handleLeave}
+          />
         </div>
       )}
     </div>

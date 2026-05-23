@@ -131,8 +131,8 @@ export function LobbySessionPanel({
       : null;
 
   return (
-    <div className="flex w-full max-h-[min(560px,calc(100dvh-1.5rem))] flex-col overflow-hidden rounded-2xl border border-white/10 bg-surface-card/95 shadow-2xl shadow-black/30 sm:max-w-3xl">
-      <header className="flex shrink-0 items-center justify-between gap-3 border-b border-white/10 px-4 py-2.5">
+    <div className="flex h-[min(680px,calc(100dvh-2rem))] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-white/10 bg-surface-card/95 shadow-2xl shadow-black/30">
+      <header className="flex shrink-0 items-center justify-between gap-3 border-b border-white/10 px-5 py-3">
         <div className="min-w-0">
           <p className="truncate text-base font-bold text-white">{nickname}</p>
           <p className="truncate text-[11px] text-slate-400">
@@ -192,11 +192,11 @@ export function LobbySessionPanel({
         )}
 
         {formationPickActive && (
-          <div className="overflow-hidden px-3 pb-1 pt-3 sm:px-4">
-            <p className="mb-2 text-center text-xs font-semibold text-slate-300">
+          <div className="flex flex-1 flex-col justify-center px-4 pb-4 pt-4 sm:px-5">
+            <p className="mb-3 text-center text-sm font-semibold text-slate-300">
               Choose your formation
             </p>
-            <div className="grid grid-cols-5 gap-1.5 sm:gap-2">
+            <div className="grid grid-cols-5 gap-2 sm:gap-2.5">
               {formations.map((f) => (
                 <FormationCard
                   key={f}
@@ -211,20 +211,20 @@ export function LobbySessionPanel({
         )}
 
         {status === "FORMATION_SELECT" && (
-          <footer className="mt-auto shrink-0 space-y-2 border-t border-white/10 px-4 py-3">
+          <footer className="shrink-0 border-t border-white/10 bg-surface-elevated/20 px-5 py-4">
             {waitingHint && (
-              <p className="text-center text-[11px] leading-relaxed text-slate-400">
+              <p className="mb-3 text-center text-xs leading-relaxed text-slate-400">
                 {waitingHint}
               </p>
             )}
-            <div className="flex gap-2">
+            <div className="flex gap-3">
               {formationPickActive && (
                 <button
                   data-testid="lobby-confirm-formation-ready"
                   onClick={onStartAuction}
                   disabled={loading || snapshot.matchStartConfirmedByMe || !snapshot.myFormation}
                   className={cn(
-                    "flex-1 rounded-lg py-2 text-sm font-bold transition-colors",
+                    "flex-1 rounded-lg py-2.5 text-sm font-bold transition-colors",
                     snapshot.matchStartConfirmedByMe
                       ? "cursor-default border border-accent-green/30 bg-accent-green/20 text-accent-green"
                       : "bg-accent text-white hover:bg-blue-600 disabled:opacity-50"
@@ -241,7 +241,7 @@ export function LobbySessionPanel({
                 onClick={onLeave}
                 disabled={loading}
                 className={cn(
-                  "rounded-lg border border-red-500/30 bg-red-900/30 px-4 py-2 text-sm font-bold text-red-400 hover:bg-red-900/50 disabled:opacity-50",
+                  "rounded-lg border border-red-500/30 bg-red-900/30 px-5 py-2.5 text-sm font-bold text-red-400 hover:bg-red-900/50 disabled:opacity-50",
                   formationPickActive ? "" : "w-full"
                 )}
               >
