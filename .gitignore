@@ -8,6 +8,7 @@ backend/target/
 # Node / CRA
 frontend/node_modules/
 frontend/build/
+frontend/coverage/
 e2e/node_modules/
 
 # Environment
@@ -20,12 +21,13 @@ e2e/node_modules/
 .idea/
 .vscode/
 *.iml
-# Local documentation (ADRs, test matrices, plans, logs — not published)
-docs/
-docs/adr/
+# Local documentation (ADRs, plans, logs — not published)
+docs/**
+!docs/backend-architecture.md
 
-# Markdown at repo root: README only
+# Markdown at repo root: README + published architecture doc
 *.md
 !README.md
+!docs/backend-architecture.md
 data/
 scripts/

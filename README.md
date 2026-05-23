@@ -57,6 +57,8 @@ flowchart TB
 
 Each feature slice uses **boundary** (HTTP/WS) · **control** (domain logic) · **entity** (JPA / Redis models).
 
+Deeper backend notes (Redis aggregate model, event flow, roadmap): [docs/backend-architecture.md](docs/backend-architecture.md).
+
 State is server-side: clients send commands and render what the server sends back. Reconnect pulls from the ordered event log. Cross-cutting effects use Spring domain events after commit, with idempotent handlers.
 
 Auth is an anonymous session token for now (Bearer on REST, query param on the stream).
