@@ -132,39 +132,40 @@ export function LobbyPage() {
   };
 
   return (
-    <div className="min-h-screen lobby-bg flex flex-col items-center px-4 py-8 sm:py-12">
+    <div className="lobby-bg flex h-dvh items-center justify-center overflow-hidden p-3 sm:p-4">
       {!isInSession && (
-        <LobbyEntryPanel
-          nicknameInput={nicknameInput}
-          onNicknameChange={setNicknameInput}
-          nicknameReady={nicknameReady}
-          createGameMode={createGameMode}
-          onCreateGameModeChange={setCreateGameMode}
-          createPoolLeague={createPoolLeague}
-          onCreatePoolLeagueChange={setCreatePoolLeague}
-          createMinPoolRating={createMinPoolRating}
-          onCreateMinPoolRatingChange={setCreateMinPoolRating}
-          poolMinRatingOptions={poolMinRatingOptions}
-          poolMinRatingOptionsLoaded={poolMinRatingOptionsLoaded}
-          hasSelectablePoolRating={hasSelectablePoolRating}
-          canCreateRoom={canCreateRoom}
-          loading={loading}
-          rooms={rooms}
-          onCreateRoom={onCreateRoom}
-          onJoinRoom={onJoinRoom}
-          onSpectateRoom={(sessionId) => navigate(`/spectate/${sessionId}`)}
-        />
-      )}
-
-      {isInSession && (
-        <div className="bg-surface-card rounded-xl border border-white/10 p-4 mb-6 w-full max-w-md text-center">
-          <p className="text-slate-400 text-sm">Playing as</p>
-          <p className="text-white font-semibold text-lg">{session.nickname}</p>
+        <div className="h-full max-h-[min(560px,calc(100dvh-1.5rem))] w-full max-w-5xl">
+          <LobbyEntryPanel
+            nicknameInput={nicknameInput}
+            onNicknameChange={setNicknameInput}
+            nicknameReady={nicknameReady}
+            createGameMode={createGameMode}
+            onCreateGameModeChange={setCreateGameMode}
+            createPoolLeague={createPoolLeague}
+            onCreatePoolLeagueChange={setCreatePoolLeague}
+            createMinPoolRating={createMinPoolRating}
+            onCreateMinPoolRatingChange={setCreateMinPoolRating}
+            poolMinRatingOptions={poolMinRatingOptions}
+            poolMinRatingOptionsLoaded={poolMinRatingOptionsLoaded}
+            hasSelectablePoolRating={hasSelectablePoolRating}
+            canCreateRoom={canCreateRoom}
+            loading={loading}
+            rooms={rooms}
+            onCreateRoom={onCreateRoom}
+            onJoinRoom={onJoinRoom}
+            onSpectateRoom={(sessionId) => navigate(`/spectate/${sessionId}`)}
+          />
         </div>
       )}
 
       {isInSession && (
-        <div className="w-full max-w-2xl space-y-6">
+        <div className="flex h-full w-full max-w-2xl flex-col overflow-y-auto py-2">
+          <div className="bg-surface-card rounded-xl border border-white/10 p-4 mb-6 w-full text-center">
+            <p className="text-slate-400 text-sm">Playing as</p>
+            <p className="text-white font-semibold text-lg">{session.nickname}</p>
+          </div>
+
+          <div className="w-full space-y-6">
           <div className="bg-surface-card rounded-xl border border-white/10 p-4 flex flex-wrap items-center justify-between gap-4">
             <div>
               <span className="text-slate-400 text-sm">Status</span>
@@ -296,6 +297,7 @@ export function LobbyPage() {
               </button>
             </div>
           )}
+          </div>
         </div>
       )}
     </div>
