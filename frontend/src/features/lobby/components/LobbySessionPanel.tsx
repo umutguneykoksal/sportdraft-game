@@ -116,6 +116,15 @@ export function LobbySessionPanel({
     && countdownSecondsLeft > 0;
   const formationPickActive = status === "FORMATION_SELECT" && !auctionCountdownActive;
 
+  const waitingHint =
+    formationPickActive
+    && snapshot.matchStartReadyCount >= 1
+    && snapshot.matchStartReadyCount < maxPlayers
+      ? snapshot.matchStartConfirmedByMe
+        ? "Waiting for opponent to confirm..."
+        : "Opponent is ready — pick a formation and start"
+      : null;
+
   const poolLabel =
     (snapshot.minPoolRating ?? 0) > 0
       ? `${poolLeagueLabel(snapshot.poolLeague)} · ${snapshot.minPoolRating}+ OVR`
@@ -183,57 +192,63 @@ export function LobbySessionPanel({
         )}
 
         {formationPickActive && (
-          <>
-            <div className="overflow-hidden px-3 pb-2 pt-3 sm:px-4">
-              <p className="mb-2 text-center text-xs font-semibold text-slate-300">
-                Choose your formation
-              </p>
-              <div className="grid grid-cols-5 gap-1.5 sm:gap-2">
-                {formations.map((f) => (
-                  <FormationCard
-                    key={f}
-                    formation={f}
-                    selected={snapshot.myFormation === f}
-                    onSelect={() => onChooseFormation(f)}
-                    disabled={loading || snapshot.matchStartConfirmedByMe}
-                  />
-                ))}
-              </div>
+          <div className="overflow-hidden px-3 pb-1 pt-3 sm:px-4">
+            <p className="mb-2 text-center text-xs font-semibold text-slate-300">
+              Choose your formation
+            </p>
+            <div className="grid grid-cols-5 gap-1.5 sm:gap-2">
+              {formations.map((f) => (
+                <FormationCard
+                  key={f}
+                  formation={f}
+                  selected={snapshot.myFormation === f}
+                  onSelect={() => onChooseFormation(f)}
+                  disabled={loading || snapshot.matchStartConfirmedByMe}
+                />
+              ))}
             </div>
+          </div>
+        )}
 
-            {snapshot.matchStartReadyCount >= 1 && snapshot.matchStartReadyCount < maxPlayers && (
-              <p className="shrink-0 px-4 pb-2 text-center text-[11px] text-slate-400">
-                {snapshot.matchStartConfirmedByMe
-                  ? "Waiting for opponent to confirm..."
-                  : "Opponent is ready — pick a formation and start"}
+        {status === "FORMATION_SELECT" && (
+          <footer className="mt-auto shrink-0 space-y-2 border-t border-white/10 px-4 py-3">
+            {waitingHint && (
+              <p className="text-center text-[11px] leading-relaxed text-slate-400">
+                {waitingHint}
               </p>
             )}
-
-            <footer className="flex shrink-0 gap-2 border-t border-white/10 px-4 py-3">
+            <div className="flex gap-2">
+              {formationPickActive && (
+                <button
+                  data-testid="lobby-confirm-formation-ready"
+                  onClick={onStartAuction}
+                  disabled={loading || snapshot.matchStartConfirmedByMe || !snapshot.myFormation}
+                  className={cn(
+                    "flex-1 rounded-lg py-2 text-sm font-bold transition-colors",
+                    snapshot.matchStartConfirmedByMe
+                      ? "cursor-default border border-accent-green/30 bg-accent-green/20 text-accent-green"
+                      : "bg-accent text-white hover:bg-blue-600 disabled:opacity-50"
+                  )}
+                >
+                  {snapshot.matchStartConfirmedByMe
+                    ? `Ready (${snapshot.matchStartReadyCount}/${maxPlayers})`
+                    : "Start Auction"}
+                </button>
+              )}
               <button
-                data-testid="lobby-confirm-formation-ready"
-                onClick={onStartAuction}
-                disabled={loading || snapshot.matchStartConfirmedByMe || !snapshot.myFormation}
-                className={cn(
-                  "flex-1 rounded-lg py-2 text-sm font-bold transition-colors",
-                  snapshot.matchStartConfirmedByMe
-                    ? "cursor-default border border-accent-green/30 bg-accent-green/20 text-accent-green"
-                    : "bg-accent text-white hover:bg-blue-600 disabled:opacity-50"
-                )}
-              >
-                {snapshot.matchStartConfirmedByMe
-                  ? `Ready (${snapshot.matchStartReadyCount}/${maxPlayers})`
-                  : "Start Auction"}
-              </button>
-              <button
+                type="button"
+                data-testid="lobby-leave"
                 onClick={onLeave}
                 disabled={loading}
-                className="rounded-lg border border-red-500/30 bg-red-900/30 px-4 py-2 text-sm font-bold text-red-400 hover:bg-red-900/50 disabled:opacity-50"
+                className={cn(
+                  "rounded-lg border border-red-500/30 bg-red-900/30 px-4 py-2 text-sm font-bold text-red-400 hover:bg-red-900/50 disabled:opacity-50",
+                  formationPickActive ? "" : "w-full"
+                )}
               >
                 Leave
               </button>
-            </footer>
-          </>
+            </div>
+          </footer>
         )}
 
         {status !== "FORMATION_SELECT" && status !== "WAITING" && status !== "COUNTDOWN" && (

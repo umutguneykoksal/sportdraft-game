@@ -41,6 +41,50 @@ describe("LobbySessionPanel", () => {
     expect(screen.getByText("Auction starting...")).toBeInTheDocument();
     expect(screen.queryByTestId("lobby-formation-FOUR_FOUR_TWO")).not.toBeInTheDocument();
     expect(screen.queryByTestId("lobby-confirm-formation-ready")).not.toBeInTheDocument();
+    expect(screen.getByTestId("lobby-leave")).toBeInTheDocument();
+  });
+
+  it("showsLeaveDuringAuctionCountdown", () => {
+    render(
+      <LobbySessionPanel
+        nickname="Guest"
+        snapshot={baseSnapshot}
+        maxPlayers={2}
+        gameMode="DUEL"
+        countdownSecondsLeft={5}
+        formations={["FOUR_FOUR_TWO"]}
+        loading={false}
+        onChooseFormation={jest.fn()}
+        onStartAuction={jest.fn()}
+        onLeave={jest.fn()}
+      />
+    );
+
+    expect(screen.getByTestId("lobby-leave")).toBeInTheDocument();
+  });
+
+  it("placesWaitingHintInFooterWithoutOverlappingGrid", () => {
+    render(
+      <LobbySessionPanel
+        nickname="Guest"
+        snapshot={{
+          ...baseSnapshot,
+          matchStartReadyCount: 1,
+          matchStartConfirmedByMe: true,
+        }}
+        maxPlayers={2}
+        gameMode="DUEL"
+        countdownSecondsLeft={null}
+        formations={["FOUR_FOUR_TWO"]}
+        loading={false}
+        onChooseFormation={jest.fn()}
+        onStartAuction={jest.fn()}
+        onLeave={jest.fn()}
+      />
+    );
+
+    expect(screen.getByText("Waiting for opponent to confirm...")).toBeInTheDocument();
+    expect(screen.getByTestId("lobby-formation-FOUR_FOUR_TWO")).toBeInTheDocument();
   });
 });
 
