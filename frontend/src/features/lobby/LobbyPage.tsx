@@ -77,7 +77,7 @@ export function LobbyPage() {
       }`}
     >
       {!isInSession && (
-        <div className="h-full max-h-[min(560px,calc(100dvh-1.5rem))] w-full max-w-5xl">
+        <div className="h-[min(680px,calc(100dvh-2rem))] w-full max-w-6xl">
           <LobbyEntryPanel
             nicknameInput={nicknameInput}
             onNicknameChange={setNicknameInput}

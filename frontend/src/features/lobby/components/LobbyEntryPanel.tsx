@@ -217,23 +217,23 @@ export function LobbyEntryPanel({
   const poolError = poolMinRatingOptionsLoaded && !hasSelectablePoolRating;
 
   return (
-    <div className="flex h-full w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-white/10 bg-surface-card/95 shadow-2xl shadow-black/30 backdrop-blur-sm">
+    <div className="flex h-full w-full flex-col overflow-hidden rounded-2xl border border-white/10 bg-surface-card/95 shadow-2xl shadow-black/30 backdrop-blur-sm">
       {/* Card header */}
-      <header className="flex shrink-0 items-center gap-2.5 border-b border-white/10 px-4 py-2.5 sm:px-5">
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-accent to-blue-700">
-          <span className="text-xs font-black text-white">SD</span>
+      <header className="flex shrink-0 items-center gap-3 border-b border-white/10 px-5 py-3 sm:px-6">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-accent to-blue-700">
+          <span className="text-sm font-black text-white">SD</span>
         </div>
         <div className="min-w-0 flex-1">
-          <h1 className="text-base font-bold text-white sm:text-lg">SportDraft</h1>
-          <p className="truncate text-[11px] text-slate-400">Bid · Build · Play</p>
+          <h1 className="text-lg font-bold text-white sm:text-xl">SportDraft</h1>
+          <p className="truncate text-xs text-slate-400">Bid · Build · Play</p>
         </div>
       </header>
 
       {/* Card body — two columns, fills remaining height */}
       <div className="grid min-h-0 flex-1 grid-cols-2 divide-x divide-white/10">
         {/* Left: create */}
-        <section className="flex min-h-0 flex-col p-3 sm:p-4">
-          <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">New game</h2>
+        <section className="flex min-h-0 flex-col p-4 sm:p-5">
+          <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">New game</h2>
 
           <div className="relative mb-2">
             <UserRound
@@ -346,8 +346,8 @@ export function LobbyEntryPanel({
         </section>
 
         {/* Right: rooms */}
-        <section className="flex min-h-0 flex-col p-3 sm:p-4">
-          <div className="mb-2 flex shrink-0 items-center justify-between">
+        <section className="flex min-h-0 flex-col p-4 sm:p-5">
+          <div className="mb-3 flex shrink-0 items-center justify-between">
             <div className="flex items-center gap-1.5">
               <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-400">Join a room</h2>
               {rooms.length > 0 && (
@@ -367,13 +367,13 @@ export function LobbyEntryPanel({
           )}
 
           {rooms.length === 0 ? (
-            <div className="flex flex-1 flex-col items-center justify-center rounded-md border border-dashed border-white/10 px-3 text-center">
-              <Users className="mb-1.5 h-6 w-6 text-slate-600" aria-hidden="true" />
-              <p className="text-xs font-medium text-slate-400">No rooms open</p>
-              <p className="mt-0.5 text-[10px] text-slate-600">Create one to start</p>
+            <div className="flex flex-1 flex-col items-center justify-center rounded-lg border border-dashed border-white/10 px-4 text-center">
+              <Users className="mb-2 h-8 w-8 text-slate-600" aria-hidden="true" />
+              <p className="text-sm font-medium text-slate-400">No rooms open</p>
+              <p className="mt-1 text-xs text-slate-600">Create one to start</p>
             </div>
           ) : (
-            <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto">
+            <div className="min-h-0 flex-1 space-y-2 overflow-y-auto">
               {rooms.map((room) => (
                 <RoomRow
                   key={room.sessionId}
@@ -388,12 +388,12 @@ export function LobbyEntryPanel({
         </section>
       </div>
 
-      <footer className="flex shrink-0 items-center justify-between gap-3 border-t border-white/10 px-4 py-2 sm:px-5">
+      <footer className="flex shrink-0 items-center justify-between gap-3 border-t border-white/10 px-5 py-2.5 sm:px-6">
         <button
           type="button"
           data-testid="lobby-how-to-play"
           onClick={() => setHowToPlayOpen(true)}
-          className="text-[11px] font-medium text-slate-400 hover:text-white"
+          className="text-xs font-medium text-slate-400 hover:text-white"
         >
           How to play
         </button>
@@ -401,7 +401,7 @@ export function LobbyEntryPanel({
           type="button"
           data-testid="lobby-feedback"
           onClick={() => setFeedbackOpen(true)}
-          className="text-[11px] font-medium text-slate-400 hover:text-white"
+          className="text-xs font-medium text-slate-400 hover:text-white"
         >
           Send feedback
         </button>
