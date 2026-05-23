@@ -1,4 +1,4 @@
-import { type KeyboardEvent } from "react";
+import { type KeyboardEvent, useState } from "react";
 import {
   Eye,
   Globe,
@@ -23,6 +23,8 @@ import {
 } from "../../../shared/api/contracts";
 import type { PoolMinRatingOption } from "../../../shared/api/contracts";
 import { cn } from "../../../shared/utils/cn";
+import { FeedbackModal } from "./FeedbackModal";
+import { HowToPlayModal } from "./HowToPlayModal";
 
 const STATUS_BADGE_COLORS: Record<string, string> = {
   WAITING: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
@@ -202,6 +204,9 @@ export function LobbyEntryPanel({
   onJoinRoom,
   onSpectateRoom,
 }: LobbyEntryPanelProps) {
+  const [howToPlayOpen, setHowToPlayOpen] = useState(false);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
+
   const onNicknameKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter" && canCreateRoom && !loading) {
       onCreateRoom();
@@ -382,6 +387,28 @@ export function LobbyEntryPanel({
           )}
         </section>
       </div>
+
+      <footer className="flex shrink-0 items-center justify-between gap-3 border-t border-white/10 px-4 py-2 sm:px-5">
+        <button
+          type="button"
+          data-testid="lobby-how-to-play"
+          onClick={() => setHowToPlayOpen(true)}
+          className="text-[11px] font-medium text-slate-400 hover:text-white"
+        >
+          How to play
+        </button>
+        <button
+          type="button"
+          data-testid="lobby-feedback"
+          onClick={() => setFeedbackOpen(true)}
+          className="text-[11px] font-medium text-slate-400 hover:text-white"
+        >
+          Send feedback
+        </button>
+      </footer>
+
+      <HowToPlayModal open={howToPlayOpen} onClose={() => setHowToPlayOpen(false)} />
+      <FeedbackModal open={feedbackOpen} onClose={() => setFeedbackOpen(false)} />
     </div>
   );
 }
