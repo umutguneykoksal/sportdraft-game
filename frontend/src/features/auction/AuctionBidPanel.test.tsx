@@ -5,18 +5,27 @@ import type { AuctionRoundResponse } from "../../shared/api";
 const baseRound: AuctionRoundResponse = {
   roundId: "r1",
   sessionId: "s1",
-  roundNumber: 1,
+  cardId: "c1",
   position: "FWD",
   eligiblePositions: ["FWD"],
   cardName: "Test Player",
   cardRating: 85,
   status: "OPEN",
   highestBidCents: 0,
+  highestBidderId: null,
+  highestBidderUserId: null,
   currentTurnUserId: "u1",
+  readyUserOneId: null,
+  readyUserTwoId: null,
   opponentCanBid: true,
+  viewerCanBid: false,
+  viewerCanTake: false,
+  viewerCanPass: true,
+  viewerCanFillCard: false,
   passedPlayerIds: [],
   startsAt: new Date().toISOString(),
   endsAt: new Date(Date.now() + 30_000).toISOString(),
+  turnOpenAt: null,
 };
 
 function renderPanel(overrides: Partial<AuctionBidPanelProps> = {}) {
