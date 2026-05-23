@@ -217,23 +217,41 @@ export function LobbyEntryPanel({
   const poolError = poolMinRatingOptionsLoaded && !hasSelectablePoolRating;
 
   return (
-    <div className="flex h-full w-full flex-col overflow-hidden rounded-2xl border border-white/10 bg-surface-card/95 shadow-2xl shadow-black/30 backdrop-blur-sm">
+    <div className="flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-xl border border-white/10 bg-surface-card/95 shadow-2xl shadow-black/30 backdrop-blur-sm sm:rounded-2xl">
       {/* Card header */}
-      <header className="flex shrink-0 items-center gap-3 border-b border-white/10 px-5 py-3 sm:px-6">
+      <header className="flex shrink-0 items-center gap-2.5 border-b border-white/10 px-4 py-2.5 sm:px-5">
         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-accent to-blue-700">
-          <span className="text-sm font-black text-white">SD</span>
+          <span className="text-xs font-black text-white">SD</span>
         </div>
         <div className="min-w-0 flex-1">
           <h1 className="text-lg font-bold text-white sm:text-xl">SportDraft</h1>
           <p className="truncate text-xs text-slate-400">Bid · Build · Play</p>
+        </div>
+        <div className="flex shrink-0 items-center gap-3">
+          <button
+            type="button"
+            data-testid="lobby-how-to-play"
+            onClick={() => setHowToPlayOpen(true)}
+            className="text-[11px] font-medium text-slate-400 hover:text-white sm:text-xs"
+          >
+            How to play
+          </button>
+          <button
+            type="button"
+            data-testid="lobby-feedback"
+            onClick={() => setFeedbackOpen(true)}
+            className="text-[11px] font-medium text-slate-400 hover:text-white sm:text-xs"
+          >
+            Send feedback
+          </button>
         </div>
       </header>
 
       {/* Card body — two columns, fills remaining height */}
       <div className="grid min-h-0 flex-1 grid-cols-2 divide-x divide-white/10">
         {/* Left: create */}
-        <section className="flex min-h-0 flex-col p-4 sm:p-5">
-          <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">New game</h2>
+        <section className="flex min-h-0 min-w-0 flex-col p-4 sm:p-5">
+          <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">New game</h2>
 
           <div className="relative mb-2">
             <UserRound
@@ -346,8 +364,8 @@ export function LobbyEntryPanel({
         </section>
 
         {/* Right: rooms */}
-        <section className="flex min-h-0 flex-col p-4 sm:p-5">
-          <div className="mb-3 flex shrink-0 items-center justify-between">
+        <section className="flex min-h-0 min-w-0 flex-col p-4 sm:p-5">
+          <div className="mb-2 flex shrink-0 items-center justify-between">
             <div className="flex items-center gap-1.5">
               <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-400">Join a room</h2>
               {rooms.length > 0 && (
@@ -387,25 +405,6 @@ export function LobbyEntryPanel({
           )}
         </section>
       </div>
-
-      <footer className="flex shrink-0 items-center justify-between gap-3 border-t border-white/10 px-5 py-2.5 sm:px-6">
-        <button
-          type="button"
-          data-testid="lobby-how-to-play"
-          onClick={() => setHowToPlayOpen(true)}
-          className="text-xs font-medium text-slate-400 hover:text-white"
-        >
-          How to play
-        </button>
-        <button
-          type="button"
-          data-testid="lobby-feedback"
-          onClick={() => setFeedbackOpen(true)}
-          className="text-xs font-medium text-slate-400 hover:text-white"
-        >
-          Send feedback
-        </button>
-      </footer>
 
       <HowToPlayModal open={howToPlayOpen} onClose={() => setHowToPlayOpen(false)} />
       <FeedbackModal open={feedbackOpen} onClose={() => setFeedbackOpen(false)} />

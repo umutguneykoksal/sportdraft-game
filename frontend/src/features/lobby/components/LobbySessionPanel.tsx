@@ -131,7 +131,7 @@ export function LobbySessionPanel({
       : null;
 
   return (
-    <div className="flex h-[min(680px,calc(100dvh-2rem))] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-white/10 bg-surface-card/95 shadow-2xl shadow-black/30">
+    <div className="flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-xl border border-white/10 bg-surface-card/95 shadow-2xl shadow-black/30 sm:rounded-2xl">
       <header className="flex shrink-0 items-center justify-between gap-3 border-b border-white/10 px-5 py-3">
         <div className="min-w-0">
           <p className="truncate text-base font-bold text-white">{nickname}</p>

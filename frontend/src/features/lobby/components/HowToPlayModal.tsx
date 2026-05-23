@@ -23,12 +23,6 @@ export function HowToPlayModal({ open, onClose }: HowToPlayModalProps) {
   return (
     <LobbyModalShell open={open} title="How to play" onClose={onClose} testId="how-to-play-modal">
       <div className="min-h-0 flex-1 space-y-2 overflow-y-auto px-4 py-3">
-        <HowToPlaySection title="Goal">
-          <p>
-            Draft an 11-player squad from a shared card pool, then the server simulates the match from card ratings.
-          </p>
-        </HowToPlaySection>
-
         <HowToPlaySection title="Lobby">
           <p>Create or join a room, pick a league and minimum OVR, then choose your formation.</p>
           <p>Both sides confirm Ready — a short countdown starts the auction.</p>

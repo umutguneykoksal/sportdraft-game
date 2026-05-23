@@ -31,7 +31,8 @@ describe("LobbyEntryPanel", () => {
     await user.click(screen.getByTestId("lobby-how-to-play"));
 
     expect(screen.getByTestId("how-to-play-modal")).toBeInTheDocument();
-    expect(screen.getByText("Auction")).toBeInTheDocument();
+    expect(screen.getByText("Game modes")).toBeInTheDocument();
+    expect(screen.queryByText("Goal")).not.toBeInTheDocument();
   });
 
   it("opensFeedbackModal", async () => {
