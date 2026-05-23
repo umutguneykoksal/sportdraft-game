@@ -72,6 +72,20 @@ export function AuctionBidPanel(props: AuctionBidPanelProps) {
     onPass,
   } = props;
 
+  const lockMessage = interactionLocked
+    ? inCardReveal
+      ? "New card — bidding opens soon"
+      : loading
+        ? "Submitting…"
+        : "Settling round…"
+    : null;
+
+  const showStatusStrip = lockMessage != null || showNoSlotBanner;
+  const statusStripMessage = lockMessage ?? (showNoSlotBanner
+    ? "No open slot for this card in your formation"
+    : null);
+  const statusStripIsLocked = lockMessage != null;
+
   return (
     <div className="space-y-4">
       {round && auctionPhaseActive && roundIsOpen && (
@@ -143,30 +157,34 @@ export function AuctionBidPanel(props: AuctionBidPanelProps) {
             </p>
           </div>
 
-          {roundIsOpen && (
+          {showStatusStrip && statusStripMessage && (
             <div
-              className={`relative space-y-3 rounded-lg transition-opacity ${
-                interactionLocked ? "pointer-events-none opacity-45" : ""
+              className={`mb-3 rounded-lg border px-3 py-2.5 text-center ${
+                statusStripIsLocked
+                  ? "border-amber-500/30 bg-amber-500/10"
+                  : "border-slate-500/30 bg-slate-800/90"
+              }`}
+              data-testid="auction-status-strip"
+            >
+              <p
+                className={`text-sm font-medium leading-snug ${
+                  statusStripIsLocked ? "text-amber-400 animate-pulse" : "text-slate-200"
+                }`}
+              >
+                {statusStripMessage}
+              </p>
+              {showNoSlotBanner && canPass && !interactionLocked && (
+                <p className="mt-1 text-xs text-slate-400">Pass below to skip this round</p>
+              )}
+            </div>
+          )}
+
+          {roundIsOpen && (showTakePanel || couldBid || canPass) && (
+            <div
+              className={`space-y-3 rounded-lg transition-opacity ${
+                interactionLocked ? "pointer-events-none opacity-40" : ""
               }`}
             >
-              {interactionLocked && (
-                <div className="absolute inset-0 z-10 flex items-center justify-center rounded-lg bg-black/25">
-                  <p className="text-amber-400 text-sm font-semibold animate-pulse px-3 py-1 rounded bg-black/40">
-                    {inCardReveal
-                      ? "New card — bidding opens soon"
-                      : loading
-                        ? "Submitting…"
-                        : "Settling round…"}
-                  </p>
-                </div>
-              )}
-              {showNoSlotBanner && (
-                <div className="bg-slate-800/80 border border-slate-500/30 rounded-lg px-3 py-2 text-center">
-                  <p className="text-slate-300 text-sm font-medium">
-                    No open slot for this card in your formation
-                  </p>
-                </div>
-              )}
               {showTakePanel ? (
                 <>
                   <div className="bg-amber-900/20 border border-amber-500/30 rounded-lg px-3 py-2 text-center">
@@ -251,7 +269,7 @@ export function AuctionBidPanel(props: AuctionBidPanelProps) {
             </div>
           )}
 
-          {!interactionLocked && (
+          {!interactionLocked && !showStatusStrip && (
           <div
             className={`mt-3 text-center text-sm font-medium py-2 rounded-lg transition-colors duration-300 ${
               mySquadFull
