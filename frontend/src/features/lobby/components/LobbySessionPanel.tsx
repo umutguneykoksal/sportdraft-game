@@ -18,32 +18,30 @@ function FormationCard({
 
   return (
     <button
+      type="button"
       data-testid={`lobby-formation-${formation}`}
       onClick={onSelect}
       disabled={disabled}
       className={cn(
-        "relative flex w-full flex-col overflow-hidden rounded-lg border-2 bg-surface-card transition-colors",
-        selected ? "border-accent ring-2 ring-accent/30" : "border-white/10 hover:border-white/25",
+        "relative flex h-full min-h-0 w-full flex-col overflow-hidden rounded-md border bg-surface-card transition-colors",
+        selected ? "border-accent ring-1 ring-accent/40" : "border-white/10 hover:border-white/25",
         disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer"
       )}
     >
       <div
-        className="relative w-full"
+        className="relative min-h-0 flex-1 w-full"
         style={{
-          aspectRatio: "5 / 6",
           background: "linear-gradient(180deg, #1a5c30 0%, #1e6e3a 50%, #1a5c30 100%)",
         }}
       >
         <div className="absolute left-[10%] right-[10%] top-1/2 border-t border-white/20" />
-        <div
-          className="absolute top-1/2 left-1/2 h-[30%] w-[30%] -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/20"
-        />
+        <div className="absolute top-1/2 left-1/2 h-[28%] w-[28%] -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/20" />
         {dots.map((dot, i) => (
           <div
             key={i}
             className={cn(
-              "absolute h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full sm:h-2.5 sm:w-2.5",
-              selected ? "bg-accent shadow-md shadow-accent/40" : "bg-white/70"
+              "absolute h-1.5 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full",
+              selected ? "bg-accent" : "bg-white/70"
             )}
             style={{ left: `${dot.x}%`, top: `${dot.y}%` }}
           />
@@ -51,7 +49,7 @@ function FormationCard({
       </div>
       <div
         className={cn(
-          "flex items-center justify-center py-1.5 text-sm font-bold sm:text-base",
+          "shrink-0 py-0.5 text-center text-[10px] font-bold leading-tight sm:text-[11px]",
           selected ? "bg-accent text-white" : "bg-surface-elevated text-slate-300"
         )}
       >
@@ -71,9 +69,9 @@ function CountdownRing({
   testId?: string;
 }) {
   return (
-    <div className="flex flex-col items-center py-4 text-center" data-testid={testId}>
-      <div className="inline-flex h-20 w-20 items-center justify-center rounded-full border-4 border-accent bg-surface-card sm:h-24 sm:w-24">
-        <span className="text-3xl font-bold text-white sm:text-4xl">{seconds}</span>
+    <div className="flex flex-col items-center py-6 text-center" data-testid={testId}>
+      <div className="inline-flex h-20 w-20 items-center justify-center rounded-full border-4 border-accent bg-surface-card">
+        <span className="text-3xl font-bold text-white">{seconds}</span>
       </div>
       <p className="mt-3 text-sm text-slate-400">{label}</p>
     </div>
@@ -116,17 +114,24 @@ export function LobbySessionPanel({
     status === "COUNTDOWN"
     && countdownSecondsLeft != null
     && countdownSecondsLeft > 0;
+  const formationPickActive = status === "FORMATION_SELECT" && !auctionCountdownActive;
+
+  const poolLabel =
+    (snapshot.minPoolRating ?? 0) > 0
+      ? `${poolLeagueLabel(snapshot.poolLeague)} · ${snapshot.minPoolRating}+ OVR`
+      : null;
 
   return (
-    <div className="flex h-full max-h-[min(680px,calc(100dvh-1.5rem))] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-white/10 bg-surface-card/95 shadow-2xl shadow-black/30">
-      <header className="flex shrink-0 items-center justify-between gap-3 border-b border-white/10 px-4 py-3">
+    <div className="flex h-full max-h-[min(480px,calc(100dvh-1.5rem))] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-white/10 bg-surface-card/95 shadow-2xl shadow-black/30">
+      <header className="flex shrink-0 items-center justify-between gap-3 border-b border-white/10 px-4 py-2.5">
         <div className="min-w-0">
           <p className="truncate text-base font-bold text-white">{nickname}</p>
-          <p className="text-[11px] text-slate-400">
+          <p className="truncate text-[11px] text-slate-400">
             {status ? SESSION_STATUS_LABELS[status] : "—"}
             {" · "}
-            {snapshot.playerCount}/{maxPlayers} players
+            {snapshot.playerCount}/{maxPlayers}
             {gameMode !== "DUEL" ? ` · ${GAME_MODE_LABELS[gameMode]}` : ""}
+            {poolLabel ? ` · ${poolLabel}` : ""}
           </p>
         </div>
         <div className="shrink-0 text-right">
@@ -137,23 +142,19 @@ export function LobbySessionPanel({
         </div>
       </header>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
-        {(snapshot.minPoolRating ?? 0) > 0 && (
-          <p className="mb-3 text-center text-xs text-slate-500">
-            {poolLeagueLabel(snapshot.poolLeague)} · {snapshot.minPoolRating}+ OVR pool
-          </p>
-        )}
-
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         {lobbyCountdownActive && countdownSecondsLeft != null && (
-          <CountdownRing
-            seconds={countdownSecondsLeft}
-            label="Opponent found! Starting..."
-            testId="lobby-match-countdown"
-          />
+          <div className="flex flex-1 items-center justify-center px-4">
+            <CountdownRing
+              seconds={countdownSecondsLeft}
+              label="Opponent found! Starting..."
+              testId="lobby-match-countdown"
+            />
+          </div>
         )}
 
         {status === "WAITING" && (
-          <div className="flex flex-col items-center py-8 text-center">
+          <div className="flex flex-1 flex-col items-center justify-center px-4 text-center">
             <div className="inline-block animate-pulse">
               <div className="mx-1 inline-block h-2.5 w-2.5 rounded-full bg-accent" />
               <div className="mx-1 inline-block h-2.5 w-2.5 rounded-full bg-accent animation-delay-200" />
@@ -167,7 +168,7 @@ export function LobbySessionPanel({
         )}
 
         {status === "FORMATION_SELECT" && auctionCountdownActive && countdownSecondsLeft != null && (
-          <div className="space-y-2">
+          <div className="flex flex-1 flex-col items-center justify-center px-4">
             <CountdownRing
               seconds={countdownSecondsLeft}
               label="Auction starting..."
@@ -181,37 +182,40 @@ export function LobbySessionPanel({
           </div>
         )}
 
-        {status === "FORMATION_SELECT" && !auctionCountdownActive && (
-          <div className="space-y-4">
-            <h2 className="text-center text-sm font-semibold text-white">Choose your formation</h2>
-
-            <div className="grid grid-cols-3 gap-2 sm:grid-cols-5 sm:gap-3">
-              {formations.map((f) => (
-                <FormationCard
-                  key={f}
-                  formation={f}
-                  selected={snapshot.myFormation === f}
-                  onSelect={() => onChooseFormation(f)}
-                  disabled={loading || snapshot.matchStartConfirmedByMe}
-                />
-              ))}
+        {formationPickActive && (
+          <>
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-3 pb-2 pt-3 sm:px-4">
+              <p className="mb-2 shrink-0 text-center text-xs font-semibold text-slate-300">
+                Choose your formation
+              </p>
+              <div className="grid min-h-0 flex-1 grid-cols-5 grid-rows-2 gap-1.5 sm:gap-2">
+                {formations.map((f) => (
+                  <FormationCard
+                    key={f}
+                    formation={f}
+                    selected={snapshot.myFormation === f}
+                    onSelect={() => onChooseFormation(f)}
+                    disabled={loading || snapshot.matchStartConfirmedByMe}
+                  />
+                ))}
+              </div>
             </div>
 
             {snapshot.matchStartReadyCount >= 1 && snapshot.matchStartReadyCount < maxPlayers && (
-              <p className="text-center text-xs text-slate-400">
+              <p className="shrink-0 px-4 pb-2 text-center text-[11px] text-slate-400">
                 {snapshot.matchStartConfirmedByMe
                   ? "Waiting for opponent to confirm..."
                   : "Opponent is ready — pick a formation and start"}
               </p>
             )}
 
-            <div className="flex flex-col gap-2 sm:flex-row sm:justify-center">
+            <footer className="flex shrink-0 gap-2 border-t border-white/10 px-4 py-3">
               <button
                 data-testid="lobby-confirm-formation-ready"
                 onClick={onStartAuction}
                 disabled={loading || snapshot.matchStartConfirmedByMe || !snapshot.myFormation}
                 className={cn(
-                  "rounded-lg px-6 py-2.5 text-sm font-bold transition-colors sm:min-w-[180px]",
+                  "flex-1 rounded-lg py-2 text-sm font-bold transition-colors",
                   snapshot.matchStartConfirmedByMe
                     ? "cursor-default border border-accent-green/30 bg-accent-green/20 text-accent-green"
                     : "bg-accent text-white hover:bg-blue-600 disabled:opacity-50"
@@ -224,32 +228,32 @@ export function LobbySessionPanel({
               <button
                 onClick={onLeave}
                 disabled={loading}
-                className="rounded-lg border border-red-500/30 bg-red-900/30 px-6 py-2.5 text-sm font-bold text-red-400 hover:bg-red-900/50 disabled:opacity-50 sm:min-w-[120px]"
+                className="rounded-lg border border-red-500/30 bg-red-900/30 px-4 py-2 text-sm font-bold text-red-400 hover:bg-red-900/50 disabled:opacity-50"
               >
                 Leave
               </button>
-            </div>
-          </div>
+            </footer>
+          </>
         )}
 
         {status !== "FORMATION_SELECT" && status !== "WAITING" && status !== "COUNTDOWN" && (
-          <div className="py-6 text-center text-sm text-slate-400">
+          <div className="flex flex-1 items-center justify-center px-4 text-sm text-slate-400">
             {status ? SESSION_STATUS_LABELS[status] : "Loading session..."}
           </div>
         )}
-      </div>
 
-      {status !== "FORMATION_SELECT" && (
-        <footer className="shrink-0 border-t border-white/10 px-4 py-3 text-center">
-          <button
-            onClick={onLeave}
-            disabled={loading}
-            className="text-xs text-red-400 underline transition-colors hover:text-red-300 disabled:opacity-50"
-          >
-            Leave room
-          </button>
-        </footer>
-      )}
+        {status !== "FORMATION_SELECT" && (
+          <footer className="shrink-0 border-t border-white/10 px-4 py-2.5 text-center">
+            <button
+              onClick={onLeave}
+              disabled={loading}
+              className="text-xs text-red-400 underline transition-colors hover:text-red-300 disabled:opacity-50"
+            >
+              Leave room
+            </button>
+          </footer>
+        )}
+      </div>
     </div>
   );
 }

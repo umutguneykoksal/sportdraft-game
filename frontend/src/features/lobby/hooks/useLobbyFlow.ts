@@ -166,9 +166,9 @@ export function useLobbyFlow() {
     return () => document.removeEventListener("visibilitychange", onVisible);
   }, [refetchSnapshot]);
 
-  // 6. Countdown timer
+  // 6. Countdown timer (lobby countdown + formation both-ready auction start)
   useEffect(() => {
-    const deadlineAt = snapshot?.countdownEndsAt;
+    const deadlineAt = snapshot?.countdownEndsAt ?? snapshot?.matchStartDeadlineAt;
     if (!deadlineAt) {
       setCountdownSecondsLeft(null);
       return;
@@ -177,7 +177,7 @@ export function useLobbyFlow() {
     setCountdownSecondsLeft(compute());
     const timer = setInterval(() => setCountdownSecondsLeft(compute()), 250);
     return () => clearInterval(timer);
-  }, [snapshot?.countdownEndsAt]);
+  }, [snapshot?.countdownEndsAt, snapshot?.matchStartDeadlineAt]);
 
   // 7. Lobby list polling (only when not in a session)
   useEffect(() => {
