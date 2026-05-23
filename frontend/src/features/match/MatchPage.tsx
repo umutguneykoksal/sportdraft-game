@@ -14,7 +14,7 @@ export function MatchPage() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
   const {
-    ready, homeScore, awayScore,
+    ready, loadError, homeScore, awayScore,
     myTeam, opponentTeam, myFormation, opponentFormation,
     myNickname, opponentNickname,
     homeUserId, sessionHomeNickname, sessionAwayNickname,
@@ -78,7 +78,25 @@ export function MatchPage() {
       </div>
 
       {/* Loading State */}
-      {(viewState === "loading" || (!ready && viewState !== "result")) && (
+      {loadError && (
+        <div className="flex-1 flex items-center justify-center px-4">
+          <div className="text-center max-w-md">
+            <p className="text-xl text-red-400 font-semibold mb-2">Could not load match result</p>
+            <p className="text-slate-400 mb-6">{loadError}</p>
+            <button
+              onClick={() => {
+                clearActiveSessionId();
+                navigate("/lobby");
+              }}
+              className="bg-accent hover:bg-blue-600 text-white font-bold py-3 px-8 rounded-xl text-lg transition-colors"
+            >
+              Back to Lobby
+            </button>
+          </div>
+        </div>
+      )}
+
+      {!loadError && (viewState === "loading" || (!ready && viewState !== "result")) && (
         <div className="flex-1 flex items-center justify-center">
           <div className="animate-pulse text-center">
             <p className="text-xl text-slate-400">
