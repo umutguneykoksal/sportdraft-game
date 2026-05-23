@@ -24,6 +24,38 @@ const baseProps: LobbyEntryPanelProps = {
 };
 
 describe("LobbyEntryPanel", () => {
+  it("allowsSpectateWithoutNickname", () => {
+    render(
+      <LobbyEntryPanel
+        {...baseProps}
+        nicknameInput=""
+        nicknameReady={false}
+        canCreateRoom={false}
+        rooms={[
+          {
+            sessionId: "room-1",
+            status: "AUCTIONING",
+            playerCount: 2,
+            maxPlayers: 2,
+            playerNicknames: ["Alice", "Bob"],
+            createdAt: "2026-01-01T00:00:00.000Z",
+            spectatorCount: 0,
+          },
+        ]}
+      />
+    );
+
+    expect(screen.getByTestId("lobby-spectate-room-1")).not.toBeDisabled();
+    expect(screen.queryByTestId("lobby-join-room-1")).not.toBeInTheDocument();
+  });
+
+  it("showsNicknameRequiredHint", () => {
+    render(<LobbyEntryPanel {...baseProps} nicknameInput="" nicknameReady={false} canCreateRoom={false} />);
+
+    expect(screen.getByTestId("lobby-nickname-hint")).toHaveTextContent("Required to create or join a room");
+    expect(screen.getByTestId("lobby-join-nickname-hint")).toBeInTheDocument();
+  });
+
   it("opensHowToPlayModal", async () => {
     const user = userEvent.setup();
     render(<LobbyEntryPanel {...baseProps} />);

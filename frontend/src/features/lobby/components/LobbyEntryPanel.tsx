@@ -91,12 +91,14 @@ function RoomRow({
   room,
   onJoin,
   onSpectate,
-  loading,
+  joinDisabled,
+  spectateDisabled,
 }: {
   room: LobbyRoomResponse;
   onJoin: () => void;
   onSpectate: () => void;
-  loading: boolean;
+  joinDisabled: boolean;
+  spectateDisabled: boolean;
 }) {
   const maxPlayers = room.maxPlayers ?? 2;
   const canJoin = room.status === "WAITING" && room.playerCount < maxPlayers;
@@ -140,7 +142,7 @@ function RoomRow({
           <button
             data-testid={`lobby-join-${room.sessionId}`}
             onClick={onJoin}
-            disabled={loading}
+            disabled={joinDisabled}
             className="rounded-md bg-accent px-2 py-1 text-[11px] font-semibold text-white hover:bg-blue-600 disabled:opacity-50"
           >
             Join
@@ -148,8 +150,11 @@ function RoomRow({
         )}
         {canSpectate && (
           <button
+            type="button"
+            data-testid={`lobby-spectate-${room.sessionId}`}
             onClick={onSpectate}
-            disabled={loading}
+            disabled={spectateDisabled}
+            title="Watch without joining"
             className="inline-flex items-center gap-0.5 rounded-md border border-white/10 px-2 py-1 text-[11px] font-semibold text-slate-300 hover:bg-white/10 disabled:opacity-50"
           >
             <Eye className="h-3 w-3" aria-hidden="true" />
@@ -253,11 +258,15 @@ export function LobbyEntryPanel({
         <section className="flex min-h-0 min-w-0 flex-col p-4 sm:p-5">
           <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">New game</h2>
 
-          <div className="relative mb-2">
-            <UserRound
-              className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500"
-              aria-hidden="true"
-            />
+          <label htmlFor="lobby-nickname-input" className="mb-1 flex items-center gap-1 text-[10px] font-medium text-slate-400">
+            <UserRound className="h-3 w-3" aria-hidden="true" />
+            Nickname
+            <span className="text-accent" aria-hidden="true">
+              *
+            </span>
+            <span className="sr-only">(required)</span>
+          </label>
+          <div className="relative mb-1">
             <input
               id="lobby-nickname-input"
               data-testid="lobby-nickname-input"
@@ -265,18 +274,39 @@ export function LobbyEntryPanel({
               onChange={(e) => onNicknameChange(e.target.value)}
               onKeyDown={onNicknameKeyDown}
               maxLength={20}
-              placeholder="Nickname"
+              placeholder="Pick a name to play"
               autoComplete="nickname"
+              required
+              aria-required="true"
+              aria-describedby="lobby-nickname-hint"
               aria-invalid={nicknameError}
-              className="w-full rounded-md border border-white/10 bg-surface-elevated py-2 pl-8 pr-10 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-accent"
+              className={cn(
+                "w-full rounded-md border bg-surface-elevated py-2 pl-3 pr-10 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-accent",
+                nicknameError
+                  ? "border-red-500/50"
+                  : !nicknameReady
+                    ? "border-accent/30"
+                    : "border-white/10"
+              )}
             />
             <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] tabular-nums text-slate-500">
               {nicknameInput.length}/20
             </span>
           </div>
-          {nicknameError && (
-            <p className="mb-2 text-[11px] text-red-400">Min 2 characters</p>
-          )}
+          <p
+            id="lobby-nickname-hint"
+            data-testid="lobby-nickname-hint"
+            className={cn(
+              "mb-2 text-[11px] leading-relaxed",
+              nicknameError ? "text-red-400" : !nicknameReady ? "text-slate-400" : "text-slate-500"
+            )}
+          >
+            {nicknameError
+              ? "Min 2 characters"
+              : !nicknameReady
+                ? "Required to create or join a room · 2–20 characters"
+                : "Ready — you can create or join a room"}
+          </p>
 
           <div className="mb-2 flex gap-1">
             {(["DUEL", "TOURNAMENT", "LEAGUE"] as GameMode[]).map((mode) => (
@@ -381,7 +411,12 @@ export function LobbyEntryPanel({
           </div>
 
           {!nicknameReady && (
-            <p className="mb-2 shrink-0 text-[11px] text-slate-500">Enter a nickname to join</p>
+            <p
+              data-testid="lobby-join-nickname-hint"
+              className="mb-2 shrink-0 rounded-md border border-accent/20 bg-accent/5 px-2.5 py-1.5 text-[11px] text-slate-300"
+            >
+              Enter your nickname on the left to join. Spectating does not require a nickname.
+            </p>
           )}
 
           {rooms.length === 0 ? (
@@ -398,7 +433,8 @@ export function LobbyEntryPanel({
                   room={room}
                   onJoin={() => onJoinRoom(room.sessionId)}
                   onSpectate={() => onSpectateRoom(room.sessionId)}
-                  loading={loading || !nicknameReady}
+                  joinDisabled={loading || !nicknameReady}
+                  spectateDisabled={loading}
                 />
               ))}
             </div>
