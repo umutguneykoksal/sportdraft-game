@@ -20,6 +20,13 @@ body {
   overflow-x: hidden;
 }
 
+html:has(.lobby-bg),
+html:has(.lobby-bg) body,
+html:has(.lobby-bg) #root {
+  height: 100%;
+  overflow: hidden;
+}
+
 .lobby-bg {
   background-color: #0f1520;
   background-image:

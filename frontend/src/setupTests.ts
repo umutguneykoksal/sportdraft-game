@@ -3,6 +3,7 @@ import "@testing-library/jest-dom";
 jest.mock("sonner", () => ({
   toast: {
     error: jest.fn(),
+    success: jest.fn(),
     loading: jest.fn(),
     dismiss: jest.fn(),
   },

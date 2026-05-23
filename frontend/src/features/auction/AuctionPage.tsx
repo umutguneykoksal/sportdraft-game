@@ -24,7 +24,6 @@ export function AuctionPage() {
 
   return (
     <div className="min-h-screen bg-surface">
-      <AuctionRoundOutcomeToast notice={state.roundOutcomeNotice} />
       <div className="bg-surface-card border-b border-white/10 px-4 py-3">
         <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2 sm:gap-4">
@@ -77,8 +76,10 @@ export function AuctionPage() {
       )}
 
       {state.turnOrderEntries.length >= 2 && (
-        <AuctionTurnOrderBar entries={state.turnOrderEntries} turnIsOpen={state.turnIsOpen} />
+        <AuctionTurnOrderBar entries={state.turnOrderEntries} />
       )}
+
+      <AuctionRoundOutcomeToast notice={state.roundOutcomeNotice} />
 
       {(state.sessionSnap?.status === "AWAITING_RESULT" || state.sessionSnap?.status === "FINALIZING") && (
         <div className="bg-surface-card border-b border-white/10 px-4 py-6 text-center">

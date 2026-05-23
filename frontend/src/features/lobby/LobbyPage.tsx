@@ -69,53 +69,43 @@ export function LobbyPage() {
   };
 
   return (
-    <div
-      className={`lobby-bg flex p-3 sm:p-4 ${
-        isInSession
-          ? "min-h-dvh items-center justify-center overflow-hidden"
-          : "h-dvh items-center justify-center overflow-hidden"
-      }`}
-    >
+    <div className="lobby-bg box-border h-dvh w-full overflow-hidden p-3 sm:p-4">
       {!isInSession && (
-        <div className="h-full max-h-[min(560px,calc(100dvh-1.5rem))] w-full max-w-5xl">
-          <LobbyEntryPanel
-            nicknameInput={nicknameInput}
-            onNicknameChange={setNicknameInput}
-            nicknameReady={nicknameReady}
-            createGameMode={createGameMode}
-            onCreateGameModeChange={setCreateGameMode}
-            createPoolLeague={createPoolLeague}
-            onCreatePoolLeagueChange={setCreatePoolLeague}
-            createMinPoolRating={createMinPoolRating}
-            onCreateMinPoolRatingChange={setCreateMinPoolRating}
-            poolMinRatingOptions={poolMinRatingOptions}
-            poolMinRatingOptionsLoaded={poolMinRatingOptionsLoaded}
-            hasSelectablePoolRating={hasSelectablePoolRating}
-            canCreateRoom={canCreateRoom}
-            loading={loading}
-            rooms={rooms}
-            onCreateRoom={onCreateRoom}
-            onJoinRoom={onJoinRoom}
-            onSpectateRoom={(sessionId) => navigate(`/spectate/${sessionId}`)}
-          />
-        </div>
+        <LobbyEntryPanel
+          nicknameInput={nicknameInput}
+          onNicknameChange={setNicknameInput}
+          nicknameReady={nicknameReady}
+          createGameMode={createGameMode}
+          onCreateGameModeChange={setCreateGameMode}
+          createPoolLeague={createPoolLeague}
+          onCreatePoolLeagueChange={setCreatePoolLeague}
+          createMinPoolRating={createMinPoolRating}
+          onCreateMinPoolRatingChange={setCreateMinPoolRating}
+          poolMinRatingOptions={poolMinRatingOptions}
+          poolMinRatingOptionsLoaded={poolMinRatingOptionsLoaded}
+          hasSelectablePoolRating={hasSelectablePoolRating}
+          canCreateRoom={canCreateRoom}
+          loading={loading}
+          rooms={rooms}
+          onCreateRoom={onCreateRoom}
+          onJoinRoom={onJoinRoom}
+          onSpectateRoom={(sessionId) => navigate(`/spectate/${sessionId}`)}
+        />
       )}
 
       {isInSession && snapshot && (
-        <div className="h-[min(680px,calc(100dvh-2rem))] w-full max-w-4xl">
-          <LobbySessionPanel
-            nickname={session.nickname}
-            snapshot={snapshot}
-            maxPlayers={maxPlayers}
-            gameMode={gameMode}
-            countdownSecondsLeft={countdownSecondsLeft}
-            formations={formations}
-            loading={loading}
-            onChooseFormation={chooseFormation}
-            onStartAuction={handleStartAuction}
-            onLeave={handleLeave}
-          />
-        </div>
+        <LobbySessionPanel
+          nickname={session.nickname}
+          snapshot={snapshot}
+          maxPlayers={maxPlayers}
+          gameMode={gameMode}
+          countdownSecondsLeft={countdownSecondsLeft}
+          formations={formations}
+          loading={loading}
+          onChooseFormation={chooseFormation}
+          onStartAuction={handleStartAuction}
+          onLeave={handleLeave}
+        />
       )}
     </div>
   );
