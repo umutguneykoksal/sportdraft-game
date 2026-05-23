@@ -11,6 +11,7 @@ jest.mock("./hooks/useLobbyFlow", () => ({
     loading: false,
     error: null,
     isConnected: false,
+    showReconnecting: false,
     countdownSecondsLeft: 0,
     formations: ["FOUR_FOUR_TWO"],
     handleCreateRoom: jest.fn(),

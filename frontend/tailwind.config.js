@@ -26,12 +26,17 @@ module.exports = {
         },
       },
       animation: {
-        "fade-in": "fadeIn 0.3s ease-out",
+        "fade-in": "fadeIn 0.4s ease-out",
+        "fade-in-up": "fadeInUp 0.5s ease-out",
         "bid-pop": "bidPop 0.35s ease-out",
       },
       keyframes: {
         fadeIn: {
           "0%": { opacity: "0", transform: "translateY(8px)" },
+          "100%": { opacity: "1", transform: "translateY(0)" },
+        },
+        fadeInUp: {
+          "0%": { opacity: "0", transform: "translateY(16px)" },
           "100%": { opacity: "1", transform: "translateY(0)" },
         },
         bidPop: {

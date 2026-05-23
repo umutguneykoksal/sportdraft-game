@@ -1,0 +1,47 @@
+# Develop branch deploy (Railway develop/staging env).
+# Activate: SPRING_PROFILES_ACTIVE=develop
+spring:
+  config:
+    activate:
+      on-profile: develop
+  data:
+    redis:
+      url: ${REDIS_URL}
+      repositories:
+        enabled: false
+  mvc:
+    async:
+      # -1 = never time out; SSE uses long-lived response streams.
+      request-timeout: -1
+
+spring.task:
+  scheduling:
+    pool:
+      size: 4
+
+app:
+  admin:
+    api-key: ${APP_ADMIN_API_KEY:}
+  cors:
+    allowed-origins: ${APP_CORS_ALLOWED_ORIGINS}
+  session:
+    # 60s: pure gameplay decision (WebSocket removes proxy timeout constraint).
+    disconnect-timeout-seconds: ${APP_SESSION_DISCONNECT_TIMEOUT_SECONDS:60}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: never
+  tracing:
+    enabled: ${MANAGEMENT_TRACING_ENABLED:false}
+
+logging:
+  level:
+    root: INFO
+    dev.sportdraft.common.sse: INFO
+    dev.sportdraft.common.realtime: INFO
+    dev.sportdraft.session.control.SessionDisconnectCleanupScheduler: INFO

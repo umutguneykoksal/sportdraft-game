@@ -11,15 +11,16 @@ import org.springframework.web.server.ResponseStatusException;
 
 /**
  * Serializes all mutations on a single game session (HTTP commands + timer scheduler).
- * Retries optimistic version conflicts a few times before surfacing 409 to the client.
+ * Retries lock contention and optimistic version conflicts before surfacing 409 to the client.
  */
 @Component
 public class SessionMutationGuard {
 
     private static final String LOCK_PREFIX = "session-lock:";
     private static final Duration LOCK_TTL = Duration.ofSeconds(5);
-    private static final int MAX_OPTIMISTIC_ATTEMPTS = 3;
-    private static final long RETRY_BASE_MS = 15L;
+    private static final int MAX_ATTEMPTS = 5;
+    private static final long RETRY_BASE_MS = 25L;
+    private static final String SESSION_BUSY = "Session busy, retry";
 
     private static final DefaultRedisScript<Long> UNLOCK_SCRIPT;
 
@@ -43,11 +44,16 @@ public class SessionMutationGuard {
     }
 
     public <T> T mutate(UUID sessionId, Supplier<T> action) {
-        for (int attempt = 0; attempt < MAX_OPTIMISTIC_ATTEMPTS; attempt++) {
+        for (int attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
             try {
                 return runWithLock(sessionId, action);
             } catch (ActiveSessionStore.OptimisticLockException e) {
-                if (attempt == MAX_OPTIMISTIC_ATTEMPTS - 1) {
+                if (attempt == MAX_ATTEMPTS - 1) {
+                    throw e;
+                }
+                sleepBeforeRetry(attempt);
+            } catch (ResponseStatusException e) {
+                if (!isSessionBusy(e) || attempt == MAX_ATTEMPTS - 1) {
                     throw e;
                 }
                 sleepBeforeRetry(attempt);
@@ -68,13 +74,17 @@ public class SessionMutationGuard {
         String token = UUID.randomUUID().toString();
         Boolean acquired = redis.opsForValue().setIfAbsent(key, token, LOCK_TTL);
         if (!Boolean.TRUE.equals(acquired)) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Session busy, retry");
+            throw new ResponseStatusException(HttpStatus.CONFLICT, SESSION_BUSY);
         }
         try {
             return action.get();
         } finally {
             redis.execute(UNLOCK_SCRIPT, java.util.List.of(key), token);
         }
+    }
+
+    private static boolean isSessionBusy(ResponseStatusException e) {
+        return e.getStatusCode() == HttpStatus.CONFLICT && SESSION_BUSY.equals(e.getReason());
     }
 
     private static void sleepBeforeRetry(int attempt) {

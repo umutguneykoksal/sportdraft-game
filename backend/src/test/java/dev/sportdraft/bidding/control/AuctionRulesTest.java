@@ -90,6 +90,21 @@ class AuctionRulesTest {
     }
 
     @Test
+    void turnOpenAtAccountsForCardRevealOnOpeningTurn() {
+        Instant now = Instant.now();
+        ActiveRound round = new ActiveRound(
+            UUID.randomUUID(), UUID.randomUUID(), now,
+            now.plus(AuctionTiming.ROUND_DURATION_SECONDS, ChronoUnit.SECONDS),
+            UUID.randomUUID(), RoundStatus.OPEN
+        );
+
+        Instant openAt = AuctionRules.computeTurnOpenAt(round);
+        assertThat(openAt).isEqualTo(
+            now.plus(AuctionTiming.ROUND_REVEAL_SECONDS + AuctionTiming.TURN_OPEN_AFTER_SECONDS, ChronoUnit.SECONDS)
+        );
+    }
+
+    @Test
     void allNonWinnersHavePassedRequiresEveryOtherPlayerToPass() {
         UUID u1 = UUID.randomUUID();
         UUID u2 = UUID.randomUUID();

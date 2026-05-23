@@ -48,6 +48,7 @@ export function useLobbyFlow() {
   const { events, isConnected } = useSessionStream(sessionId);
   const restoredRef = useRef(false);
   const prevConnectedRef = useRef(false);
+  const wasEverConnectedRef = useRef(false);
   const seenEventIdsRef = useRef(new Set<string>());
   const sessionIdRef = useRef(sessionId);
   sessionIdRef.current = sessionId;
@@ -64,7 +65,13 @@ export function useLobbyFlow() {
 
   useEffect(() => {
     seenEventIdsRef.current.clear();
+    wasEverConnectedRef.current = false;
   }, [sessionId]);
+
+  if (isConnected) {
+    wasEverConnectedRef.current = true;
+  }
+  const showReconnecting = !!sessionId && wasEverConnectedRef.current && !isConnected;
 
   // 1. Restore session on mount
   useEffect(() => {
@@ -159,9 +166,9 @@ export function useLobbyFlow() {
     return () => document.removeEventListener("visibilitychange", onVisible);
   }, [refetchSnapshot]);
 
-  // 6. Countdown timer
+  // 6. Countdown timer (lobby countdown + formation both-ready auction start)
   useEffect(() => {
-    const deadlineAt = snapshot?.countdownEndsAt;
+    const deadlineAt = snapshot?.countdownEndsAt ?? snapshot?.matchStartDeadlineAt;
     if (!deadlineAt) {
       setCountdownSecondsLeft(null);
       return;
@@ -170,7 +177,7 @@ export function useLobbyFlow() {
     setCountdownSecondsLeft(compute());
     const timer = setInterval(() => setCountdownSecondsLeft(compute()), 250);
     return () => clearInterval(timer);
-  }, [snapshot?.countdownEndsAt]);
+  }, [snapshot?.countdownEndsAt, snapshot?.matchStartDeadlineAt]);
 
   // 7. Lobby list polling (only when not in a session)
   useEffect(() => {
@@ -290,6 +297,7 @@ export function useLobbyFlow() {
     loading,
     error,
     isConnected,
+    showReconnecting,
     countdownSecondsLeft,
     formations: ALL_FORMATIONS,
     handleCreateRoom,

@@ -5,6 +5,8 @@ spring:
   data:
     redis:
       url: ${REDIS_URL}
+      repositories:
+        enabled: false
   mvc:
     async:
       # -1 = never time out; SSE uses long-lived response streams.
