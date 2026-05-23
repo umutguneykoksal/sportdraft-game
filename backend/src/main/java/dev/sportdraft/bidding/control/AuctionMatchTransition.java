@@ -17,6 +17,8 @@ import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -24,6 +26,8 @@ import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class AuctionMatchTransition {
+
+    private static final Logger log = LoggerFactory.getLogger(AuctionMatchTransition.class);
 
     private final ActiveSessionStore sessionStore;
     private final CardCatalogService cardCatalog;
@@ -92,6 +96,7 @@ public class AuctionMatchTransition {
 
         session.moveToMatchStartPending(Instant.now().plus(2, ChronoUnit.SECONDS));
         sessionStore.saveIfVersionMatch(session, vBefore);
+        log.info("Match start pending session={} deadline={}", sessionId, session.getMatchStartDeadlineAt());
         sseEmitterRegistry.broadcast(
             sessionId, "match_start_pending",
             Map.of("sessionId", sessionId, "deadlineAt", session.getMatchStartDeadlineAt())
@@ -117,6 +122,10 @@ public class AuctionMatchTransition {
         } else {
             publishDraftCompleted(session, cardMap);
         }
+        log.info(
+            "Draft complete session={} mode={} seed={} next=simulation_or_competition",
+            session.getId(), session.getGameMode(), session.getMatchSeed()
+        );
         sseEmitterRegistry.broadcast(
             session.getId(), "session_finalizing",
             Map.of(
@@ -141,6 +150,7 @@ public class AuctionMatchTransition {
 
         session.moveToAwaitingResult();
         sessionStore.save(session);
+        log.info("Duel simulation queued session={} seed={}", session.getId(), session.getMatchSeed());
         publisher.publishEvent(new SessionFinalizedEvent(
             UUID.randomUUID(), Instant.now(), session.getId(),
             session.getMatchSeed() == null ? session.getId().getMostSignificantBits() : session.getMatchSeed(),
@@ -166,6 +176,10 @@ public class AuctionMatchTransition {
 
         session.moveToAwaitingResult();
         sessionStore.save(session);
+        log.info(
+            "Tournament draft queued session={} mode={} players={}",
+            session.getId(), session.getGameMode(), rosters.size()
+        );
         publisher.publishEvent(new DraftCompletedEvent(
             UUID.randomUUID(),
             Instant.now(),

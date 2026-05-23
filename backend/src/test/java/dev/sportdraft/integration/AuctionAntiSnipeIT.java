@@ -72,8 +72,7 @@ class AuctionAntiSnipeIT extends AbstractIntegrationTest {
         UUID user1 = UUID.randomUUID();
         UUID user2 = UUID.randomUUID();
 
-        UUID sessionId = lobbyService.joinLobby(user1, "SnipeHost").sessionId();
-        lobbyService.joinLobby(user2, "SnipeGuest");
+        UUID sessionId = LobbyTestFixtures.openDuelLobby(lobbyService, user1, "SnipeHost", user2, "SnipeGuest");
 
         ActiveSession session = sessionStore.getById(sessionId);
         long version = session.getVersion();

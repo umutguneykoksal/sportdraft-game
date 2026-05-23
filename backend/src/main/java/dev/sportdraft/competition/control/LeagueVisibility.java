@@ -7,13 +7,7 @@ import java.util.UUID;
 import org.springframework.stereotype.Component;
 
 @Component
-class TournamentVisibilityPolicy implements CompetitionVisibilityPolicy {
-
-    private final TournamentBracketService bracketService;
-
-    TournamentVisibilityPolicy(TournamentBracketService bracketService) {
-        this.bracketService = bracketService;
-    }
+class LeagueVisibility implements CompetitionVisibility {
 
     @Override
     public boolean mandatoryWatchPending(
@@ -22,12 +16,11 @@ class TournamentVisibilityPolicy implements CompetitionVisibilityPolicy {
         UUID viewerUserId,
         boolean watchedByMe
     ) {
-        return TournamentRules.isMandatoryWatchPending(
-            competition.getTournamentPhase(),
+        return LeagueRules.isMandatoryWatchPending(
+            competition.getLeaguePhase(),
             match,
             viewerUserId,
-            watchedByMe,
-            bracketService.isTournamentParticipant(competition, viewerUserId)
+            watchedByMe
         );
     }
 
@@ -36,23 +29,16 @@ class TournamentVisibilityPolicy implements CompetitionVisibilityPolicy {
         if (match.getStatus() != CompetitionMatchStatus.COMPLETED) {
             return false;
         }
-        return TournamentRules.scoresVisibleForViewer(
-            competition.getTournamentPhase(),
-            match.getRoundKey(),
-            watchedByMe
-        );
+        return LeagueRules.scoresVisibleForViewer(competition.getLeaguePhase(), match.getRoundKey(), watchedByMe);
     }
 
     @Override
     public boolean replayAllowed(CompetitionEntity competition, CompetitionMatchEntity match) {
-        return TournamentRules.canReplay(competition.getTournamentPhase(), match.getStatus());
+        return LeagueRules.canReplay(competition.getLeaguePhase(), match.getStatus());
     }
 
     @Override
     public int requiredWatchers(CompetitionEntity competition, CompetitionMatchEntity match) {
-        if (TournamentRules.isSemi(match.getRoundKey())) {
-            return 2;
-        }
-        return bracketService.snapshotPlayerCount(competition);
+        return LeagueRules.PARTICIPANTS_PER_MATCH;
     }
 }

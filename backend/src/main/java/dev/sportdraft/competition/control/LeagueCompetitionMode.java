@@ -13,19 +13,19 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.server.ResponseStatusException;
 
 @Component
-class LeagueMatchModeHooks implements CompetitionMatchModeHooks {
+class LeagueCompetitionMode implements CompetitionModeBehavior {
 
     private final LeagueFixtureService leagueService;
     private final CompetitionRepository competitionRepository;
     private final LeagueProgressNotifier progressNotifier;
-    private final LeagueVisibilityPolicy visibilityPolicy;
+    private final LeagueVisibility visibilityPolicy;
     private final ActiveSessionStore sessionStore;
 
-    LeagueMatchModeHooks(
+    LeagueCompetitionMode(
         LeagueFixtureService leagueService,
         CompetitionRepository competitionRepository,
         LeagueProgressNotifier progressNotifier,
-        LeagueVisibilityPolicy visibilityPolicy,
+        LeagueVisibility visibilityPolicy,
         ActiveSessionStore sessionStore
     ) {
         this.leagueService = leagueService;
@@ -88,7 +88,7 @@ class LeagueMatchModeHooks implements CompetitionMatchModeHooks {
     }
 
     @Override
-    public CompetitionVisibilityPolicy visibilityPolicy() {
+    public CompetitionVisibility visibility() {
         return visibilityPolicy;
     }
 

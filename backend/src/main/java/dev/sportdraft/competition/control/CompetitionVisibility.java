@@ -5,7 +5,7 @@ import dev.sportdraft.competition.entity.CompetitionMatchEntity;
 import dev.sportdraft.competition.entity.CompetitionMatchStatus;
 import java.util.UUID;
 
-interface CompetitionVisibilityPolicy {
+interface CompetitionVisibility {
 
     boolean mandatoryWatchPending(
         CompetitionEntity competition,

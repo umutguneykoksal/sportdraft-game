@@ -5,7 +5,7 @@ import dev.sportdraft.session.entity.SessionStatus;
 import dev.sportdraft.session.redis.ActiveRound;
 import dev.sportdraft.session.redis.ActiveSession;
 import dev.sportdraft.session.redis.ActiveSessionStore;
-import dev.sportdraft.session.redis.SessionMutationGuard;
+import dev.sportdraft.session.redis.SessionLock;
 import java.time.Instant;
 import java.util.Map;
 import java.util.Optional;
@@ -23,20 +23,20 @@ import org.springframework.web.server.ResponseStatusException;
 public class AuctionRoundScheduler {
 
     private final ActiveSessionStore sessionStore;
-    private final SessionMutationGuard mutationGuard;
+    private final SessionLock sessionLock;
     private final CardCatalogService cardCatalog;
     private final AuctionSettlementService settlement;
     private final AuctionMatchTransition matchTransition;
 
     public AuctionRoundScheduler(
         ActiveSessionStore sessionStore,
-        SessionMutationGuard mutationGuard,
+        SessionLock sessionLock,
         CardCatalogService cardCatalog,
         AuctionSettlementService settlement,
         AuctionMatchTransition matchTransition
     ) {
         this.sessionStore = sessionStore;
-        this.mutationGuard = mutationGuard;
+        this.sessionLock = sessionLock;
         this.cardCatalog = cardCatalog;
         this.settlement = settlement;
         this.matchTransition = matchTransition;
@@ -49,7 +49,7 @@ public class AuctionRoundScheduler {
         for (ActiveSession snapshot : sessionStore.findByStatus(SessionStatus.AUCTIONING)) {
             UUID sessionId = snapshot.getId();
             try {
-                mutationGuard.mutateVoid(sessionId, () -> {
+                sessionLock.runVoid(sessionId, () -> {
                     ActiveSession session = sessionStore.getById(sessionId);
                     if (session.getStatus() != SessionStatus.AUCTIONING) {
                         return;
@@ -86,7 +86,7 @@ public class AuctionRoundScheduler {
             if (snapshot.getMatchStartDeadlineAt() == null || snapshot.getMatchStartDeadlineAt().isAfter(now)) {
                 continue;
             }
-            mutationGuard.mutateVoid(sessionId, () -> {
+            sessionLock.runVoid(sessionId, () -> {
                 ActiveSession session = sessionStore.getById(sessionId);
                 if (session.getStatus() != SessionStatus.MATCH_START_PENDING) {
                     return;

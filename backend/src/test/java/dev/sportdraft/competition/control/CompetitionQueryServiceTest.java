@@ -53,8 +53,8 @@ class CompetitionQueryServiceTest {
     private LeagueCompetitionRecoveryService leagueRecoveryService;
 
     private CompetitionQueryService queryService;
-    private LeagueVisibilityPolicy leagueVisibilityPolicy;
-    private TournamentVisibilityPolicy tournamentVisibilityPolicy;
+    private LeagueVisibility LeagueVisibility;
+    private TournamentVisibility TournamentVisibility;
 
     private final UUID sessionId = UUID.randomUUID();
     private final UUID competitionId = UUID.randomUUID();
@@ -63,8 +63,8 @@ class CompetitionQueryServiceTest {
 
     @BeforeEach
     void setUp() {
-        leagueVisibilityPolicy = new LeagueVisibilityPolicy();
-        tournamentVisibilityPolicy = new TournamentVisibilityPolicy(bracketService);
+        LeagueVisibility = new LeagueVisibility();
+        TournamentVisibility = new TournamentVisibility(bracketService);
         queryService = new CompetitionQueryService(
             competitionRepository,
             matchRepository,
@@ -75,8 +75,8 @@ class CompetitionQueryServiceTest {
             leagueStandingsService,
             tournamentRecoveryService,
             leagueRecoveryService,
-            leagueVisibilityPolicy,
-            tournamentVisibilityPolicy
+            LeagueVisibility,
+            TournamentVisibility
         );
     }
 

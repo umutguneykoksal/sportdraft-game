@@ -6,7 +6,7 @@ import dev.sportdraft.competition.entity.CompetitionType;
 import dev.sportdraft.simulation.entity.SimulationResult;
 import java.util.UUID;
 
-interface CompetitionMatchModeHooks {
+interface CompetitionModeBehavior {
 
     CompetitionType type();
 
@@ -28,7 +28,7 @@ interface CompetitionMatchModeHooks {
 
     boolean matchFullyWatched(CompetitionEntity competition, CompetitionMatchEntity match);
 
-    CompetitionVisibilityPolicy visibilityPolicy();
+    CompetitionVisibility visibility();
 
     CompetitionEntity afterWatchRecorded(UUID sessionId, CompetitionEntity competition);
 }

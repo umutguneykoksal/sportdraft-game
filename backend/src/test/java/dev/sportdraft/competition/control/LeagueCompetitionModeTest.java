@@ -28,7 +28,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
 @ExtendWith(MockitoExtension.class)
-class LeagueMatchModeHooksTest {
+class LeagueCompetitionModeTest {
 
     @Mock
     private LeagueFixtureService leagueService;
@@ -40,19 +40,19 @@ class LeagueMatchModeHooksTest {
     private LeagueProgressNotifier progressNotifier;
 
     @Mock
-    private LeagueVisibilityPolicy visibilityPolicy;
+    private LeagueVisibility visibilityPolicy;
 
     @Mock
     private ActiveSessionStore sessionStore;
 
-    private LeagueMatchModeHooks hooks;
+    private LeagueCompetitionMode hooks;
 
     private final UUID sessionId = UUID.randomUUID();
     private final UUID userId = UUID.randomUUID();
 
     @BeforeEach
     void setUp() {
-        hooks = new LeagueMatchModeHooks(
+        hooks = new LeagueCompetitionMode(
             leagueService,
             competitionRepository,
             progressNotifier,

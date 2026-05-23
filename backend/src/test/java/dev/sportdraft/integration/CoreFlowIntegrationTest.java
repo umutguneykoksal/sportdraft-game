@@ -35,8 +35,8 @@ class CoreFlowIntegrationTest extends AbstractIntegrationTest {
         UUID user1 = UUID.randomUUID();
         UUID user2 = UUID.randomUUID();
 
-        SessionSnapshotResponse firstJoin = lobbyService.joinLobby(user1, "TestPlayer1");
-        SessionSnapshotResponse secondJoin = lobbyService.joinLobby(user2, "TestPlayer2");
+        SessionSnapshotResponse firstJoin = lobbyService.createRoom(user1, "TestPlayer1");
+        SessionSnapshotResponse secondJoin = lobbyService.joinRoom(firstJoin.sessionId(), user2, "TestPlayer2");
         UUID sessionId = secondJoin.sessionId();
         assertThat(firstJoin.sessionId()).isEqualTo(sessionId);
 

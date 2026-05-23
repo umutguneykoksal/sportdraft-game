@@ -14,7 +14,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
-public class LeaguePhaseCoordinator {
+public class LeagueSeasonFlow {
 
     private final CompetitionRepository competitionRepository;
     private final CompetitionMatchRepository matchRepository;
@@ -22,7 +22,7 @@ public class LeaguePhaseCoordinator {
     private final LeagueStandingsService standingsService;
     private final CompetitionJson competitionJson;
 
-    public LeaguePhaseCoordinator(
+    public LeagueSeasonFlow(
         CompetitionRepository competitionRepository,
         CompetitionMatchRepository matchRepository,
         CompetitionMatchViewRepository viewRepository,

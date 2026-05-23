@@ -14,14 +14,14 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
-public class TournamentPhaseCoordinator {
+public class TournamentBracketFlow {
 
     private final CompetitionRepository competitionRepository;
     private final CompetitionMatchRepository matchRepository;
     private final CompetitionMatchViewRepository viewRepository;
     private final CompetitionJson competitionJson;
 
-    public TournamentPhaseCoordinator(
+    public TournamentBracketFlow(
         CompetitionRepository competitionRepository,
         CompetitionMatchRepository matchRepository,
         CompetitionMatchViewRepository viewRepository,

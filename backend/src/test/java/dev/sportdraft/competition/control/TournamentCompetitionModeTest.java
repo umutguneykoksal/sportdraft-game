@@ -27,7 +27,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
 @ExtendWith(MockitoExtension.class)
-class TournamentMatchModeHooksTest {
+class TournamentCompetitionModeTest {
 
     @Mock
     private TournamentBracketService bracketService;
@@ -39,12 +39,12 @@ class TournamentMatchModeHooksTest {
     private TournamentProgressNotifier progressNotifier;
 
     @Mock
-    private TournamentVisibilityPolicy visibilityPolicy;
+    private TournamentVisibility visibilityPolicy;
 
     @Mock
     private ActiveSessionStore sessionStore;
 
-    private TournamentMatchModeHooks hooks;
+    private TournamentCompetitionMode hooks;
 
     private final UUID sessionId = UUID.randomUUID();
     private final UUID homeUserId = UUID.randomUUID();
@@ -52,7 +52,7 @@ class TournamentMatchModeHooksTest {
 
     @BeforeEach
     void setUp() {
-        hooks = new TournamentMatchModeHooks(
+        hooks = new TournamentCompetitionMode(
             bracketService,
             competitionRepository,
             progressNotifier,

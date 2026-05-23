@@ -35,8 +35,8 @@ public class CompetitionQueryService {
     private final LeagueStandingsService leagueStandingsService;
     private final TournamentCompetitionRecoveryService tournamentRecoveryService;
     private final LeagueCompetitionRecoveryService leagueRecoveryService;
-    private final LeagueVisibilityPolicy leagueVisibilityPolicy;
-    private final TournamentVisibilityPolicy tournamentVisibilityPolicy;
+    private final LeagueVisibility LeagueVisibility;
+    private final TournamentVisibility TournamentVisibility;
 
     public CompetitionQueryService(
         CompetitionRepository competitionRepository,
@@ -48,8 +48,8 @@ public class CompetitionQueryService {
         LeagueStandingsService leagueStandingsService,
         TournamentCompetitionRecoveryService tournamentRecoveryService,
         LeagueCompetitionRecoveryService leagueRecoveryService,
-        LeagueVisibilityPolicy leagueVisibilityPolicy,
-        TournamentVisibilityPolicy tournamentVisibilityPolicy
+        LeagueVisibility LeagueVisibility,
+        TournamentVisibility TournamentVisibility
     ) {
         this.competitionRepository = competitionRepository;
         this.matchRepository = matchRepository;
@@ -60,8 +60,8 @@ public class CompetitionQueryService {
         this.leagueStandingsService = leagueStandingsService;
         this.tournamentRecoveryService = tournamentRecoveryService;
         this.leagueRecoveryService = leagueRecoveryService;
-        this.leagueVisibilityPolicy = leagueVisibilityPolicy;
-        this.tournamentVisibilityPolicy = tournamentVisibilityPolicy;
+        this.LeagueVisibility = LeagueVisibility;
+        this.TournamentVisibility = TournamentVisibility;
     }
 
     public CompetitionResponse getBySessionId(UUID sessionId) {
@@ -94,7 +94,7 @@ public class CompetitionQueryService {
         List<CompetitionMatchResponse> matchResponses = matchRepository
             .findByCompetitionIdOrderBySortOrderAsc(competition.getId())
             .stream()
-            .map(m -> toMatchResponse(competition, m, viewerUserId, snapshot, session, tournamentVisibilityPolicy))
+            .map(m -> toMatchResponse(competition, m, viewerUserId, snapshot, session, TournamentVisibility))
             .toList();
 
         boolean revealChampion = competition.getStatus() == CompetitionStatus.COMPLETED
@@ -126,7 +126,7 @@ public class CompetitionQueryService {
             matchRepository.findByCompetitionIdOrderBySortOrderAsc(competition.getId());
 
         List<CompetitionMatchResponse> matchResponses = allMatches.stream()
-            .map(m -> toMatchResponse(competition, m, viewerUserId, snapshot, session, leagueVisibilityPolicy))
+            .map(m -> toMatchResponse(competition, m, viewerUserId, snapshot, session, LeagueVisibility))
             .toList();
 
         List<LeagueStandingRow> standings = leagueStandingsService.computeStandings(snapshot, allMatches);
@@ -162,7 +162,7 @@ public class CompetitionQueryService {
         UUID viewerUserId,
         CompetitionDraftSnapshot snapshot,
         ActiveSession session,
-        CompetitionVisibilityPolicy policy
+        CompetitionVisibility policy
     ) {
         boolean watchedByMe = viewerUserId != null
             && viewRepository.existsByMatchIdAndUserId(match.getId(), viewerUserId);

@@ -1,4 +1,4 @@
-import { createRoom, joinRoom, joinLobby, leaveLobby, listLobbies, getPoolMinRatingOptions, getSpectateState, getSpectateMatchTimeline } from "./lobbyClient";
+import { createRoom, joinRoom, leaveLobby, listLobbies, getPoolMinRatingOptions, getSpectateState, getSpectateMatchTimeline } from "./lobbyClient";
 
 describe("lobbyClient", () => {
   const originalFetch = global.fetch;
@@ -81,20 +81,6 @@ describe("lobbyClient", () => {
     expect(global.fetch).toHaveBeenCalledWith(
       expect.stringContaining("poolLeague=PREMIER_LEAGUE"),
       expect.any(Object)
-    );
-  });
-
-  it("joinLobby_usesLegacyEndpoint", async () => {
-    global.fetch = jest.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({ sessionId: "s1", status: "WAITING", playerCount: 1 }),
-    }) as typeof fetch;
-
-    await joinLobby("Legacy");
-
-    expect(global.fetch).toHaveBeenCalledWith(
-      expect.stringContaining("/lobbies/join"),
-      expect.objectContaining({ method: "POST" })
     );
   });
 

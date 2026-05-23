@@ -45,6 +45,14 @@ public class MatchCompletedListener {
             sessionStore.saveIfVersionMatch(session, vBefore);
         });
 
+        log.info(
+            "Match completed session={} score={}-{} winner={}",
+            event.sessionId(),
+            event.homeScore(),
+            event.awayScore(),
+            event.winnerUserId()
+        );
+
         sseEmitterRegistry.broadcast(
             event.sessionId(),
             "match_completed",

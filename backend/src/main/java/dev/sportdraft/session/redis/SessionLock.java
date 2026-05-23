@@ -14,7 +14,7 @@ import org.springframework.web.server.ResponseStatusException;
  * Retries lock contention and optimistic version conflicts before surfacing 409 to the client.
  */
 @Component
-public class SessionMutationGuard {
+public class SessionLock {
 
     private static final String LOCK_PREFIX = "session-lock:";
     private static final Duration LOCK_TTL = Duration.ofSeconds(5);
@@ -39,11 +39,11 @@ public class SessionMutationGuard {
 
     private final StringRedisTemplate redis;
 
-    public SessionMutationGuard(StringRedisTemplate redis) {
+    public SessionLock(StringRedisTemplate redis) {
         this.redis = redis;
     }
 
-    public <T> T mutate(UUID sessionId, Supplier<T> action) {
+    public <T> T run(UUID sessionId, Supplier<T> action) {
         for (int attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
             try {
                 return runWithLock(sessionId, action);
@@ -62,8 +62,8 @@ public class SessionMutationGuard {
         throw new IllegalStateException("Unreachable");
     }
 
-    public void mutateVoid(UUID sessionId, Runnable action) {
-        mutate(sessionId, () -> {
+    public void runVoid(UUID sessionId, Runnable action) {
+        run(sessionId, () -> {
             action.run();
             return null;
         });

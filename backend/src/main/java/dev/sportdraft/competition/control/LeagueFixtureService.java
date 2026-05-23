@@ -35,7 +35,7 @@ public class LeagueFixtureService {
     private final CompetitionMatchViewRepository viewRepository;
     private final CompetitionMatchSimulator matchSimulator;
     private final CompetitionJson competitionJson;
-    private final LeaguePhaseCoordinator phaseCoordinator;
+    private final LeagueSeasonFlow seasonFlow;
 
     public LeagueFixtureService(
         CompetitionRepository competitionRepository,
@@ -43,14 +43,14 @@ public class LeagueFixtureService {
         CompetitionMatchViewRepository viewRepository,
         CompetitionMatchSimulator matchSimulator,
         CompetitionJson competitionJson,
-        LeaguePhaseCoordinator phaseCoordinator
+        LeagueSeasonFlow seasonFlow
     ) {
         this.competitionRepository = competitionRepository;
         this.matchRepository = matchRepository;
         this.viewRepository = viewRepository;
         this.matchSimulator = matchSimulator;
         this.competitionJson = competitionJson;
-        this.phaseCoordinator = phaseCoordinator;
+        this.seasonFlow = seasonFlow;
     }
 
     @Transactional
@@ -147,36 +147,36 @@ public class LeagueFixtureService {
     }
 
     public boolean matchParticipantsWatched(CompetitionMatchEntity match) {
-        return phaseCoordinator.matchParticipantsWatched(match);
+        return seasonFlow.matchParticipantsWatched(match);
     }
 
     public boolean matchdayReadyToAdvance(CompetitionEntity competition, int matchday) {
-        return phaseCoordinator.matchdayReadyToAdvance(competition, matchday);
+        return seasonFlow.matchdayReadyToAdvance(competition, matchday);
     }
 
     @Transactional
     public boolean tryStartMatchdayBreak(CompetitionEntity competition) {
-        return phaseCoordinator.tryStartMatchdayBreak(competition);
+        return seasonFlow.tryStartMatchdayBreak(competition);
     }
 
     @Transactional
     public boolean tryAdvanceFromBreak(CompetitionEntity competition) {
-        return phaseCoordinator.tryAdvanceFromBreak(competition);
+        return seasonFlow.tryAdvanceFromBreak(competition);
     }
 
     @Transactional
     public boolean tryResolveAfterRoundRobin(CompetitionEntity competition) {
-        return phaseCoordinator.tryResolveAfterRoundRobin(competition);
+        return seasonFlow.tryResolveAfterRoundRobin(competition);
     }
 
     @Transactional
     public CompetitionEntity tryCompletePlayoff(CompetitionEntity competition) {
-        return phaseCoordinator.tryCompletePlayoff(competition);
+        return seasonFlow.tryCompletePlayoff(competition);
     }
 
     @Transactional
     public void createPlayoffFinal(CompetitionEntity competition, UUID homeUserId, UUID awayUserId, long seed) {
-        phaseCoordinator.createPlayoffFinal(competition, homeUserId, awayUserId, seed);
+        seasonFlow.createPlayoffFinal(competition, homeUserId, awayUserId, seed);
     }
 
     public int requiredWatchers(CompetitionEntity competition, CompetitionMatchEntity match) {

@@ -42,8 +42,8 @@ class SseStreamIT extends AbstractIntegrationTest {
         UUID user1 = UUID.randomUUID();
         UUID user2 = UUID.randomUUID();
 
-        var joined = lobbyService.joinLobby(user1, "SseHost");
-        lobbyService.joinLobby(user2, "SseGuest");
+        var joined = lobbyService.createRoom(user1, "SseHost");
+        lobbyService.joinRoom(joined.sessionId(), user2, "SseGuest");
         UUID sessionId = joined.sessionId();
 
         advanceToAuctioning(sessionId, user1, user2);

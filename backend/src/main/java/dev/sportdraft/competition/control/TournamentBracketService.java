@@ -28,7 +28,7 @@ public class TournamentBracketService {
     private final CompetitionMatchViewRepository viewRepository;
     private final CompetitionMatchSimulator matchSimulator;
     private final CompetitionJson competitionJson;
-    private final TournamentPhaseCoordinator phaseCoordinator;
+    private final TournamentBracketFlow bracketFlow;
 
     public TournamentBracketService(
         CompetitionRepository competitionRepository,
@@ -36,14 +36,14 @@ public class TournamentBracketService {
         CompetitionMatchViewRepository viewRepository,
         CompetitionMatchSimulator matchSimulator,
         CompetitionJson competitionJson,
-        TournamentPhaseCoordinator phaseCoordinator
+        TournamentBracketFlow bracketFlow
     ) {
         this.competitionRepository = competitionRepository;
         this.matchRepository = matchRepository;
         this.viewRepository = viewRepository;
         this.matchSimulator = matchSimulator;
         this.competitionJson = competitionJson;
-        this.phaseCoordinator = phaseCoordinator;
+        this.bracketFlow = bracketFlow;
     }
 
     /** Creates bracket with pending semi-finals only; simulations run when players open each match. */
@@ -73,7 +73,7 @@ public class TournamentBracketService {
     @Transactional
     public SimulationResult simulateMatchIfNeeded(CompetitionEntity competition, CompetitionMatchEntity match) {
         SimulationResult result = matchSimulator.simulateIfNeeded(readSnapshot(competition), match, false);
-        phaseCoordinator.ensureFinalMatch(competition);
+        bracketFlow.ensureFinalMatch(competition);
         return result;
     }
 
@@ -112,17 +112,17 @@ public class TournamentBracketService {
     }
 
     public boolean allSemisWatchedByParticipants(UUID competitionId) {
-        return phaseCoordinator.allSemisWatchedByParticipants(competitionId);
+        return bracketFlow.allSemisWatchedByParticipants(competitionId);
     }
 
     @Transactional
     public boolean tryStartIntermissionIfReady(CompetitionEntity competition) {
-        return phaseCoordinator.tryStartIntermissionIfReady(competition);
+        return bracketFlow.tryStartIntermissionIfReady(competition);
     }
 
     @Transactional
     public boolean tryStartFinalPhase(CompetitionEntity competition) {
-        return phaseCoordinator.tryStartFinalPhase(competition);
+        return bracketFlow.tryStartFinalPhase(competition);
     }
 
     public boolean isMatchPlayable(CompetitionEntity competition, CompetitionMatchEntity match) {
@@ -146,7 +146,7 @@ public class TournamentBracketService {
     }
 
     public boolean semiParticipantsWatched(CompetitionMatchEntity match) {
-        return phaseCoordinator.semiParticipantsWatched(match);
+        return bracketFlow.semiParticipantsWatched(match);
     }
 
     public boolean semisReadyForFinal(UUID competitionId) {
@@ -154,7 +154,7 @@ public class TournamentBracketService {
     }
 
     public boolean bothSemisSimulated(UUID competitionId) {
-        return phaseCoordinator.bothSemisSimulated(competitionId);
+        return bracketFlow.bothSemisSimulated(competitionId);
     }
 
     public int requiredWatchers(CompetitionEntity competition, CompetitionMatchEntity match) {
@@ -176,12 +176,12 @@ public class TournamentBracketService {
 
     @Transactional
     public void ensureFinalMatch(CompetitionEntity competition) {
-        phaseCoordinator.ensureFinalMatch(competition);
+        bracketFlow.ensureFinalMatch(competition);
     }
 
     @Transactional
     public CompetitionEntity tryCompleteTournament(CompetitionEntity competition) {
-        return phaseCoordinator.tryCompleteTournament(competition);
+        return bracketFlow.tryCompleteTournament(competition);
     }
 
     public int snapshotPlayerCount(CompetitionEntity competition) {

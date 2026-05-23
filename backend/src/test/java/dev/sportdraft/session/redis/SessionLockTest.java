@@ -21,18 +21,18 @@ import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
 @ExtendWith(MockitoExtension.class)
-class SessionMutationGuardTest {
+class SessionLockTest {
 
     @Mock
     private StringRedisTemplate redis;
     @Mock
     private ValueOperations<String, String> valueOps;
 
-    private SessionMutationGuard guard;
+    private SessionLock guard;
 
     @BeforeEach
     void setUp() {
-        guard = new SessionMutationGuard(redis);
+        guard = new SessionLock(redis);
     }
 
     @Test
@@ -42,7 +42,7 @@ class SessionMutationGuardTest {
         when(valueOps.setIfAbsent(anyString(), anyString(), eq(Duration.ofSeconds(5)))).thenReturn(true);
         when(redis.execute(any(), any(), any())).thenReturn(1L);
 
-        String result = guard.mutate(sessionId, () -> "done");
+        String result = guard.run(sessionId, () -> "done");
 
         assertThat(result).isEqualTo("done");
         verify(valueOps).setIfAbsent(eq("session-lock:" + sessionId), anyString(), eq(Duration.ofSeconds(5)));
@@ -54,7 +54,7 @@ class SessionMutationGuardTest {
         when(redis.opsForValue()).thenReturn(valueOps);
         when(valueOps.setIfAbsent(anyString(), anyString(), eq(Duration.ofSeconds(5)))).thenReturn(false);
 
-        assertThatThrownBy(() -> guard.mutate(sessionId, () -> "done"))
+        assertThatThrownBy(() -> guard.run(sessionId, () -> "done"))
             .isInstanceOf(ResponseStatusException.class)
             .satisfies(ex -> {
                 ResponseStatusException rse = (ResponseStatusException) ex;
@@ -70,7 +70,7 @@ class SessionMutationGuardTest {
             .thenReturn(false, true);
         when(redis.execute(any(), any(), any())).thenReturn(1L);
 
-        String result = guard.mutate(sessionId, () -> "done");
+        String result = guard.run(sessionId, () -> "done");
 
         assertThat(result).isEqualTo("done");
     }

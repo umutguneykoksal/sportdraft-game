@@ -10,7 +10,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import dev.sportdraft.common.web.AuthTokenResolver;
 import dev.sportdraft.common.web.GlobalExceptionHandler;
 import dev.sportdraft.lobby.boundary.LobbyCommandController;
-import dev.sportdraft.session.control.SessionOrchestrator;
+import dev.sportdraft.lobby.control.LobbyService;
 import dev.sportdraft.session.entity.GameMode;
 import dev.sportdraft.session.entity.PoolLeague;
 import java.util.UUID;
@@ -34,14 +34,14 @@ class LobbyCommandControllerSliceTest {
     private MockMvc mockMvc;
 
     @MockBean
-    private SessionOrchestrator sessionOrchestrator;
+    private LobbyService lobbyService;
 
     private final UUID userId = UUID.fromString("11111111-1111-1111-1111-111111111111");
     private final UUID sessionId = UUID.fromString("22222222-2222-2222-2222-222222222222");
 
     @Test
     void joinRoom_roomFull_returns409() throws Exception {
-        when(sessionOrchestrator.joinRoom(eq(sessionId), eq(userId), any()))
+        when(lobbyService.joinRoom(eq(sessionId), eq(userId), any()))
             .thenThrow(new ResponseStatusException(HttpStatus.CONFLICT, "Room is full"));
 
         mockMvc.perform(post("/api/v2/lobbies/{sessionId}/join", sessionId)
@@ -54,7 +54,7 @@ class LobbyCommandControllerSliceTest {
 
     @Test
     void createRoom_poolTooSmall_returns422() throws Exception {
-        when(sessionOrchestrator.createRoom(
+        when(lobbyService.createRoom(
             eq(userId),
             eq("Host"),
             eq(GameMode.DUEL),

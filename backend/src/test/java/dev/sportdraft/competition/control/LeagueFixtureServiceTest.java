@@ -45,7 +45,7 @@ class LeagueFixtureServiceTest {
     @Mock
     private CompetitionMatchSimulator matchSimulator;
     @Mock
-    private LeaguePhaseCoordinator phaseCoordinator;
+    private LeagueSeasonFlow seasonFlow;
 
     private LeagueFixtureService fixtureService;
     private CompetitionJson competitionJson;
@@ -65,7 +65,7 @@ class LeagueFixtureServiceTest {
             viewRepository,
             matchSimulator,
             competitionJson,
-            phaseCoordinator
+            seasonFlow
         );
     }
 

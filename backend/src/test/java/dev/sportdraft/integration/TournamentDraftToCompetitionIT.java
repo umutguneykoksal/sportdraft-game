@@ -69,7 +69,7 @@ class TournamentDraftToCompetitionIT extends AbstractIntegrationTest {
 
         ActiveSession session = sessionStore.getById(sessionId);
         CompetitionTestFixtures.fillFullRosters(session, cardCatalog, sessionStore);
-        auctionService.ensureOpenRound(sessionId);
+        auctionService.openRoundIfNeeded(sessionId);
 
         for (UUID userId : users) {
             auctionService.confirmMatchStart(sessionId, userId);
@@ -112,7 +112,7 @@ class TournamentDraftToCompetitionIT extends AbstractIntegrationTest {
 
         ActiveSession session = sessionStore.getById(sessionId);
         CompetitionTestFixtures.fillFullRosters(session, cardCatalog, sessionStore);
-        auctionService.ensureOpenRound(sessionId);
+        auctionService.openRoundIfNeeded(sessionId);
 
         for (UUID userId : users) {
             auctionService.confirmMatchStart(sessionId, userId);

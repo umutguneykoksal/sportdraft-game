@@ -16,7 +16,7 @@ import dev.sportdraft.session.redis.ActivePlayer;
 import dev.sportdraft.session.redis.ActiveRound;
 import dev.sportdraft.session.redis.ActiveSession;
 import dev.sportdraft.session.redis.ActiveSessionStore;
-import dev.sportdraft.session.redis.SessionMutationGuard;
+import dev.sportdraft.session.redis.SessionLock;
 import dev.sportdraft.bidding.entity.RoundStatus;
 import java.time.Instant;
 import java.util.List;
@@ -40,7 +40,7 @@ class AuctionServiceTest {
     @Mock
     private ActiveSessionStore sessionStore;
     @Mock
-    private SessionMutationGuard mutationGuard;
+    private SessionLock sessionLock;
     @Mock
     private CardCatalogService cardCatalog;
     @Mock
@@ -52,7 +52,7 @@ class AuctionServiceTest {
 
     @BeforeEach
     void setUp() {
-        when(mutationGuard.mutate(any(UUID.class), any())).thenAnswer(invocation -> {
+        when(sessionLock.run(any(UUID.class), any())).thenAnswer(invocation -> {
             Supplier<?> action = invocation.getArgument(1);
             return action.get();
         });
@@ -60,10 +60,10 @@ class AuctionServiceTest {
             Runnable action = invocation.getArgument(1);
             action.run();
             return null;
-        }).when(mutationGuard).mutateVoid(any(UUID.class), any());
+        }).when(sessionLock).runVoid(any(UUID.class), any());
         auctionService = new AuctionService(
             sessionStore,
-            mutationGuard,
+            sessionLock,
             cardCatalog,
             roundLifecycle,
             matchTransition
@@ -168,14 +168,14 @@ class AuctionServiceTest {
     }
 
     @Test
-    void ensureOpenRound_delegatesToRoundLifecycle() {
+    void openRoundIfNeeded_delegatesToRoundLifecycle() {
         UUID sessionId = UUID.randomUUID();
         ActiveSession session = new ActiveSession(sessionId, SessionStatus.AUCTIONING, Instant.now());
         when(sessionStore.getById(sessionId)).thenReturn(session);
 
-        auctionService.ensureOpenRound(sessionId);
+        auctionService.openRoundIfNeeded(sessionId);
 
-        verify(roundLifecycle).ensureOpenRound(session);
+        verify(roundLifecycle).openRoundIfNeeded(session);
     }
 
     @Test

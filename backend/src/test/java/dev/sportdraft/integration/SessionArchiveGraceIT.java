@@ -43,8 +43,7 @@ class SessionArchiveGraceIT extends AbstractIntegrationTest {
         UUID user1 = UUID.randomUUID();
         UUID user2 = UUID.randomUUID();
 
-        UUID sessionId = lobbyService.joinLobby(user1, "Archive1").sessionId();
-        lobbyService.joinLobby(user2, "Archive2");
+        UUID sessionId = LobbyTestFixtures.openDuelLobby(lobbyService, user1, "Archive1", user2, "Archive2");
         CompetitionTestFixtures.advanceToAuctioning(lobbyService, sessionStore, sessionId, user1, user2);
         CompetitionTestFixtures.completeDuelDraft(auctionService, cardCatalog, sessionStore, sessionId, user1, user2);
 

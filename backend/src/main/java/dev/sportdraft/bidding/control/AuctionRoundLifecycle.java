@@ -12,7 +12,6 @@ import dev.sportdraft.session.redis.ActiveRound;
 import dev.sportdraft.session.redis.ActiveSession;
 import dev.sportdraft.session.redis.ActiveSessionStore;
 import dev.sportdraft.common.sse.SseEmitterRegistry;
-import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Collections;
@@ -30,17 +29,15 @@ public class AuctionRoundLifecycle {
     private final ActiveSessionStore sessionStore;
     private final CardCatalogService cardCatalog;
     private final SseEmitterRegistry sseEmitterRegistry;
-    private final MeterRegistry meterRegistry;
     private final AuctionSettlementService settlement;
     private final AuctionMatchTransition matchTransition;
-    private final AuctionTurnNormalizer turnNormalizer;
+    private final TurnSkipResolver turnSkipResolver;
     private final AuctionPassHandler passHandler;
 
     public AuctionRoundLifecycle(
         ActiveSessionStore sessionStore,
         CardCatalogService cardCatalog,
         SseEmitterRegistry sseEmitterRegistry,
-        MeterRegistry meterRegistry,
         AuctionSettlementService settlement,
         AuctionMatchTransition matchTransition,
         AuctionPassHandler passHandler
@@ -48,10 +45,9 @@ public class AuctionRoundLifecycle {
         this.sessionStore = sessionStore;
         this.cardCatalog = cardCatalog;
         this.sseEmitterRegistry = sseEmitterRegistry;
-        this.meterRegistry = meterRegistry;
         this.settlement = settlement;
         this.matchTransition = matchTransition;
-        this.turnNormalizer = new AuctionTurnNormalizer(settlement);
+        this.turnSkipResolver = new TurnSkipResolver(settlement);
         this.passHandler = passHandler;
     }
 
@@ -96,7 +92,7 @@ public class AuctionRoundLifecycle {
             session.setCardPoolIndex(selection.nextPoolIndex());
             ActiveRound round = selection.round();
             session.getRounds().add(round);
-            if (normalizeTurnForRound(round, session, cardMap)) {
+            if (skipInactiveTurns(round, session, cardMap)) {
                 settlement.finalizeSettledRound(round, session, vBefore, cardMap, false);
                 vBefore = session.getVersion();
                 attempts++;
@@ -125,7 +121,6 @@ public class AuctionRoundLifecycle {
         Card roundCard = cardMap.get(createdRound.getCardId());
         AuctionRoundResponse response = AuctionRoundResponses.toResponse(createdRound, roundCard, session, cardMap);
         sseEmitterRegistry.broadcast(sessionId, "round_started", Map.of("round", response));
-        meterRegistry.counter("auction.round.started").increment();
         return response;
     }
 
@@ -169,9 +164,8 @@ public class AuctionRoundLifecycle {
 
         ActivePlayer bidder = session.findPlayerByUserId(userId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN, "Player not found in session"));
-        if (normalizeTurnForRound(round, session, cardMap)) {
+        if (skipInactiveTurns(round, session, cardMap)) {
             settlement.finalizeSettledRound(round, session, vBefore, cardMap, true);
-            meterRegistry.counter("auction.bid.placed").increment();
             return AuctionRoundResponses.resolveMutationResponse(session, cardMap, userId, roundCard, round);
         }
         AuctionBidValidator.validateBid(session, round, bidder, roundCard, request, cardMap, userId);
@@ -186,11 +180,10 @@ public class AuctionRoundLifecycle {
         ActiveBid bid = new ActiveBid(UUID.randomUUID(), bidder.getId(), request.amountCents(), idem, Instant.now());
         round.getBids().add(bid);
         round.registerBid(bidder.getId(), request.amountCents(), newEndsAt, nextTurn);
-        normalizeTurnForRound(round, session, cardMap);
+        skipInactiveTurns(round, session, cardMap);
 
         if (round.getStatus() != RoundStatus.OPEN) {
             settlement.finalizeSettledRound(round, session, vBefore, cardMap, true);
-            meterRegistry.counter("auction.bid.placed").increment();
             return AuctionRoundResponses.resolveMutationResponse(session, cardMap, userId, roundCard, round);
         }
 
@@ -205,7 +198,6 @@ public class AuctionRoundLifecycle {
                 "amountCents", request.amountCents()
             )
         );
-        meterRegistry.counter("auction.bid.placed").increment();
         return response;
     }
 
@@ -263,7 +255,7 @@ public class AuctionRoundLifecycle {
         }
 
         Card roundCard = cardMap.get(round.getCardId());
-        if (normalizeTurnForRound(round, session, cardMap)) {
+        if (skipInactiveTurns(round, session, cardMap)) {
             settlement.finalizeSettledRound(round, session, vBefore, cardMap, true);
             return AuctionRoundResponses.resolveMutationResponse(session, cardMap, userId, roundCard, round);
         }
@@ -294,11 +286,11 @@ public class AuctionRoundLifecycle {
         startRound(session);
     }
 
-    void ensureOpenRound(ActiveSession session) {
+    void openRoundIfNeeded(ActiveSession session) {
         maybeStartNextRound(session);
     }
 
-    boolean normalizeTurnForRound(ActiveRound round, ActiveSession session, Map<UUID, Card> cardMap) {
-        return turnNormalizer.normalizeTurnForRound(round, session, cardMap);
+    boolean skipInactiveTurns(ActiveRound round, ActiveSession session, Map<UUID, Card> cardMap) {
+        return turnSkipResolver.skipInactiveTurns(round, session, cardMap);
     }
 }

@@ -43,7 +43,7 @@ class TournamentBracketServiceTest {
     @Mock
     private CompetitionMatchSimulator matchSimulator;
     @Mock
-    private TournamentPhaseCoordinator phaseCoordinator;
+    private TournamentBracketFlow bracketFlow;
 
     private TournamentBracketService bracketService;
     private CompetitionJson competitionJson;
@@ -63,7 +63,7 @@ class TournamentBracketServiceTest {
             viewRepository,
             matchSimulator,
             competitionJson,
-            phaseCoordinator
+            bracketFlow
         );
     }
 
@@ -112,7 +112,7 @@ class TournamentBracketServiceTest {
         SimulationResult actual = bracketService.simulateMatchIfNeeded(competition, match);
 
         assertThat(actual).isSameAs(result);
-        verify(phaseCoordinator).ensureFinalMatch(competition);
+        verify(bracketFlow).ensureFinalMatch(competition);
     }
 
     @Test

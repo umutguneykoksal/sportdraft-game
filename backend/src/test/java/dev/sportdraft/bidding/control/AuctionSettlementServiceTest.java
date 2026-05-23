@@ -19,7 +19,6 @@ import dev.sportdraft.session.redis.ActivePlayer;
 import dev.sportdraft.session.redis.ActiveRound;
 import dev.sportdraft.session.redis.ActiveSession;
 import dev.sportdraft.session.redis.ActiveSessionStore;
-import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
@@ -48,7 +47,6 @@ class AuctionSettlementServiceTest {
     private AuctionRoundLifecycle roundLifecycle;
 
     private AuctionSettlementService settlement;
-    private SimpleMeterRegistry meterRegistry;
 
     private final UUID sessionId = UUID.randomUUID();
     private final UUID user1 = UUID.randomUUID();
@@ -56,11 +54,9 @@ class AuctionSettlementServiceTest {
 
     @BeforeEach
     void setUp() {
-        meterRegistry = new SimpleMeterRegistry();
         settlement = new AuctionSettlementService(
             sessionStore,
             sseEmitterRegistry,
-            meterRegistry,
             matchTransition,
             roundLifecycle
         );
@@ -78,7 +74,6 @@ class AuctionSettlementServiceTest {
         verify(sessionStore).saveIfVersionMatch(session, session.getVersion());
         verify(sseEmitterRegistry).broadcast(eq(sessionId), eq("round_ended"), any());
         verify(roundLifecycle).maybeStartNextRound(session);
-        assertThat(meterRegistry.counter("auction.round.closed", "result", "PASSED").count()).isEqualTo(1);
     }
 
     @Test
@@ -136,7 +131,6 @@ class AuctionSettlementServiceTest {
         assertThat(winner.getCardIds()).contains(cardId);
         assertThat(winner.getRemainingBudgetCents()).isEqualTo(90);
         verify(sseEmitterRegistry).broadcast(eq(sessionId), eq("round_ended"), any());
-        assertThat(meterRegistry.counter("auction.round.closed", "result", "SOLD").count()).isEqualTo(1);
     }
 
     @Test

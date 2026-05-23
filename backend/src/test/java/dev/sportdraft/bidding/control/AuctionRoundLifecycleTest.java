@@ -22,7 +22,6 @@ import dev.sportdraft.session.redis.ActivePlayer;
 import dev.sportdraft.session.redis.ActiveRound;
 import dev.sportdraft.session.redis.ActiveSession;
 import dev.sportdraft.session.redis.ActiveSessionStore;
-import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
@@ -66,7 +65,6 @@ class AuctionRoundLifecycleTest {
             sessionStore,
             cardCatalog,
             sseEmitterRegistry,
-            new SimpleMeterRegistry(),
             settlement,
             matchTransition,
             passHandler
@@ -90,12 +88,12 @@ class AuctionRoundLifecycleTest {
     }
 
     @Test
-    void ensureOpenRound_startsRoundWhenNoneOpen() {
+    void openRoundIfNeeded_startsRoundWhenNoneOpen() {
         ActiveSession session = auctioningSession();
         session.setCardPool(List.of(roundCardId));
         session.setCardPoolIndex(0);
 
-        lifecycle.ensureOpenRound(session);
+        lifecycle.openRoundIfNeeded(session);
 
         assertThat(session.findOpenRound()).isPresent();
     }

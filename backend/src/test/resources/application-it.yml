@@ -19,10 +19,6 @@ spring:
           min-idle: 0
           max-active: 8
 
-management:
-  tracing:
-    enabled: false
-
 logging:
   level:
     root: WARN

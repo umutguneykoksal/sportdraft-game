@@ -25,16 +25,16 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 @ExtendWith(MockitoExtension.class)
-class AuctionTurnNormalizerTest {
+class TurnSkipResolverTest {
 
     @Mock
     private AuctionSettlementService settlement;
 
-    private AuctionTurnNormalizer normalizer;
+    private TurnSkipResolver turnSkipResolver;
 
     @BeforeEach
     void setUp() {
-        normalizer = new AuctionTurnNormalizer(settlement);
+        turnSkipResolver = new TurnSkipResolver(settlement);
     }
 
     @Test
@@ -45,7 +45,7 @@ class AuctionTurnNormalizerTest {
         ActiveRound round = openRound(userId, card.getId());
         Map<UUID, Card> cardMap = Map.of(card.getId(), card);
 
-        boolean settled = normalizer.normalizeTurnForRound(round, session, cardMap);
+        boolean settled = turnSkipResolver.skipInactiveTurns(round, session, cardMap);
 
         assertThat(settled).isFalse();
         assertThat(round.getCurrentTurnUserId()).isEqualTo(userId);
@@ -60,7 +60,7 @@ class AuctionTurnNormalizerTest {
         ActiveRound round = openRound(userId, card.getId());
         Map<UUID, Card> cardMap = Map.of(card.getId(), card);
 
-        boolean settled = normalizer.normalizeTurnForRound(round, session, cardMap);
+        boolean settled = turnSkipResolver.skipInactiveTurns(round, session, cardMap);
 
         assertThat(settled).isTrue();
         assertThat(round.getStatus()).isEqualTo(RoundStatus.PASSED);

@@ -20,7 +20,7 @@ import dev.sportdraft.session.redis.ActivePlayer;
 import dev.sportdraft.session.control.SessionAccess;
 import dev.sportdraft.session.redis.ActiveSession;
 import dev.sportdraft.session.redis.ActiveSessionStore;
-import dev.sportdraft.session.redis.SessionMutationGuard;
+import dev.sportdraft.session.redis.SessionLock;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
@@ -29,6 +29,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -37,6 +39,7 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 public class LobbyService {
 
+    private static final Logger log = LoggerFactory.getLogger(LobbyService.class);
     private static final long STARTING_BUDGET_CENTS = 100L;
     private static final int MAX_CONCURRENT_ROOMS = 4;
     /** Pre-draft lobby and in-progress auction only; post-draft competition lives in Postgres. */
@@ -55,18 +58,18 @@ public class LobbyService {
     private final CardCatalogService cardCatalog;
     private final SessionEventLog eventLog;
     private final AuctionService auctionService;
-    private final SessionMutationGuard mutationGuard;
+    private final SessionLock sessionLock;
 
     public LobbyService(ActiveSessionStore sessionStore, SseEmitterRegistry sseEmitterRegistry,
                          CardCatalogService cardCatalog, SessionEventLog eventLog,
                          @Lazy AuctionService auctionService,
-                         SessionMutationGuard mutationGuard) {
+                         SessionLock sessionLock) {
         this.sessionStore = sessionStore;
         this.sseEmitterRegistry = sseEmitterRegistry;
         this.cardCatalog = cardCatalog;
         this.eventLog = eventLog;
         this.auctionService = auctionService;
-        this.mutationGuard = mutationGuard;
+        this.sessionLock = sessionLock;
     }
 
     public PoolMinRatingOptionsResponse getPoolMinRatingOptions(String poolLeague) {
@@ -135,6 +138,10 @@ public class LobbyService {
         session.getPlayers().add(player);
         session.addToTurnOrder(userId);
         sessionStore.save(session);
+        log.info(
+            "Room created session={} host={} mode={} league={} minRating={}",
+            session.getId(), userId, mode, league, minRating
+        );
         return snapshot(session, userId);
     }
 
@@ -177,23 +184,11 @@ public class LobbyService {
             sessionId, "lobby_updated",
             Map.of("sessionId", sessionId, "playerCount", session.playerCount(), "status", session.getStatus())
         );
+        log.info(
+            "Player joined session={} user={} players={}/{} status={}",
+            sessionId, userId, session.playerCount(), session.getMaxPlayers(), session.getStatus()
+        );
         return snapshot(session, userId);
-    }
-
-    /**
-     * @deprecated Use {@link #createRoom} + {@link #joinRoom} instead.
-     */
-    @Deprecated
-    public SessionSnapshotResponse joinLobby(UUID userId, String nickname) {
-        List<ActiveSession> waitingSessions = sessionStore.findWaitingSessions();
-        ActiveSession target = waitingSessions.stream()
-            .filter(s -> s.playerCount() < s.getMaxPlayers())
-            .findFirst()
-            .orElse(null);
-        if (target != null) {
-            return joinRoom(target.getId(), userId, nickname);
-        }
-        return createRoom(userId, nickname);
     }
 
     private String sanitizeNickname(String nickname, UUID userId) {
@@ -217,6 +212,7 @@ public class LobbyService {
             sessionStore.delete(sessionId);
             sseEmitterRegistry.forgetSession(sessionId);
             eventLog.forget(sessionId);
+            log.info("Room deleted session={} reason=last_player_left user={}", sessionId, userId);
             return snapshot(session, userId);
         }
 
@@ -224,6 +220,10 @@ public class LobbyService {
         if (needsReset) {
             session.moveToWaiting();
             sessionStore.saveIfVersionMatch(session, versionBefore);
+            log.info(
+                "Lobby reset session={} user={} remaining={} status={}",
+                sessionId, userId, session.playerCount(), session.getStatus()
+            );
             sseEmitterRegistry.broadcast(
                 sessionId, "countdown_cancelled",
                 Map.of("sessionId", sessionId, "remainingPlayers", session.playerCount())
@@ -232,6 +232,10 @@ public class LobbyService {
             sessionStore.saveIfVersionMatch(session, versionBefore);
         }
 
+        log.info(
+            "Player left session={} user={} remaining={} status={}",
+            sessionId, userId, session.playerCount(), session.getStatus()
+        );
         sseEmitterRegistry.broadcast(
             sessionId, "lobby_updated",
             Map.of("sessionId", sessionId, "playerCount", session.playerCount(), "status", session.getStatus())
@@ -314,7 +318,7 @@ public class LobbyService {
         for (ActiveSession snapshot : sessionStore.findByStatus(SessionStatus.COUNTDOWN)) {
             UUID sessionId = snapshot.getId();
             try {
-                mutationGuard.mutateVoid(sessionId, () -> {
+                sessionLock.runVoid(sessionId, () -> {
                     ActiveSession session = sessionStore.getById(sessionId);
                     if (session.getStatus() != SessionStatus.COUNTDOWN) {
                         return;
@@ -326,6 +330,7 @@ public class LobbyService {
                     if (session.playerCount() == session.getMaxPlayers()) {
                         session.moveToFormationSelect(null);
                         sessionStore.saveIfVersionMatch(session, vBefore);
+                        log.info("Countdown finished session={} status=FORMATION_SELECT", sessionId);
                         sseEmitterRegistry.broadcast(
                             sessionId, "formation_phase_started",
                             Map.of("sessionId", sessionId)
@@ -346,7 +351,7 @@ public class LobbyService {
         for (ActiveSession snapshot : sessionStore.findByStatus(SessionStatus.FORMATION_SELECT)) {
             UUID sessionId = snapshot.getId();
             try {
-                boolean auctionStarted = Boolean.TRUE.equals(mutationGuard.mutate(sessionId, () -> {
+                boolean auctionStarted = Boolean.TRUE.equals(sessionLock.run(sessionId, () -> {
                     ActiveSession session = sessionStore.getById(sessionId);
                     if (session.getStatus() != SessionStatus.FORMATION_SELECT) {
                         return false;
@@ -360,6 +365,10 @@ public class LobbyService {
                         session.getPlayers().forEach(ActivePlayer::confirmDefaultFormationIfMissing);
                         session.moveToAuctioning(buildShuffledCardPool(session));
                         sessionStore.saveIfVersionMatch(session, vBefore);
+                        log.info(
+                            "Auction started session={} players={} poolSize={}",
+                            sessionId, session.playerCount(), session.getCardPool().size()
+                        );
                         sseEmitterRegistry.broadcast(
                             sessionId, "auctioning_started",
                             Map.of("sessionId", sessionId)
@@ -378,7 +387,7 @@ public class LobbyService {
             }
         }
         for (UUID sessionId : auctionStartedSessionIds) {
-            auctionService.ensureOpenRound(sessionId);
+            auctionService.openRoundIfNeeded(sessionId);
         }
     }
 

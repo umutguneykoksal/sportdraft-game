@@ -9,11 +9,11 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
-final class AuctionTurnNormalizer {
+final class TurnSkipResolver {
 
     private final AuctionSettlementService settlement;
 
-    AuctionTurnNormalizer(AuctionSettlementService settlement) {
+    TurnSkipResolver(AuctionSettlementService settlement) {
         this.settlement = settlement;
     }
 
@@ -22,7 +22,7 @@ final class AuctionTurnNormalizer {
      *
      * @return true when the round is no longer open (settled or passed)
      */
-    boolean normalizeTurnForRound(ActiveRound round, ActiveSession session, Map<UUID, Card> cardMap) {
+    boolean skipInactiveTurns(ActiveRound round, ActiveSession session, Map<UUID, Card> cardMap) {
         if (round.getStatus() != RoundStatus.OPEN || round.getCurrentTurnUserId() == null) {
             return round.getStatus() != RoundStatus.OPEN;
         }

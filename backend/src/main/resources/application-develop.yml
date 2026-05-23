@@ -36,8 +36,6 @@ management:
   endpoint:
     health:
       show-details: never
-  tracing:
-    enabled: ${MANAGEMENT_TRACING_ENABLED:false}
 
 logging:
   level:

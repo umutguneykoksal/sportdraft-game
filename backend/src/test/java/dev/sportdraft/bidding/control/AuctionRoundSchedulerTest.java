@@ -19,7 +19,7 @@ import dev.sportdraft.session.redis.ActivePlayer;
 import dev.sportdraft.session.redis.ActiveRound;
 import dev.sportdraft.session.redis.ActiveSession;
 import dev.sportdraft.session.redis.ActiveSessionStore;
-import dev.sportdraft.session.redis.SessionMutationGuard;
+import dev.sportdraft.session.redis.SessionLock;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
@@ -43,7 +43,7 @@ class AuctionRoundSchedulerTest {
     @Mock
     private ActiveSessionStore sessionStore;
     @Mock
-    private SessionMutationGuard mutationGuard;
+    private SessionLock sessionLock;
     @Mock
     private CardCatalogService cardCatalog;
     @Mock
@@ -61,7 +61,7 @@ class AuctionRoundSchedulerTest {
     void setUp() {
         scheduler = new AuctionRoundScheduler(
             sessionStore,
-            mutationGuard,
+            sessionLock,
             cardCatalog,
             settlement,
             matchTransition
@@ -70,7 +70,7 @@ class AuctionRoundSchedulerTest {
             Runnable action = invocation.getArgument(1);
             action.run();
             return null;
-        }).when(mutationGuard).mutateVoid(any(UUID.class), any());
+        }).when(sessionLock).runVoid(any(UUID.class), any());
         when(cardCatalog.getCardMap()).thenReturn(Map.of());
     }
 
@@ -129,7 +129,7 @@ class AuctionRoundSchedulerTest {
         ActiveSession session = auctioningSession();
         when(sessionStore.findByStatus(SessionStatus.AUCTIONING)).thenReturn(List.of(session));
         doThrow(new ActiveSessionStore.OptimisticLockException("stale"))
-            .when(mutationGuard).mutateVoid(eq(sessionId), any());
+            .when(sessionLock).runVoid(eq(sessionId), any());
 
         scheduler.processAuctioningSessions();
     }
@@ -139,7 +139,7 @@ class AuctionRoundSchedulerTest {
         ActiveSession session = auctioningSession();
         when(sessionStore.findByStatus(SessionStatus.AUCTIONING)).thenReturn(List.of(session));
         doThrow(new ResponseStatusException(HttpStatus.CONFLICT, "Session busy, retry"))
-            .when(mutationGuard).mutateVoid(eq(sessionId), any());
+            .when(sessionLock).runVoid(eq(sessionId), any());
 
         scheduler.processAuctioningSessions();
     }
@@ -168,7 +168,7 @@ class AuctionRoundSchedulerTest {
 
         scheduler.expireMatchStartCountdowns();
 
-        verify(mutationGuard, never()).mutateVoid(eq(sessionId), any());
+        verify(sessionLock, never()).runVoid(eq(sessionId), any());
     }
 
     private ActiveSession auctioningSession() {

@@ -26,7 +26,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 @ExtendWith(MockitoExtension.class)
-class TournamentPhaseCoordinatorTest {
+class TournamentBracketFlowTest {
 
     @Mock
     private CompetitionRepository competitionRepository;
@@ -40,7 +40,7 @@ class TournamentPhaseCoordinatorTest {
     @Mock
     private CompetitionJson competitionJson;
 
-    private TournamentPhaseCoordinator coordinator;
+    private TournamentBracketFlow coordinator;
 
     private final UUID competitionId = UUID.randomUUID();
     private final UUID homeUserId = UUID.randomUUID();
@@ -48,7 +48,7 @@ class TournamentPhaseCoordinatorTest {
 
     @BeforeEach
     void setUp() {
-        coordinator = new TournamentPhaseCoordinator(
+        coordinator = new TournamentBracketFlow(
             competitionRepository,
             matchRepository,
             viewRepository,

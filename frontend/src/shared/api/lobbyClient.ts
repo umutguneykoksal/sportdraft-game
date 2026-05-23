@@ -44,16 +44,6 @@ export async function joinRoom(sessionId: string, nickname: string): Promise<Ses
   return parseOrThrow<SessionSnapshotResponse>(response, `joinRoom failed: ${response.status}`);
 }
 
-/** @deprecated Use createRoom + joinRoom instead. */
-export async function joinLobby(nickname: string): Promise<SessionSnapshotResponse> {
-  const response = await fetch(`${getApiBase()}${getApiPrefix()}/lobbies/join`, {
-    method: "POST",
-    headers: authHeaders(),
-    body: JSON.stringify({ nickname }),
-  });
-  return parseOrThrow<SessionSnapshotResponse>(response, `joinLobby failed: ${response.status}`);
-}
-
 export async function leaveLobby(sessionId: string): Promise<SessionSnapshotResponse> {
   const response = await fetch(`${getApiBase()}${getApiPrefix()}/sessions/${sessionId}/players/me`, {
     method: "DELETE",

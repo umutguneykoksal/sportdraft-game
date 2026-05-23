@@ -8,9 +8,10 @@ import dev.sportdraft.session.redis.ActiveRound;
 import dev.sportdraft.session.redis.ActiveSession;
 import dev.sportdraft.session.redis.ActiveSessionStore;
 import dev.sportdraft.common.sse.SseEmitterRegistry;
-import io.micrometer.core.instrument.MeterRegistry;
 import java.util.Map;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -19,22 +20,21 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 public class AuctionSettlementService {
 
+    private static final Logger log = LoggerFactory.getLogger(AuctionSettlementService.class);
+
     private final ActiveSessionStore sessionStore;
     private final SseEmitterRegistry sseEmitterRegistry;
-    private final MeterRegistry meterRegistry;
     private final AuctionMatchTransition matchTransition;
     private final AuctionRoundLifecycle roundLifecycle;
 
     public AuctionSettlementService(
         ActiveSessionStore sessionStore,
         SseEmitterRegistry sseEmitterRegistry,
-        MeterRegistry meterRegistry,
         AuctionMatchTransition matchTransition,
         @Lazy AuctionRoundLifecycle roundLifecycle
     ) {
         this.sessionStore = sessionStore;
         this.sseEmitterRegistry = sseEmitterRegistry;
-        this.meterRegistry = meterRegistry;
         this.matchTransition = matchTransition;
         this.roundLifecycle = roundLifecycle;
     }
@@ -56,7 +56,7 @@ public class AuctionSettlementService {
             );
             maybeFinalizeSession(session);
             roundLifecycle.maybeStartNextRound(session);
-            meterRegistry.counter("auction.round.closed", "result", "PASSED").increment();
+            logRoundClosed(sessionId, round.getId(), "PASSED", null);
             return;
         }
 
@@ -78,7 +78,7 @@ public class AuctionSettlementService {
             );
             maybeFinalizeSession(session);
             roundLifecycle.maybeStartNextRound(session);
-            meterRegistry.counter("auction.round.closed", "result", "PASSED").increment();
+            logRoundClosed(sessionId, round.getId(), "PASSED", "winner_roster_full");
             return;
         }
         if (!RosterSlotAssignment.canFillCard(winner, roundCard, cardMap)) {
@@ -94,7 +94,7 @@ public class AuctionSettlementService {
             );
             maybeFinalizeSession(session);
             roundLifecycle.maybeStartNextRound(session);
-            meterRegistry.counter("auction.round.closed", "result", "PASSED").increment();
+            logRoundClosed(sessionId, round.getId(), "PASSED", "winner_position_full");
             return;
         }
 
@@ -112,7 +112,7 @@ public class AuctionSettlementService {
         );
         maybeFinalizeSession(session);
         roundLifecycle.maybeStartNextRound(session);
-        meterRegistry.counter("auction.round.closed", "result", "SOLD").increment();
+        logRoundClosed(sessionId, round.getId(), "SOLD", "amountCents=" + round.getHighestBidCents());
     }
 
     void settleRoundInline(ActiveRound round, ActiveSession session, Map<UUID, Card> cardMap) {
@@ -141,9 +141,6 @@ public class AuctionSettlementService {
         broadcastRoundResolving(sessionId, round.getId());
         sessionStore.saveIfVersionMatch(session, vBefore);
         broadcastSettledRound(round, session, cardMap);
-        if (round.getStatus() == RoundStatus.PASSED) {
-            meterRegistry.counter("auction.round.closed", "result", "PASSED").increment();
-        }
         maybeFinalizeSession(session);
         if (chainNextRound) {
             roundLifecycle.maybeStartNextRound(session);
@@ -168,6 +165,7 @@ public class AuctionSettlementService {
                     "reason", reason
                 )
             );
+            logRoundClosed(sessionId, round.getId(), "PASSED", reason);
         } else if (round.getStatus() == RoundStatus.SOLD) {
             ActivePlayer winner = session.getPlayers().stream()
                 .filter(p -> p.getId().equals(round.getHighestBidderId()))
@@ -182,7 +180,7 @@ public class AuctionSettlementService {
                     )
                 );
             }
-            meterRegistry.counter("auction.round.closed", "result", "SOLD").increment();
+            logRoundClosed(sessionId, round.getId(), "SOLD", null);
         }
     }
 
@@ -204,5 +202,13 @@ public class AuctionSettlementService {
             sessionId, "round_resolving",
             Map.of("sessionId", sessionId, "roundId", roundId)
         );
+    }
+
+    private void logRoundClosed(UUID sessionId, UUID roundId, String result, String detail) {
+        if (detail == null) {
+            log.info("Round closed session={} round={} result={}", sessionId, roundId, result);
+        } else {
+            log.info("Round closed session={} round={} result={} detail={}", sessionId, roundId, result, detail);
+        }
     }
 }

@@ -34,8 +34,7 @@ class AuctionNonMemberIT extends AbstractIntegrationTest {
         UUID user2 = UUID.randomUUID();
         UUID outsider = UUID.randomUUID();
 
-        UUID sessionId = lobbyService.joinLobby(user1, "Member1").sessionId();
-        lobbyService.joinLobby(user2, "Member2");
+        UUID sessionId = LobbyTestFixtures.openDuelLobby(lobbyService, user1, "Member1", user2, "Member2");
 
         ActiveSession session = sessionStore.getById(sessionId);
         long version = session.getVersion();

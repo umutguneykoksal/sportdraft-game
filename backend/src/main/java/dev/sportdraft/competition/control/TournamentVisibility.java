@@ -7,7 +7,13 @@ import java.util.UUID;
 import org.springframework.stereotype.Component;
 
 @Component
-class LeagueVisibilityPolicy implements CompetitionVisibilityPolicy {
+class TournamentVisibility implements CompetitionVisibility {
+
+    private final TournamentBracketService bracketService;
+
+    TournamentVisibility(TournamentBracketService bracketService) {
+        this.bracketService = bracketService;
+    }
 
     @Override
     public boolean mandatoryWatchPending(
@@ -16,11 +22,12 @@ class LeagueVisibilityPolicy implements CompetitionVisibilityPolicy {
         UUID viewerUserId,
         boolean watchedByMe
     ) {
-        return LeagueRules.isMandatoryWatchPending(
-            competition.getLeaguePhase(),
+        return TournamentRules.isMandatoryWatchPending(
+            competition.getTournamentPhase(),
             match,
             viewerUserId,
-            watchedByMe
+            watchedByMe,
+            bracketService.isTournamentParticipant(competition, viewerUserId)
         );
     }
 
@@ -29,16 +36,23 @@ class LeagueVisibilityPolicy implements CompetitionVisibilityPolicy {
         if (match.getStatus() != CompetitionMatchStatus.COMPLETED) {
             return false;
         }
-        return LeagueRules.scoresVisibleForViewer(competition.getLeaguePhase(), match.getRoundKey(), watchedByMe);
+        return TournamentRules.scoresVisibleForViewer(
+            competition.getTournamentPhase(),
+            match.getRoundKey(),
+            watchedByMe
+        );
     }
 
     @Override
     public boolean replayAllowed(CompetitionEntity competition, CompetitionMatchEntity match) {
-        return LeagueRules.canReplay(competition.getLeaguePhase(), match.getStatus());
+        return TournamentRules.canReplay(competition.getTournamentPhase(), match.getStatus());
     }
 
     @Override
     public int requiredWatchers(CompetitionEntity competition, CompetitionMatchEntity match) {
-        return LeagueRules.PARTICIPANTS_PER_MATCH;
+        if (TournamentRules.isSemi(match.getRoundKey())) {
+            return 2;
+        }
+        return bracketService.snapshotPlayerCount(competition);
     }
 }

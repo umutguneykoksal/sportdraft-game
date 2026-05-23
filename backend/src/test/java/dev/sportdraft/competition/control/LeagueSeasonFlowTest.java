@@ -25,7 +25,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 @ExtendWith(MockitoExtension.class)
-class LeaguePhaseCoordinatorTest {
+class LeagueSeasonFlowTest {
 
     @Mock
     private CompetitionRepository competitionRepository;
@@ -37,7 +37,7 @@ class LeaguePhaseCoordinatorTest {
     @Mock
     private CompetitionJson competitionJson;
 
-    private LeaguePhaseCoordinator coordinator;
+    private LeagueSeasonFlow coordinator;
 
     private final UUID competitionId = UUID.randomUUID();
     private final UUID sessionId = UUID.randomUUID();
@@ -49,7 +49,7 @@ class LeaguePhaseCoordinatorTest {
     @BeforeEach
     void setUp() {
         standingsService = new LeagueStandingsService();
-        coordinator = new LeaguePhaseCoordinator(
+        coordinator = new LeagueSeasonFlow(
             competitionRepository,
             matchRepository,
             viewRepository,
