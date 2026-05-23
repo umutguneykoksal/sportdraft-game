@@ -23,13 +23,13 @@ function FormationCard({
       onClick={onSelect}
       disabled={disabled}
       className={cn(
-        "relative flex w-full flex-col overflow-hidden rounded-md border bg-surface-card transition-colors",
+        "relative flex h-full min-h-0 w-full flex-col overflow-hidden rounded-md border bg-surface-card transition-colors",
         selected ? "border-accent ring-1 ring-accent/40" : "border-white/10 hover:border-white/25",
         disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer"
       )}
     >
       <div
-        className="relative w-full aspect-[5/6]"
+        className="relative min-h-0 w-full flex-1"
         style={{
           background: "linear-gradient(180deg, #1a5c30 0%, #1e6e3a 50%, #1a5c30 100%)",
         }}
@@ -192,11 +192,11 @@ export function LobbySessionPanel({
         )}
 
         {formationPickActive && (
-          <div className="flex flex-1 flex-col justify-center px-4 pb-4 pt-4 sm:px-5">
-            <p className="mb-3 text-center text-sm font-semibold text-slate-300">
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-4 pb-2 pt-3 sm:px-5">
+            <p className="mb-2 shrink-0 text-center text-sm font-semibold text-slate-300">
               Choose your formation
             </p>
-            <div className="grid grid-cols-5 gap-2 sm:gap-2.5">
+            <div className="grid min-h-0 flex-1 grid-cols-5 grid-rows-2 gap-1.5 sm:gap-2">
               {formations.map((f) => (
                 <FormationCard
                   key={f}
@@ -211,7 +211,7 @@ export function LobbySessionPanel({
         )}
 
         {status === "FORMATION_SELECT" && (
-          <footer className="shrink-0 border-t border-white/10 bg-surface-elevated/20 px-5 py-4">
+          <footer className="shrink-0 border-t border-white/10 bg-surface-elevated/20 px-5 py-3">
             {waitingHint && (
               <p className="mb-3 text-center text-xs leading-relaxed text-slate-400">
                 {waitingHint}
