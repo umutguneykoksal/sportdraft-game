@@ -111,17 +111,16 @@ class ActiveSessionStoreIT extends AbstractIntegrationTest {
 
         redis.delete("session:" + sessionId);
         assertThat(sessionStore.exists(sessionId)).isFalse();
-        assertThat(sessionStore.findByStatus(SessionStatus.WAITING))
-            .extracting(ActiveSession::getId)
-            .contains(sessionId);
+        // findByStatus uses MGET and drops missing keys — stale index ids are not returned.
+        assertThat(redis.opsForSet().members("sessions:status:WAITING")).contains(sessionId.toString());
+        assertThat(redis.opsForSet().members("sessions:active")).contains(sessionId.toString());
 
         int removed = sessionStore.reconcileStaleIndexes();
 
         assertThat(removed).isGreaterThanOrEqualTo(1);
         assertThat(sessionStore.findAllActiveIds()).doesNotContain(sessionId);
-        assertThat(sessionStore.findByStatus(SessionStatus.WAITING))
-            .extracting(ActiveSession::getId)
-            .doesNotContain(sessionId);
+        assertThat(redis.opsForSet().members("sessions:status:WAITING")).doesNotContain(sessionId.toString());
+        assertThat(redis.opsForSet().members("sessions:active")).doesNotContain(sessionId.toString());
         assertThat(sessionStore.findWaitingSessions())
             .extracting(ActiveSession::getId)
             .doesNotContain(sessionId);
