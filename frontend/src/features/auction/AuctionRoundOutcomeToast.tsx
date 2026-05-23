@@ -4,60 +4,63 @@ type Props = {
   notice: RoundOutcomeNotice | null;
 };
 
+function ratingSuffix(cardRating?: number): string {
+  return cardRating != null && cardRating > 0 ? ` · ${cardRating} OVR` : "";
+}
+
 export function AuctionRoundOutcomeToast({ notice }: Props) {
   if (!notice) {
     return null;
   }
 
-  const ratingSuffix =
-    notice.cardRating != null && notice.cardRating > 0 ? ` · ${notice.cardRating} OVR` : "";
-
   if (notice.kind === "sold") {
     return (
       <div
-        className="fixed top-6 left-1/2 z-50 w-[min(100%,22rem)] -translate-x-1/2 px-4 pointer-events-none"
+        className={`border-b animate-fade-in ${
+          notice.isMine
+            ? "border-accent-green/30 bg-accent-green/10"
+            : "border-amber-500/30 bg-amber-500/10"
+        }`}
         role="status"
         aria-live="polite"
+        data-testid="auction-round-outcome"
       >
-        <div
-          className={`rounded-xl border px-4 py-3 shadow-lg backdrop-blur-sm animate-fade-in ${
-            notice.isMine
-              ? "bg-accent-green/20 border-accent-green/50"
-              : "bg-amber-900/30 border-amber-500/40"
-          }`}
-        >
-          <p className="text-xs uppercase tracking-wide text-slate-300 mb-1">Card won</p>
-          <p className="text-white font-bold text-base leading-snug">
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-center gap-x-2 gap-y-1 px-4 py-2.5 text-center text-sm">
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Sold</span>
+          <p className="font-semibold text-white">
             <span className={notice.isMine ? "text-accent-green" : "text-amber-300"}>
               {notice.winnerLabel}
-            </span>{" "}
-            signed{" "}
+            </span>
+            <span className="text-slate-400"> signed </span>
             <span className="text-card-gold">{notice.cardName}</span>
-            {ratingSuffix}
+            {ratingSuffix(notice.cardRating)}
+            {notice.amountCents != null && notice.amountCents > 0 && (
+              <span className="text-slate-300"> for {notice.amountCents} cr</span>
+            )}
           </p>
-          {notice.amountCents != null && notice.amountCents > 0 && (
-            <p className="text-sm text-slate-300 mt-1">for {notice.amountCents} cr</p>
-          )}
         </div>
       </div>
     );
   }
 
+  const showDetail =
+    notice.detail != null && notice.detail.toLowerCase() !== "no one bought this card";
+
   return (
     <div
-      className="fixed top-6 left-1/2 z-50 w-[min(100%,22rem)] -translate-x-1/2 px-4 pointer-events-none"
+      className="animate-fade-in border-b border-white/10 bg-surface-elevated/40"
       role="status"
       aria-live="polite"
+      data-testid="auction-round-outcome"
     >
-      <div className="rounded-xl border border-slate-500/40 bg-surface-card/95 px-4 py-3 shadow-lg backdrop-blur-sm animate-fade-in">
-        <p className="text-xs uppercase tracking-wide text-slate-400 mb-1">No one bought</p>
-        <p className="text-white font-semibold text-base">
+      <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-center gap-x-2 gap-y-1 px-4 py-2.5 text-center text-sm">
+        <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Unsold</span>
+        <p className="font-semibold text-white">
           <span className="text-slate-200">{notice.cardName}</span>
-          {ratingSuffix}
-          <span className="text-slate-400 font-normal"> — unsold</span>
+          {ratingSuffix(notice.cardRating)}
         </p>
-        {notice.detail && (
-          <p className="text-sm text-slate-400 mt-1 capitalize">{notice.detail}</p>
+        {showDetail && (
+          <p className="w-full text-xs text-slate-400 capitalize">{notice.detail}</p>
         )}
       </div>
     </div>
