@@ -102,7 +102,8 @@ export function LobbyPage() {
       )}
 
       {isInSession && snapshot && (
-        <LobbySessionPanel
+        <div className="h-full w-full max-w-3xl">
+          <LobbySessionPanel
           nickname={session.nickname}
           snapshot={snapshot}
           maxPlayers={maxPlayers}
@@ -114,6 +115,7 @@ export function LobbyPage() {
           onStartAuction={handleStartAuction}
           onLeave={handleLeave}
         />
+        </div>
       )}
     </div>
   );

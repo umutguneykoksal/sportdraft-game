@@ -23,13 +23,13 @@ function FormationCard({
       onClick={onSelect}
       disabled={disabled}
       className={cn(
-        "relative flex h-full min-h-0 w-full flex-col overflow-hidden rounded-md border bg-surface-card transition-colors",
+        "relative flex w-full flex-col overflow-hidden rounded-md border bg-surface-card transition-colors",
         selected ? "border-accent ring-1 ring-accent/40" : "border-white/10 hover:border-white/25",
         disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer"
       )}
     >
       <div
-        className="relative min-h-0 flex-1 w-full"
+        className="relative w-full aspect-[5/6]"
         style={{
           background: "linear-gradient(180deg, #1a5c30 0%, #1e6e3a 50%, #1a5c30 100%)",
         }}
@@ -40,8 +40,8 @@ function FormationCard({
           <div
             key={i}
             className={cn(
-              "absolute h-1.5 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full",
-              selected ? "bg-accent" : "bg-white/70"
+              "absolute h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full sm:h-2.5 sm:w-2.5",
+              selected ? "bg-accent shadow-sm shadow-accent/50" : "bg-white/80"
             )}
             style={{ left: `${dot.x}%`, top: `${dot.y}%` }}
           />
@@ -49,7 +49,7 @@ function FormationCard({
       </div>
       <div
         className={cn(
-          "shrink-0 py-0.5 text-center text-[10px] font-bold leading-tight sm:text-[11px]",
+          "shrink-0 py-1 text-center text-[10px] font-bold leading-none sm:text-[11px]",
           selected ? "bg-accent text-white" : "bg-surface-elevated text-slate-300"
         )}
       >
@@ -122,7 +122,7 @@ export function LobbySessionPanel({
       : null;
 
   return (
-    <div className="flex h-full max-h-[min(480px,calc(100dvh-1.5rem))] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-white/10 bg-surface-card/95 shadow-2xl shadow-black/30">
+    <div className="flex w-full max-h-[min(560px,calc(100dvh-1.5rem))] flex-col overflow-hidden rounded-2xl border border-white/10 bg-surface-card/95 shadow-2xl shadow-black/30 sm:max-w-3xl">
       <header className="flex shrink-0 items-center justify-between gap-3 border-b border-white/10 px-4 py-2.5">
         <div className="min-w-0">
           <p className="truncate text-base font-bold text-white">{nickname}</p>
@@ -184,11 +184,11 @@ export function LobbySessionPanel({
 
         {formationPickActive && (
           <>
-            <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-3 pb-2 pt-3 sm:px-4">
-              <p className="mb-2 shrink-0 text-center text-xs font-semibold text-slate-300">
+            <div className="overflow-hidden px-3 pb-2 pt-3 sm:px-4">
+              <p className="mb-2 text-center text-xs font-semibold text-slate-300">
                 Choose your formation
               </p>
-              <div className="grid min-h-0 flex-1 grid-cols-5 grid-rows-2 gap-1.5 sm:gap-2">
+              <div className="grid grid-cols-5 gap-1.5 sm:gap-2">
                 {formations.map((f) => (
                   <FormationCard
                     key={f}
