@@ -38,8 +38,8 @@ class CommandToRealtimeFlowIT extends AbstractIntegrationTest {
         UUID user1 = UUID.randomUUID();
         UUID user2 = UUID.randomUUID();
 
-        SessionSnapshotResponse joined = lobbyService.joinLobby(user1, "BidFlow1");
-        lobbyService.joinLobby(user2, "BidFlow2");
+        SessionSnapshotResponse joined = lobbyService.createRoom(user1, "BidFlow1");
+        lobbyService.joinRoom(joined.sessionId(), user2, "BidFlow2");
         UUID sessionId = joined.sessionId();
 
         ActiveSession session = sessionStore.getById(sessionId);

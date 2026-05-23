@@ -18,6 +18,8 @@ import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.ResponseEntity;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.web.server.ResponseStatusException;
+import org.springframework.http.HttpStatus;
 
 @WebMvcTest(controllers = SessionQueryController.class)
 @Import({AuthTokenResolver.class, GlobalExceptionHandler.class})
@@ -41,6 +43,17 @@ class SessionQueryControllerSliceTest {
         mockMvc.perform(get("/api/v2/sessions/{sessionId}/match-result", sessionId)
                 .header("Authorization", "Bearer " + userId))
             .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void getMatchResult_forbidden_returns403() throws Exception {
+        UUID outsider = UUID.fromString("33333333-3333-3333-3333-333333333333");
+        when(sessionReadService.getMatchResult(eq(sessionId), eq(outsider)))
+            .thenThrow(new ResponseStatusException(HttpStatus.FORBIDDEN, "Player not found in session"));
+
+        mockMvc.perform(get("/api/v2/sessions/{sessionId}/match-result", sessionId)
+                .header("Authorization", "Bearer " + outsider))
+            .andExpect(status().isForbidden());
     }
 
     @Test

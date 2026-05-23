@@ -44,7 +44,7 @@ class LobbyServicePoolGuardTest {
             cardCatalog,
             eventLog,
             auctionService,
-            LobbyServiceTestSupport.passthroughMutationGuard()
+            LobbyServiceTestSupport.passthroughSessionLock()
         );
         when(sessionStore.findAllActiveIds()).thenReturn(java.util.List.of());
     }

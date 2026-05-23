@@ -1,4 +1,5 @@
-import { renderHook, waitFor } from "@testing-library/react";
+import { renderHook, waitFor, act } from "@testing-library/react";
+import { ApiError } from "../../../shared/api/errors";
 import { useMatchFlow } from "./useMatchFlow";
 
 jest.mock("../../../shared/api", () => ({
@@ -24,17 +25,84 @@ describe("useMatchFlow", () => {
     expect(MATCH_RESULT_POLL_MS).toBe(2_000);
   });
 
-  it("keeps result unset when match result fetch fails", async () => {
-    getMatchResult.mockRejectedValue(new Error("Match result not ready"));
+  it("keeps polling on transient fetch errors until consecutive limit", async () => {
+    jest.useFakeTimers();
+    try {
+      getMatchResult.mockRejectedValue(new Error("Match result not ready"));
+
+      const { result } = renderHook(() => useMatchFlow("session-1"));
+
+      await waitFor(() => {
+        expect(getMatchResult).toHaveBeenCalledWith("session-1");
+      });
+
+      expect(result.current.loadError).toBeNull();
+
+      for (let i = 0; i < 4; i++) {
+        await act(async () => {
+          jest.advanceTimersByTime(2_000);
+          await Promise.resolve();
+        });
+      }
+
+      await waitFor(() => {
+        expect(result.current.loadError).toBe("Match result not ready");
+      });
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it("stopsImmediatelyOnForbidden", async () => {
+    getMatchResult.mockRejectedValue(new ApiError("Forbidden", 403));
 
     const { result } = renderHook(() => useMatchFlow("session-1"));
 
     await waitFor(() => {
-      expect(getMatchResult).toHaveBeenCalledWith("session-1");
+      expect(result.current.loadError).toBe("Forbidden");
     });
 
-    expect(result.current.ready).toBe(false);
-    expect(result.current.homeScore).toBeNull();
+    expect(getMatchResult).toHaveBeenCalledTimes(1);
+  });
+
+  it("stopsImmediatelyOnUnauthorized", async () => {
+    getMatchResult.mockRejectedValue(new ApiError("Unauthorized", 401));
+
+    const { result } = renderHook(() => useMatchFlow("session-1"));
+
+    await waitFor(() => {
+      expect(result.current.loadError).toBe("Unauthorized");
+    });
+
+    expect(getMatchResult).toHaveBeenCalledTimes(1);
+  });
+
+  it("timesOutAfterMatchCompletedWhenResultNeverArrives", async () => {
+    jest.useFakeTimers();
+    try {
+      const { SIMULATION_STALL_WARNING_MS } = await import("../../../shared/realtime/syncConstants");
+      useSessionStream.mockReturnValue({
+        events: [{ eventType: "match_completed", seq: 10 }],
+        isConnected: true,
+      });
+      getMatchResult.mockResolvedValue(null);
+
+      const { result } = renderHook(() => useMatchFlow("session-1"));
+
+      await waitFor(() => {
+        expect(getMatchResult).toHaveBeenCalled();
+      });
+
+      act(() => {
+        jest.advanceTimersByTime(SIMULATION_STALL_WARNING_MS + 5_000);
+      });
+
+      await waitFor(() => {
+        expect(result.current.loadError).toMatch(/longer than expected/i);
+      });
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it("loadsResultOnMatchCompletedEvent", async () => {

@@ -10,6 +10,8 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.dao.DataAccessException;
 import org.springframework.data.redis.core.RedisOperations;
@@ -29,6 +31,8 @@ import org.springframework.stereotype.Component;
  */
 @Component
 public class ActiveSessionStore {
+
+    private static final Logger log = LoggerFactory.getLogger(ActiveSessionStore.class);
 
     private static final String KEY_PREFIX = "session:";
     private static final String INDEX_ACTIVE = "sessions:active";
@@ -140,12 +144,7 @@ public class ActiveSessionStore {
     public void delete(UUID sessionId) {
         SessionStatus oldStatus = readCurrentStatus(sessionId);
         redis.delete(key(sessionId));
-        String idStr = sessionId.toString();
-        redis.opsForSet().remove(INDEX_ACTIVE, idStr);
-        redis.opsForZSet().remove(INDEX_WAITING, idStr);
-        if (oldStatus != null) {
-            redis.opsForSet().remove(STATUS_INDEX_PREFIX + oldStatus.name(), idStr);
-        }
+        removeFromAllIndexes(sessionId.toString(), oldStatus);
     }
 
     public boolean exists(UUID sessionId) {
@@ -165,13 +164,35 @@ public class ActiveSessionStore {
     }
 
     /**
-     * Returns all active (non-FINISHED) session IDs.
+     * Returns all active (non-FINISHED) session IDs whose session key still exists.
      * Used by cleanup scheduler and admin operations.
      */
     public List<UUID> findAllActiveIds() {
         Set<String> ids = redis.opsForSet().members(INDEX_ACTIVE);
         if (ids == null) return List.of();
-        return ids.stream().map(UUID::fromString).toList();
+        return ids.stream()
+            .filter(this::sessionKeyExists)
+            .map(UUID::fromString)
+            .toList();
+    }
+
+    /**
+     * Removes index entries that point at expired or deleted session keys.
+     * This can happen when a session key TTL expires without calling {@link #delete}.
+     *
+     * @return number of stale index entries removed
+     */
+    public int reconcileStaleIndexes() {
+        int removed = 0;
+        removed += reconcileIndexSet(INDEX_ACTIVE);
+        removed += reconcileWaitingIndex();
+        for (SessionStatus status : SessionStatus.values()) {
+            removed += reconcileIndexSet(STATUS_INDEX_PREFIX + status.name());
+        }
+        if (removed > 0) {
+            log.info("Reconciled {} stale Redis session index entries", removed);
+        }
+        return removed;
     }
 
     /**
@@ -262,6 +283,52 @@ public class ActiveSessionStore {
         String json = redis.opsForValue().get(key(sessionId));
         if (json == null) return null;
         return fromJson(json).getStatus();
+    }
+
+    private int reconcileIndexSet(String indexKey) {
+        Set<String> ids = redis.opsForSet().members(indexKey);
+        if (ids == null || ids.isEmpty()) {
+            return 0;
+        }
+        int removed = 0;
+        for (String idStr : ids) {
+            if (!sessionKeyExists(idStr)) {
+                removeFromAllIndexes(idStr, null);
+                removed++;
+            }
+        }
+        return removed;
+    }
+
+    private int reconcileWaitingIndex() {
+        Set<String> ids = redis.opsForZSet().range(INDEX_WAITING, 0, -1);
+        if (ids == null || ids.isEmpty()) {
+            return 0;
+        }
+        int removed = 0;
+        for (String idStr : ids) {
+            if (!sessionKeyExists(idStr)) {
+                removeFromAllIndexes(idStr, null);
+                removed++;
+            }
+        }
+        return removed;
+    }
+
+    private void removeFromAllIndexes(String idStr, SessionStatus knownStatus) {
+        redis.opsForSet().remove(INDEX_ACTIVE, idStr);
+        redis.opsForZSet().remove(INDEX_WAITING, idStr);
+        if (knownStatus != null) {
+            redis.opsForSet().remove(STATUS_INDEX_PREFIX + knownStatus.name(), idStr);
+        } else {
+            for (SessionStatus status : SessionStatus.values()) {
+                redis.opsForSet().remove(STATUS_INDEX_PREFIX + status.name(), idStr);
+            }
+        }
+    }
+
+    private boolean sessionKeyExists(String idStr) {
+        return Boolean.TRUE.equals(redis.hasKey(KEY_PREFIX + idStr));
     }
 
     private void updateIndexes(ActiveSession session, SessionStatus oldStatus) {

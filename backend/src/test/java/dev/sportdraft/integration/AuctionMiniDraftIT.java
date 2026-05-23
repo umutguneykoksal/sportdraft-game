@@ -39,8 +39,8 @@ class AuctionMiniDraftIT extends AbstractIntegrationTest {
         UUID user1 = UUID.randomUUID();
         UUID user2 = UUID.randomUUID();
 
-        SessionSnapshotResponse joined = lobbyService.joinLobby(user1, "DraftHost");
-        lobbyService.joinLobby(user2, "DraftGuest");
+        SessionSnapshotResponse joined = lobbyService.createRoom(user1, "DraftHost");
+        lobbyService.joinRoom(joined.sessionId(), user2, "DraftGuest");
         UUID sessionId = joined.sessionId();
 
         advanceToAuctioning(sessionId, user1, user2);

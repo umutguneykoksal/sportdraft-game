@@ -54,16 +54,6 @@ public class LobbyController {
         return lobbyService.joinRoom(sessionId, authTokenResolver.resolveUserId(authorization), nickname);
     }
 
-    @PostMapping("/lobbies/join")
-    @Deprecated
-    public SessionSnapshotResponse joinLobby(
-        @Valid @RequestBody(required = false) JoinLobbyRequest request,
-        @RequestHeader("Authorization") String authorization
-    ) {
-        String nickname = request != null ? request.nickname() : null;
-        return lobbyService.joinLobby(authTokenResolver.resolveUserId(authorization), nickname);
-    }
-
     @DeleteMapping("/sessions/{sessionId}/players/me")
     public SessionSnapshotResponse leaveLobby(
         @PathVariable UUID sessionId,

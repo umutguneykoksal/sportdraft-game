@@ -163,7 +163,7 @@ final class CompetitionTestFixtures {
     ) {
         ActiveSession session = sessionStore.getById(sessionId);
         fillFullRosters(session, catalog, sessionStore);
-        auctionService.ensureOpenRound(sessionId);
+        auctionService.openRoundIfNeeded(sessionId);
         auctionService.confirmMatchStart(sessionId, user1);
         auctionService.confirmMatchStart(sessionId, user2);
     }
@@ -177,7 +177,7 @@ final class CompetitionTestFixtures {
     ) {
         ActiveSession session = sessionStore.getById(sessionId);
         fillFullRosters(session, catalog, sessionStore);
-        auctionService.ensureOpenRound(sessionId);
+        auctionService.openRoundIfNeeded(sessionId);
         for (UUID userId : userIds) {
             auctionService.confirmMatchStart(sessionId, userId);
         }

@@ -12,12 +12,6 @@ final class IntegrationTestStateCleaner {
           competition_match,
           competition,
           match_history,
-          match_result,
-          bid,
-          auction_round,
-          session_player_cards,
-          session_player,
-          game_session,
           processed_event
         RESTART IDENTITY CASCADE
         """;

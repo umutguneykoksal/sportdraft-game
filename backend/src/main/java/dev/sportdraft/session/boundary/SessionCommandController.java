@@ -1,8 +1,9 @@
 package dev.sportdraft.session.boundary;
 
+import dev.sportdraft.bidding.control.AuctionService;
 import dev.sportdraft.common.web.AuthTokenResolver;
 import dev.sportdraft.lobby.boundary.SessionSnapshotResponse;
-import dev.sportdraft.session.control.SessionOrchestrator;
+import dev.sportdraft.lobby.control.LobbyService;
 import jakarta.validation.Valid;
 import java.util.UUID;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -18,11 +19,17 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v2")
 public class SessionCommandController {
 
-    private final SessionOrchestrator sessionOrchestrator;
+    private final LobbyService lobbyService;
+    private final AuctionService auctionService;
     private final AuthTokenResolver authTokenResolver;
 
-    public SessionCommandController(SessionOrchestrator sessionOrchestrator, AuthTokenResolver authTokenResolver) {
-        this.sessionOrchestrator = sessionOrchestrator;
+    public SessionCommandController(
+        LobbyService lobbyService,
+        AuctionService auctionService,
+        AuthTokenResolver authTokenResolver
+    ) {
+        this.lobbyService = lobbyService;
+        this.auctionService = auctionService;
         this.authTokenResolver = authTokenResolver;
     }
 
@@ -31,7 +38,7 @@ public class SessionCommandController {
         @PathVariable UUID sessionId,
         @RequestHeader("Authorization") String authorization
     ) {
-        return sessionOrchestrator.leaveLobby(sessionId, authTokenResolver.resolveUserId(authorization));
+        return lobbyService.leaveLobby(sessionId, authTokenResolver.resolveUserId(authorization));
     }
 
     @GetMapping("/sessions/{sessionId}")
@@ -39,7 +46,7 @@ public class SessionCommandController {
         @PathVariable UUID sessionId,
         @RequestHeader("Authorization") String authorization
     ) {
-        return sessionOrchestrator.getSnapshot(sessionId, authTokenResolver.resolveUserId(authorization));
+        return lobbyService.getSnapshot(sessionId, authTokenResolver.resolveUserId(authorization));
     }
 
     @PostMapping("/sessions/{sessionId}/formation")
@@ -48,7 +55,7 @@ public class SessionCommandController {
         @Valid @RequestBody SelectFormationRequest request,
         @RequestHeader("Authorization") String authorization
     ) {
-        return sessionOrchestrator.selectFormation(
+        return lobbyService.selectFormation(
             sessionId,
             authTokenResolver.resolveUserId(authorization),
             request.formation()
@@ -60,7 +67,7 @@ public class SessionCommandController {
         @PathVariable UUID sessionId,
         @RequestHeader("Authorization") String authorization
     ) {
-        return sessionOrchestrator.confirmFormationReady(sessionId, authTokenResolver.resolveUserId(authorization));
+        return lobbyService.confirmFormationReady(sessionId, authTokenResolver.resolveUserId(authorization));
     }
 
     @PostMapping("/sessions/{sessionId}/confirm-match-start")
@@ -68,6 +75,8 @@ public class SessionCommandController {
         @PathVariable UUID sessionId,
         @RequestHeader("Authorization") String authorization
     ) {
-        return sessionOrchestrator.confirmMatchStart(sessionId, authTokenResolver.resolveUserId(authorization));
+        UUID userId = authTokenResolver.resolveUserId(authorization);
+        auctionService.confirmMatchStart(sessionId, userId);
+        return lobbyService.getSnapshot(sessionId, userId);
     }
 }

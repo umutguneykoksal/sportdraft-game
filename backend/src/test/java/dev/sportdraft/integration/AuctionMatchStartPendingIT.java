@@ -36,11 +36,10 @@ class AuctionMatchStartPendingIT extends AbstractIntegrationTest {
         UUID user1 = UUID.randomUUID();
         UUID user2 = UUID.randomUUID();
 
-        UUID sessionId = lobbyService.joinLobby(user1, "Pending1").sessionId();
-        lobbyService.joinLobby(user2, "Pending2");
+        UUID sessionId = LobbyTestFixtures.openDuelLobby(lobbyService, user1, "Pending1", user2, "Pending2");
         CompetitionTestFixtures.advanceToAuctioning(lobbyService, sessionStore, sessionId, user1, user2);
 
-        auctionService.ensureOpenRound(sessionId);
+        auctionService.openRoundIfNeeded(sessionId);
 
         ActiveSession session = sessionStore.getById(sessionId);
         CompetitionTestFixtures.fillFullRosters(session, cardCatalog, sessionStore);

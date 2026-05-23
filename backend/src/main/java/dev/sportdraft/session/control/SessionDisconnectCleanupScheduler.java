@@ -57,6 +57,7 @@ public class SessionDisconnectCleanupScheduler {
 
     @Scheduled(fixedDelay = 5000)
     public void cleanupDisconnectedSessions() {
+        sessionStore.reconcileStaleIndexes();
         List<UUID> activeIds = sessionStore.findAllActiveIds();
         for (UUID sessionId : activeIds) {
             try {
@@ -116,7 +117,7 @@ public class SessionDisconnectCleanupScheduler {
                     connectedPlayer = p;
                 }
             }
-            log.info("Session {} player {} ({}) hasEmitter={} disconnected={}",
+            log.debug("Session {} player {} ({}) hasEmitter={} disconnected={}",
                 sessionId, p.getNickname(), p.getUserId(), hasEmitter, disconnected);
         }
 

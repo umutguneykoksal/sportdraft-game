@@ -31,8 +31,7 @@ class AuctionIdempotencyIT extends AbstractIntegrationTest {
         UUID user1 = UUID.randomUUID();
         UUID user2 = UUID.randomUUID();
 
-        UUID sessionId = lobbyService.joinLobby(user1, "Idem1").sessionId();
-        lobbyService.joinLobby(user2, "Idem2");
+        UUID sessionId = LobbyTestFixtures.openDuelLobby(lobbyService, user1, "Idem1", user2, "Idem2");
 
         ActiveSession session = sessionStore.getById(sessionId);
         long version = session.getVersion();

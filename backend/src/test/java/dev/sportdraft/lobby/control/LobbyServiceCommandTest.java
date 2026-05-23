@@ -60,7 +60,7 @@ class LobbyServiceCommandTest {
             cardCatalog,
             eventLog,
             auctionService,
-            LobbyServiceTestSupport.passthroughMutationGuard()
+            LobbyServiceTestSupport.passthroughSessionLock()
         );
     }
 
@@ -261,7 +261,7 @@ class LobbyServiceCommandTest {
 
         assertThat(session.getStatus()).isEqualTo(SessionStatus.AUCTIONING);
         verify(sseEmitterRegistry).broadcast(eq(sessionId), eq("auctioning_started"), any());
-        verify(auctionService).ensureOpenRound(sessionId);
+        verify(auctionService).openRoundIfNeeded(sessionId);
     }
 
     @Test

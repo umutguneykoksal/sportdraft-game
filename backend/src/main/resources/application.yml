@@ -36,18 +36,18 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info,metrics,prometheus
+        include: health,info
   endpoint:
     health:
       show-details: always
-  tracing:
-    sampling:
-      probability: 1.0
 
 logging:
   level:
+    root: INFO
+    dev.sportdraft: INFO
     dev.sportdraft.common.sse: DEBUG
-    dev.sportdraft.session.control.SessionDisconnectCleanupScheduler: DEBUG
+    dev.sportdraft.common.realtime: DEBUG
+    dev.sportdraft.session.control.SessionDisconnectCleanupScheduler: INFO
 
 spring.task:
   scheduling:

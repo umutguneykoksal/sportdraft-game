@@ -50,9 +50,9 @@ class CompetitionMatchCommandServiceTest {
     @Mock
     private CompetitionQueryService competitionQueryService;
     @Mock
-    private CompetitionMatchModeHooks tournamentHooks;
+    private CompetitionModeBehavior tournamentHooks;
     @Mock
-    private CompetitionMatchModeHooks leagueHooks;
+    private CompetitionModeBehavior leagueHooks;
 
     private CompetitionMatchCommandService commandService;
 

@@ -39,7 +39,7 @@ class LobbyServicePoolOptionsTest {
             cardCatalog,
             eventLog,
             auctionService,
-            LobbyServiceTestSupport.passthroughMutationGuard()
+            LobbyServiceTestSupport.passthroughSessionLock()
         );
     }
 

@@ -31,7 +31,7 @@ class CompetitionMatchCommandService {
     private final CompetitionMatchViewRepository viewRepository;
     private final ActiveSessionStore sessionStore;
     private final CompetitionQueryService competitionQueryService;
-    private final Map<CompetitionType, CompetitionMatchModeHooks> hooksByType;
+    private final Map<CompetitionType, CompetitionModeBehavior> modeBehaviorByType;
 
     CompetitionMatchCommandService(
         CompetitionRepository competitionRepository,
@@ -39,16 +39,16 @@ class CompetitionMatchCommandService {
         CompetitionMatchViewRepository viewRepository,
         ActiveSessionStore sessionStore,
         CompetitionQueryService competitionQueryService,
-        List<CompetitionMatchModeHooks> hooks
+        List<CompetitionModeBehavior> hooks
     ) {
         this.competitionRepository = competitionRepository;
         this.matchRepository = matchRepository;
         this.viewRepository = viewRepository;
         this.sessionStore = sessionStore;
         this.competitionQueryService = competitionQueryService;
-        this.hooksByType = new EnumMap<>(CompetitionType.class);
-        for (CompetitionMatchModeHooks hook : hooks) {
-            this.hooksByType.put(hook.type(), hook);
+        this.modeBehaviorByType = new EnumMap<>(CompetitionType.class);
+        for (CompetitionModeBehavior hook : hooks) {
+            this.modeBehaviorByType.put(hook.type(), hook);
         }
     }
 
@@ -61,7 +61,7 @@ class CompetitionMatchCommandService {
         CompetitionType expectedType
     ) {
         CompetitionEntity competition = loadCompetition(sessionId, expectedType);
-        CompetitionMatchModeHooks hooks = hooksFor(expectedType);
+        CompetitionModeBehavior hooks = modeBehaviorFor(expectedType);
         requireParticipant(competition, sessionId, userId, hooks);
 
         CompetitionMatchEntity match = loadMatch(competition.getId(), matchId);
@@ -103,7 +103,7 @@ class CompetitionMatchCommandService {
         CompetitionType expectedType
     ) {
         CompetitionEntity competition = loadCompetition(sessionId, expectedType);
-        CompetitionMatchModeHooks hooks = hooksFor(expectedType);
+        CompetitionModeBehavior hooks = modeBehaviorFor(expectedType);
         requireParticipant(competition, sessionId, userId, hooks);
 
         CompetitionMatchEntity match = loadMatch(competition.getId(), matchId);
@@ -133,7 +133,7 @@ class CompetitionMatchCommandService {
         CompetitionEntity competition,
         UUID sessionId,
         UUID userId,
-        CompetitionMatchModeHooks hooks
+        CompetitionModeBehavior hooks
     ) {
         sessionStore.findById(sessionId).ifPresentOrElse(
             session -> SessionAccess.requireMember(session, userId),
@@ -165,8 +165,8 @@ class CompetitionMatchCommandService {
         return match;
     }
 
-    private CompetitionMatchModeHooks hooksFor(CompetitionType type) {
-        CompetitionMatchModeHooks hooks = hooksByType.get(type);
+    private CompetitionModeBehavior modeBehaviorFor(CompetitionType type) {
+        CompetitionModeBehavior hooks = modeBehaviorByType.get(type);
         if (hooks == null) {
             throw new IllegalStateException("No match hooks registered for " + type);
         }

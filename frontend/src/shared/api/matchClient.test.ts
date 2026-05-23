@@ -20,6 +20,19 @@ describe("matchClient", () => {
     expect(result).toBeNull();
   });
 
+  it("getMatchResult_throwsOnServerError", async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      status: 500,
+      ok: false,
+      text: async () => JSON.stringify({ detail: "Internal error" }),
+    }) as typeof fetch;
+
+    await expect(getMatchResult("session-1")).rejects.toMatchObject({
+      message: "Internal error",
+      status: 500,
+    });
+  });
+
   it("getMatchTimeline_returnsEmptyOn404", async () => {
     global.fetch = jest.fn().mockResolvedValue({ status: 404, ok: false }) as typeof fetch;
 

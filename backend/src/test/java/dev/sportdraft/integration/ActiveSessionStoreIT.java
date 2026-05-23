@@ -10,11 +10,15 @@ import java.time.Instant;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.core.StringRedisTemplate;
 
 class ActiveSessionStoreIT extends AbstractIntegrationTest {
 
     @Autowired
     private ActiveSessionStore sessionStore;
+
+    @Autowired
+    private StringRedisTemplate redis;
 
     @Test
     void save_updatesStatusIndex() {
@@ -95,6 +99,30 @@ class ActiveSessionStoreIT extends AbstractIntegrationTest {
         assertThat(sessionStore.findById(sessionId)).isEmpty();
         assertThat(sessionStore.findAllActiveIds()).doesNotContain(sessionId);
         assertThat(sessionStore.findByStatus(SessionStatus.WAITING))
+            .extracting(ActiveSession::getId)
+            .doesNotContain(sessionId);
+    }
+
+    @Test
+    void reconcileStaleIndexes_removesOrphanIndexEntries() {
+        UUID sessionId = UUID.randomUUID();
+        ActiveSession session = new ActiveSession(sessionId, SessionStatus.WAITING, Instant.now());
+        sessionStore.save(session);
+
+        redis.delete("session:" + sessionId);
+        assertThat(sessionStore.exists(sessionId)).isFalse();
+        assertThat(sessionStore.findByStatus(SessionStatus.WAITING))
+            .extracting(ActiveSession::getId)
+            .contains(sessionId);
+
+        int removed = sessionStore.reconcileStaleIndexes();
+
+        assertThat(removed).isGreaterThanOrEqualTo(1);
+        assertThat(sessionStore.findAllActiveIds()).doesNotContain(sessionId);
+        assertThat(sessionStore.findByStatus(SessionStatus.WAITING))
+            .extracting(ActiveSession::getId)
+            .doesNotContain(sessionId);
+        assertThat(sessionStore.findWaitingSessions())
             .extracting(ActiveSession::getId)
             .doesNotContain(sessionId);
     }

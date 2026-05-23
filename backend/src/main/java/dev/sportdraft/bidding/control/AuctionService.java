@@ -12,7 +12,7 @@ import dev.sportdraft.session.redis.ActivePlayer;
 import dev.sportdraft.session.redis.ActiveRound;
 import dev.sportdraft.session.redis.ActiveSession;
 import dev.sportdraft.session.redis.ActiveSessionStore;
-import dev.sportdraft.session.redis.SessionMutationGuard;
+import dev.sportdraft.session.redis.SessionLock;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -29,34 +29,34 @@ import org.springframework.web.server.ResponseStatusException;
 public class AuctionService {
 
     private final ActiveSessionStore sessionStore;
-    private final SessionMutationGuard mutationGuard;
+    private final SessionLock sessionLock;
     private final CardCatalogService cardCatalog;
     private final AuctionRoundLifecycle roundLifecycle;
     private final AuctionMatchTransition matchTransition;
 
     public AuctionService(
         ActiveSessionStore sessionStore,
-        SessionMutationGuard mutationGuard,
+        SessionLock sessionLock,
         CardCatalogService cardCatalog,
         AuctionRoundLifecycle roundLifecycle,
         AuctionMatchTransition matchTransition
     ) {
         this.sessionStore = sessionStore;
-        this.mutationGuard = mutationGuard;
+        this.sessionLock = sessionLock;
         this.cardCatalog = cardCatalog;
         this.roundLifecycle = roundLifecycle;
         this.matchTransition = matchTransition;
     }
 
     public void confirmMatchStart(UUID sessionId, UUID userId) {
-        mutationGuard.mutateVoid(sessionId, () -> {
+        sessionLock.runVoid(sessionId, () -> {
             ActiveSession session = sessionStore.getById(sessionId);
             matchTransition.confirmMatchStart(session, userId);
         });
     }
 
     public AuctionRoundResponse startRound(UUID sessionId, UUID userId) {
-        return mutationGuard.mutate(sessionId, () -> {
+        return sessionLock.run(sessionId, () -> {
             ActiveSession session = sessionStore.getById(sessionId);
             SessionAccess.requireMember(session, userId);
             return roundLifecycle.startRound(session);
@@ -64,15 +64,15 @@ public class AuctionService {
     }
 
     public AuctionRoundResponse placeBid(UUID sessionId, UUID userId, String idempotencyKey, PlaceBidRequest request) {
-        return mutationGuard.mutate(sessionId, () -> roundLifecycle.placeBid(sessionId, userId, idempotencyKey, request));
+        return sessionLock.run(sessionId, () -> roundLifecycle.placeBid(sessionId, userId, idempotencyKey, request));
     }
 
     public AuctionRoundResponse readyNext(UUID sessionId, UUID userId, UUID roundId) {
-        return mutationGuard.mutate(sessionId, () -> roundLifecycle.readyNext(sessionId, userId, roundId));
+        return sessionLock.run(sessionId, () -> roundLifecycle.readyNext(sessionId, userId, roundId));
     }
 
     public AuctionRoundResponse passRound(UUID sessionId, UUID userId, UUID roundId) {
-        return mutationGuard.mutate(sessionId, () -> roundLifecycle.passRound(sessionId, userId, roundId));
+        return sessionLock.run(sessionId, () -> roundLifecycle.passRound(sessionId, userId, roundId));
     }
 
     public AuctionStateResponse getAuctionState(UUID sessionId, UUID userId) {
@@ -221,10 +221,10 @@ public class AuctionService {
         int awayScore
     ) {}
 
-    public void ensureOpenRound(UUID sessionId) {
-        mutationGuard.mutateVoid(sessionId, () -> {
+    public void openRoundIfNeeded(UUID sessionId) {
+        sessionLock.runVoid(sessionId, () -> {
             ActiveSession session = sessionStore.getById(sessionId);
-            roundLifecycle.ensureOpenRound(session);
+            roundLifecycle.openRoundIfNeeded(session);
         });
     }
 }

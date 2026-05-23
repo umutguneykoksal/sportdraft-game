@@ -40,8 +40,8 @@ class DuelMatchFlowIT extends AbstractIntegrationTest {
         UUID user1 = UUID.randomUUID();
         UUID user2 = UUID.randomUUID();
 
-        SessionSnapshotResponse firstJoin = lobbyService.joinLobby(user1, "DuelPlayer1");
-        SessionSnapshotResponse secondJoin = lobbyService.joinLobby(user2, "DuelPlayer2");
+        SessionSnapshotResponse firstJoin = lobbyService.createRoom(user1, "DuelPlayer1");
+        SessionSnapshotResponse secondJoin = lobbyService.joinRoom(firstJoin.sessionId(), user2, "DuelPlayer2");
         UUID sessionId = secondJoin.sessionId();
         assertThat(firstJoin.sessionId()).isEqualTo(sessionId);
 

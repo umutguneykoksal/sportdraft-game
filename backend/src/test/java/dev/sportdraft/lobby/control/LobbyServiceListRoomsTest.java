@@ -44,7 +44,7 @@ class LobbyServiceListRoomsTest {
             cardCatalog,
             eventLog,
             auctionService,
-            LobbyServiceTestSupport.passthroughMutationGuard()
+            LobbyServiceTestSupport.passthroughSessionLock()
         );
     }
 

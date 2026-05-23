@@ -55,6 +55,10 @@ public class DraftCompletedListener {
 
             CompetitionEntity competition = competitionRepository.findBySessionId(event.sessionId())
                 .orElseGet(() -> competitionModeRegistry.initialize(event));
+            log.info(
+                "Competition started session={} competition={} mode={}",
+                event.sessionId(), competition.getId(), event.gameMode()
+            );
             broadcastAfterCommit(
                 event.sessionId(),
                 competitionModeRegistry.startedEventType(event.gameMode()),

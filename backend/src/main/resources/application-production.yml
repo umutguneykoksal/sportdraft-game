@@ -32,13 +32,11 @@ management:
   endpoint:
     health:
       show-details: never
-  tracing:
-    enabled: ${MANAGEMENT_TRACING_ENABLED:false}
 
 logging:
   level:
     root: INFO
-    # Keep DEBUG for disconnect monitoring in prod; minimal overhead.
+    dev.sportdraft: INFO
     dev.sportdraft.common.sse: INFO
     dev.sportdraft.common.realtime: INFO
     dev.sportdraft.session.control.SessionDisconnectCleanupScheduler: INFO

@@ -23,7 +23,6 @@ import dev.sportdraft.common.web.GlobalExceptionHandler;
 import dev.sportdraft.lobby.boundary.LobbyController;
 import dev.sportdraft.lobby.boundary.LobbyCommandController;
 import dev.sportdraft.lobby.control.LobbyService;
-import dev.sportdraft.session.control.SessionOrchestrator;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -52,15 +51,12 @@ class ApiV1V2ParityTest {
     @BeforeEach
     void setUp() {
         LobbyService lobbyService = mock(LobbyService.class);
-        SessionOrchestrator sessionOrchestrator = mock(SessionOrchestrator.class);
 
         when(lobbyService.joinRoom(eq(sessionId), eq(userId), any()))
             .thenThrow(new ResponseStatusException(HttpStatus.CONFLICT, "Room is full"));
-        when(sessionOrchestrator.joinRoom(eq(sessionId), eq(userId), any()))
-            .thenThrow(new ResponseStatusException(HttpStatus.CONFLICT, "Room is full"));
 
         v1LobbyMvc = standalone(new LobbyController(lobbyService, authTokenResolver));
-        v2LobbyMvc = standalone(new LobbyCommandController(sessionOrchestrator, authTokenResolver));
+        v2LobbyMvc = standalone(new LobbyCommandController(lobbyService, authTokenResolver));
 
         SessionEventLog eventLog = mock(SessionEventLog.class);
         RealtimeConnectionAuthorizer authorizer = mock(RealtimeConnectionAuthorizer.class);

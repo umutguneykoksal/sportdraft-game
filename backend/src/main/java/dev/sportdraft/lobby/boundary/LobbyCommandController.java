@@ -1,8 +1,7 @@
 package dev.sportdraft.lobby.boundary;
 
 import dev.sportdraft.common.web.AuthTokenResolver;
-import dev.sportdraft.lobby.boundary.PoolMinRatingOptionsResponse;
-import dev.sportdraft.session.control.SessionOrchestrator;
+import dev.sportdraft.lobby.control.LobbyService;
 import jakarta.validation.Valid;
 import java.util.List;
 import java.util.UUID;
@@ -19,24 +18,24 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v2/lobbies")
 public class LobbyCommandController {
 
-    private final SessionOrchestrator sessionOrchestrator;
+    private final LobbyService lobbyService;
     private final AuthTokenResolver authTokenResolver;
 
-    public LobbyCommandController(SessionOrchestrator sessionOrchestrator, AuthTokenResolver authTokenResolver) {
-        this.sessionOrchestrator = sessionOrchestrator;
+    public LobbyCommandController(LobbyService lobbyService, AuthTokenResolver authTokenResolver) {
+        this.lobbyService = lobbyService;
         this.authTokenResolver = authTokenResolver;
     }
 
     @GetMapping
     public List<LobbyRoomResponse> listRooms() {
-        return sessionOrchestrator.listRooms();
+        return lobbyService.listRooms();
     }
 
     @GetMapping("/pool-options")
     public PoolMinRatingOptionsResponse poolMinRatingOptions(
         @RequestParam(required = false) String poolLeague
     ) {
-        return sessionOrchestrator.getPoolMinRatingOptions(poolLeague);
+        return lobbyService.getPoolMinRatingOptions(poolLeague);
     }
 
     @PostMapping
@@ -48,26 +47,13 @@ public class LobbyCommandController {
         var gameMode = request != null && request.gameMode() != null
             ? dev.sportdraft.session.entity.GameMode.fromWire(request.gameMode())
             : dev.sportdraft.session.entity.GameMode.DUEL;
-        return sessionOrchestrator.createRoom(
+        return lobbyService.createRoom(
             authTokenResolver.resolveUserId(authorization),
             nickname,
             gameMode,
             request != null ? request.minPoolRating() : null,
             request != null ? request.poolLeague() : null
         );
-    }
-
-    /**
-     * @deprecated Prefer {@link #createRoom} + {@link #joinRoom}. Kept for legacy clients.
-     */
-    @Deprecated
-    @PostMapping("/join")
-    public SessionSnapshotResponse joinLobby(
-        @Valid @RequestBody(required = false) JoinLobbyRequest request,
-        @RequestHeader("Authorization") String authorization
-    ) {
-        String nickname = request != null ? request.nickname() : null;
-        return sessionOrchestrator.joinLobby(authTokenResolver.resolveUserId(authorization), nickname);
     }
 
     @PostMapping("/{sessionId}/join")
@@ -77,7 +63,7 @@ public class LobbyCommandController {
         @RequestHeader("Authorization") String authorization
     ) {
         String nickname = request != null ? request.nickname() : null;
-        return sessionOrchestrator.joinRoom(
+        return lobbyService.joinRoom(
             sessionId,
             authTokenResolver.resolveUserId(authorization),
             nickname
