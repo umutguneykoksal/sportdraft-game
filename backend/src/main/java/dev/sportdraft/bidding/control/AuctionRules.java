@@ -219,8 +219,9 @@ final class AuctionRules {
     }
 
     static Instant computeTurnOpenAt(ActiveRound round) {
-        Instant fromTurn = round.getTurnStartedAt() != null
-            ? round.getTurnStartedAt().plusSeconds(AuctionTiming.TURN_OPEN_AFTER_SECONDS)
+        Instant effectiveTurnStart = effectiveTurnStartedAt(round);
+        Instant fromTurn = effectiveTurnStart != null
+            ? effectiveTurnStart.plusSeconds(AuctionTiming.TURN_OPEN_AFTER_SECONDS)
             : null;
         Instant fromRoundEnd = round.getEndsAt() != null
             ? round.getEndsAt().minusSeconds(AuctionTiming.TURN_OPEN_AFTER_SECONDS)
@@ -232,6 +233,19 @@ final class AuctionRules {
             return fromTurn;
         }
         return fromTurn.isBefore(fromRoundEnd) ? fromTurn : fromRoundEnd;
+    }
+
+    /** Turn clock runs from bidding open; opening turn is stored at round {@code startsAt}. */
+    static Instant effectiveTurnStartedAt(ActiveRound round) {
+        Instant turnStartedAt = round.getTurnStartedAt();
+        if (turnStartedAt == null) {
+            return null;
+        }
+        Instant biddingOpensAt = biddingOpensAt(round);
+        if (biddingOpensAt != null && turnStartedAt.isBefore(biddingOpensAt)) {
+            return biddingOpensAt;
+        }
+        return turnStartedAt;
     }
 
     static boolean canPlayerBidRound(ActivePlayer player, Card roundCard, long amountCents, Map<UUID, Card> cardMap) {
