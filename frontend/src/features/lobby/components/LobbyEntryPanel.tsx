@@ -224,7 +224,7 @@ export function LobbyEntryPanel({
   return (
     <div className="flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-xl border border-white/10 bg-surface-card/95 shadow-2xl shadow-black/30 backdrop-blur-sm sm:rounded-2xl">
       {/* Card header */}
-      <header className="flex shrink-0 items-center gap-2.5 border-b border-white/10 px-4 py-2.5 sm:px-5">
+      <header className="flex shrink-0 flex-wrap items-center gap-x-2.5 gap-y-1 border-b border-white/10 px-4 py-2.5 sm:px-5">
         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-accent to-blue-700">
           <span className="text-xs font-black text-white">SD</span>
         </div>
@@ -232,7 +232,7 @@ export function LobbyEntryPanel({
           <h1 className="text-lg font-bold text-white sm:text-xl">SportDraft</h1>
           <p className="truncate text-xs text-slate-400">Bid · Build · Play</p>
         </div>
-        <div className="flex shrink-0 items-center gap-3">
+        <div className="flex w-full shrink-0 items-center justify-end gap-3 sm:w-auto">
           <button
             type="button"
             data-testid="lobby-how-to-play"
@@ -252,10 +252,10 @@ export function LobbyEntryPanel({
         </div>
       </header>
 
-      {/* Card body — two columns, fills remaining height */}
-      <div className="grid min-h-0 flex-1 grid-cols-2 divide-x divide-white/10">
+      {/* Card body — stacked on mobile, two columns from lg */}
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-y-contain lg:grid lg:grid-cols-2 lg:divide-x lg:divide-white/10 lg:overflow-hidden">
         {/* Left: create */}
-        <section className="flex min-h-0 min-w-0 flex-col p-4 sm:p-5">
+        <section className="flex min-w-0 shrink-0 flex-col p-4 sm:p-5 lg:min-h-0 lg:shrink lg:overflow-y-auto">
           <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">New game</h2>
 
           <label htmlFor="lobby-nickname-input" className="mb-1 flex items-center gap-1 text-[10px] font-medium text-slate-400">
@@ -319,7 +319,7 @@ export function LobbyEntryPanel({
             ))}
           </div>
 
-          <div className="mb-2 flex gap-2">
+          <div className="mb-2 flex flex-col gap-2 sm:flex-row sm:items-end">
             <div className="min-w-0 flex-1">
               <label htmlFor="lobby-pool-league" className="mb-1 flex items-center gap-1 text-[10px] font-medium text-slate-400">
                 <Globe className="h-3 w-3" aria-hidden="true" />
@@ -327,6 +327,7 @@ export function LobbyEntryPanel({
               </label>
               <select
                 id="lobby-pool-league"
+                data-testid="lobby-pool-league"
                 value={createPoolLeague}
                 onChange={(e) => onCreatePoolLeagueChange(e.target.value as PoolLeagueId)}
                 className="w-full rounded-md border border-white/10 bg-surface-elevated px-2 py-1.5 text-xs text-white focus:outline-none focus:ring-2 focus:ring-accent"
@@ -340,7 +341,7 @@ export function LobbyEntryPanel({
             </div>
             <div className="shrink-0">
               <p className="mb-1 text-[10px] font-medium text-slate-400">OVR</p>
-              <div className="flex gap-1">
+              <div className="flex flex-wrap gap-1">
                 {POOL_MIN_RATING_OPTIONS.map((rating) => {
                   const option = poolMinRatingOptions.find((o) => o.minRating === rating);
                   const selectable = !poolMinRatingOptionsLoaded || (option?.selectable ?? false);
@@ -377,7 +378,7 @@ export function LobbyEntryPanel({
             data-testid="lobby-create-room"
             onClick={onCreateRoom}
             disabled={loading || !canCreateRoom}
-            className="mt-auto inline-flex w-full items-center justify-center gap-1.5 rounded-md bg-accent py-2 text-sm font-bold text-white hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
+            className="mt-3 inline-flex w-full items-center justify-center gap-1.5 rounded-md bg-accent py-2 text-sm font-bold text-white hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-50 lg:mt-auto"
           >
             {loading ? (
               <>
@@ -394,7 +395,7 @@ export function LobbyEntryPanel({
         </section>
 
         {/* Right: rooms */}
-        <section className="flex min-h-0 min-w-0 flex-col p-4 sm:p-5">
+        <section className="flex min-h-0 min-w-0 flex-1 flex-col border-t border-white/10 p-4 sm:p-5 lg:flex-none lg:border-t-0">
           <div className="mb-2 flex shrink-0 items-center justify-between">
             <div className="flex items-center gap-1.5">
               <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-400">Join a room</h2>
@@ -415,7 +416,7 @@ export function LobbyEntryPanel({
               data-testid="lobby-join-nickname-hint"
               className="mb-2 shrink-0 rounded-md border border-accent/20 bg-accent/5 px-2.5 py-1.5 text-[11px] text-slate-300"
             >
-              Enter your nickname on the left to join. Spectating does not require a nickname.
+              Enter your nickname above to join. Spectating does not require a nickname.
             </p>
           )}
 

@@ -132,8 +132,8 @@ export function LobbySessionPanel({
 
   return (
     <div className="flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-xl border border-white/10 bg-surface-card/95 shadow-2xl shadow-black/30 sm:rounded-2xl">
-      <header className="flex shrink-0 items-center justify-between gap-3 border-b border-white/10 px-5 py-3">
-        <div className="min-w-0">
+      <header className="flex shrink-0 items-center justify-between gap-2 border-b border-white/10 px-4 py-3 sm:gap-3 sm:px-5">
+        <div className="min-w-0 flex-1">
           <p className="truncate text-base font-bold text-white">{nickname}</p>
           <p className="truncate text-[11px] text-slate-400">
             {status ? SESSION_STATUS_LABELS[status] : "—"}
@@ -196,7 +196,7 @@ export function LobbySessionPanel({
             <p className="mb-2 shrink-0 text-center text-sm font-semibold text-slate-300">
               Choose your formation
             </p>
-            <div className="grid min-h-0 flex-1 grid-cols-5 grid-rows-2 gap-1.5 sm:gap-2">
+            <div className="grid min-h-0 flex-1 grid-cols-5 grid-rows-2 gap-1 sm:gap-2">
               {formations.map((f) => (
                 <FormationCard
                   key={f}
