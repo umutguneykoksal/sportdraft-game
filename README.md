@@ -113,6 +113,8 @@ Published architecture reference (also on GitHub): [docs/backend-architecture.md
 
 **Frontend:** Create React App, feature folders under `src/features/`, shared hooks (`useSessionSync`, `useRealtimeSession`) — not a separate BFF; the SPA talks to the API directly.
 
+**Public repo access:** PRs can be limited to **collaborators only**; `main` / `develop` are protected via rulesets. Public repos cannot disable the Fork button on GitHub. See [.github/REPOSITORY_ACCESS.md](.github/REPOSITORY_ACCESS.md).
+
 ### Stack
 
 Java 21 · Spring Boot 3.3 · PostgreSQL 16 · Redis 7 · Flyway · React 18 · TypeScript · Tailwind · JUnit 5 · Testcontainers · Jest · Playwright
