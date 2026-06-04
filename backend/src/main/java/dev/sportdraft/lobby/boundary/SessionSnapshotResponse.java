@@ -1,5 +1,6 @@
 package dev.sportdraft.lobby.boundary;
 
+import dev.sportdraft.lobby.entity.LobbyCountdownPhase;
 import dev.sportdraft.session.entity.Formation;
 import dev.sportdraft.session.entity.GameMode;
 import dev.sportdraft.session.entity.PoolLeague;
@@ -11,6 +12,7 @@ import java.util.UUID;
 public record SessionSnapshotResponse(
     UUID sessionId,
     SessionStatus status,
+    LobbyCountdownPhase countdownPhase,
     Instant countdownEndsAt,
     int playerCount,
     boolean joined,

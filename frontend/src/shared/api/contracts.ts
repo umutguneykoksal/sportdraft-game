@@ -87,9 +87,13 @@ export interface LobbyPlayerView {
   seat: number;
 }
 
+export type LobbyCountdownPhase = "PAIRING" | "FORMATION_AUCTION_START";
+
 export interface SessionSnapshotResponse {
   sessionId: string;
   status: SessionStatus;
+  /** Server-authoritative: which countdown {@link countdownEndsAt} refers to. */
+  countdownPhase?: LobbyCountdownPhase | null;
   countdownEndsAt: string | null;
   playerCount: number;
   joined: boolean;

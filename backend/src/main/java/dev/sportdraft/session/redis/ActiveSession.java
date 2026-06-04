@@ -72,11 +72,13 @@ public class ActiveSession {
     public void moveToCountdown(Instant endsAt) {
         this.status = SessionStatus.COUNTDOWN;
         this.countdownEndsAt = endsAt;
+        this.matchStartDeadlineAt = null;
     }
 
     public void moveToFormationSelect(Instant endsAt) {
         this.status = SessionStatus.FORMATION_SELECT;
         this.countdownEndsAt = endsAt;
+        this.matchStartDeadlineAt = null;
     }
 
     public void moveToAuctioning() {
@@ -95,6 +97,8 @@ public class ActiveSession {
     public void moveToWaiting() {
         this.status = SessionStatus.WAITING;
         this.countdownEndsAt = null;
+        this.matchStartDeadlineAt = null;
+        clearMatchStartReady();
     }
 
     public void moveToFinalizing(long seed) {

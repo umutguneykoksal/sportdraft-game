@@ -20,6 +20,7 @@ body {
   overflow-x: hidden;
 }
 
+/* Lobby fills the viewport; scroll lives inside lobby panels (not document). */
 html:has(.lobby-bg),
 html:has(.lobby-bg) body,
 html:has(.lobby-bg) #root {

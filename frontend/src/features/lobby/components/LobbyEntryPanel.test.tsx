@@ -53,7 +53,14 @@ describe("LobbyEntryPanel", () => {
     render(<LobbyEntryPanel {...baseProps} nicknameInput="" nicknameReady={false} canCreateRoom={false} />);
 
     expect(screen.getByTestId("lobby-nickname-hint")).toHaveTextContent("Required to create or join a room");
-    expect(screen.getByTestId("lobby-join-nickname-hint")).toBeInTheDocument();
+    expect(screen.getByTestId("lobby-join-nickname-hint")).toHaveTextContent(/nickname above/i);
+  });
+
+  it("showsPoolLeagueSelector", () => {
+    render(<LobbyEntryPanel {...baseProps} />);
+
+    expect(screen.getByTestId("lobby-pool-league")).toBeInTheDocument();
+    expect(screen.getByLabelText("League")).toBeInTheDocument();
   });
 
   it("showsPoolLeagueSelector", () => {

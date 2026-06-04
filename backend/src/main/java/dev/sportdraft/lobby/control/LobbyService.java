@@ -4,6 +4,7 @@ import dev.sportdraft.bidding.control.AuctionService;
 import dev.sportdraft.bidding.control.CardCatalogService;
 import dev.sportdraft.common.realtime.SessionEventLog;
 import dev.sportdraft.common.sse.SseEmitterRegistry;
+import dev.sportdraft.lobby.entity.LobbyCountdownPhase;
 import dev.sportdraft.lobby.boundary.LobbyRoomResponse;
 import dev.sportdraft.lobby.boundary.PoolMinRatingOptionView;
 import dev.sportdraft.lobby.boundary.PoolMinRatingOptionsResponse;
@@ -50,8 +51,10 @@ public class LobbyService {
         SessionStatus.AUCTIONING,
         SessionStatus.MATCH_START_PENDING
     );
-    /** Countdown after both players confirm formation, before auction begins. */
-    private static final long FORMATION_BOTH_READY_COUNTDOWN_SECONDS = 5L;
+    /** Opponent-found lobby countdown before formation pick. */
+    private static final long LOBBY_PAIRING_COUNTDOWN_SECONDS = 5L;
+    /** Countdown after first player confirms ready; auction starts when it expires. */
+    private static final long FORMATION_FIRST_READY_COUNTDOWN_SECONDS = 10L;
 
     private final ActiveSessionStore sessionStore;
     private final SseEmitterRegistry sseEmitterRegistry;
@@ -170,7 +173,7 @@ public class LobbyService {
         session.addToTurnOrder(userId);
 
         if (session.playerCount() == session.getMaxPlayers()) {
-            session.moveToCountdown(Instant.now().plus(5, ChronoUnit.SECONDS));
+            session.moveToCountdown(Instant.now().plus(LOBBY_PAIRING_COUNTDOWN_SECONDS, ChronoUnit.SECONDS));
             sessionStore.saveIfVersionMatch(session, versionBefore);
             sseEmitterRegistry.broadcast(
                 sessionId, "countdown_started",
@@ -281,8 +284,15 @@ public class LobbyService {
         }
 
         if (session.areAllMatchStartReady()) {
+            if (startAuctionFromFormation(session, sessionId, versionBefore)) {
+                auctionService.openRoundIfNeeded(sessionId);
+            }
+            return snapshot(session, userId);
+        }
+
+        if (session.getCountdownEndsAt() == null) {
             session.setCountdownEndsAt(
-                Instant.now().plus(FORMATION_BOTH_READY_COUNTDOWN_SECONDS, ChronoUnit.SECONDS)
+                Instant.now().plus(FORMATION_FIRST_READY_COUNTDOWN_SECONDS, ChronoUnit.SECONDS)
             );
             sessionStore.saveIfVersionMatch(session, versionBefore);
             sseEmitterRegistry.broadcast(
@@ -291,15 +301,35 @@ public class LobbyService {
                        "countdownEndsAt", session.getCountdownEndsAt())
             );
         } else {
-            session.setCountdownEndsAt(null);
             sessionStore.saveIfVersionMatch(session, versionBefore);
             sseEmitterRegistry.broadcast(
                 sessionId, "formation_ready",
-                Map.of("sessionId", sessionId, "readyCount", session.matchStartReadyCount())
+                Map.of("sessionId", sessionId, "readyCount", session.matchStartReadyCount(),
+                       "countdownEndsAt", session.getCountdownEndsAt())
             );
         }
 
         return snapshot(session, userId);
+    }
+
+    private boolean startAuctionFromFormation(ActiveSession session, UUID sessionId, long versionBefore) {
+        session.getPlayers().forEach(ActivePlayer::confirmDefaultFormationIfMissing);
+        if (session.playerCount() != session.getMaxPlayers()) {
+            session.moveToWaiting();
+            sessionStore.saveIfVersionMatch(session, versionBefore);
+            return false;
+        }
+        session.moveToAuctioning(buildShuffledCardPool(session));
+        sessionStore.saveIfVersionMatch(session, versionBefore);
+        log.info(
+            "Auction started session={} players={} poolSize={}",
+            sessionId, session.playerCount(), session.getCardPool().size()
+        );
+        sseEmitterRegistry.broadcast(
+            sessionId, "auctioning_started",
+            Map.of("sessionId", sessionId)
+        );
+        return true;
     }
 
     public SessionSnapshotResponse getSnapshot(UUID sessionId, UUID userId) {
@@ -356,24 +386,13 @@ public class LobbyService {
                     if (session.getStatus() != SessionStatus.FORMATION_SELECT) {
                         return false;
                     }
-                    if (session.getCountdownEndsAt() == null || session.getCountdownEndsAt().isAfter(now)
-                        || !session.areAllMatchStartReady()) {
+                    if (session.getCountdownEndsAt() == null || session.getCountdownEndsAt().isAfter(now)) {
                         return false;
                     }
                     long vBefore = session.getVersion();
                     if (session.playerCount() == session.getMaxPlayers()) {
-                        session.getPlayers().forEach(ActivePlayer::confirmDefaultFormationIfMissing);
-                        session.moveToAuctioning(buildShuffledCardPool(session));
-                        sessionStore.saveIfVersionMatch(session, vBefore);
-                        log.info(
-                            "Auction started session={} players={} poolSize={}",
-                            sessionId, session.playerCount(), session.getCardPool().size()
-                        );
-                        sseEmitterRegistry.broadcast(
-                            sessionId, "auctioning_started",
-                            Map.of("sessionId", sessionId)
-                        );
-                        return true;
+                        startAuctionFromFormation(session, sessionId, vBefore);
+                        return session.getStatus() == SessionStatus.AUCTIONING;
                     }
                     session.moveToWaiting();
                     sessionStore.saveIfVersionMatch(session, vBefore);
@@ -414,17 +433,47 @@ public class LobbyService {
         }
     }
 
+    private static LobbyCountdownPhase resolveCountdownPhase(ActiveSession session) {
+        if (session.getStatus() == SessionStatus.COUNTDOWN && session.getCountdownEndsAt() != null) {
+            return LobbyCountdownPhase.PAIRING;
+        }
+        if (session.getStatus() == SessionStatus.FORMATION_SELECT && session.getCountdownEndsAt() != null) {
+            return LobbyCountdownPhase.FORMATION_AUCTION_START;
+        }
+        return null;
+    }
+
+    private Instant wireCountdownEndsAt(ActiveSession session, LobbyCountdownPhase phase) {
+        Instant endsAt = session.getCountdownEndsAt();
+        if (endsAt == null || phase == null) {
+            return null;
+        }
+        Instant cap = switch (phase) {
+            case PAIRING -> Instant.now().plus(LOBBY_PAIRING_COUNTDOWN_SECONDS, ChronoUnit.SECONDS);
+            case FORMATION_AUCTION_START ->
+                Instant.now().plus(FORMATION_FIRST_READY_COUNTDOWN_SECONDS, ChronoUnit.SECONDS);
+        };
+        if (endsAt.isAfter(cap)) {
+            log.warn(
+                "Normalized {} countdown session={} endsAt={} cap={}",
+                phase, session.getId(), endsAt, cap
+            );
+            return cap;
+        }
+        return endsAt;
+    }
+
     private SessionSnapshotResponse snapshot(ActiveSession session, UUID userId) {
         ActivePlayer me = session.findPlayerByUserId(userId).orElse(null);
 
         Instant matchStartDeadlineAt = null;
         int matchStartReadyCount = 0;
         boolean matchStartConfirmedByMe = false;
+        if (session.getStatus() == SessionStatus.MATCH_START_PENDING) {
+            matchStartDeadlineAt = session.getMatchStartDeadlineAt();
+        }
         if (session.getStatus() == SessionStatus.MATCH_START_PENDING
             || session.getStatus() == SessionStatus.FORMATION_SELECT) {
-            matchStartDeadlineAt = session.getStatus() == SessionStatus.MATCH_START_PENDING
-                ? session.getMatchStartDeadlineAt()
-                : session.getCountdownEndsAt();
             matchStartReadyCount = session.matchStartReadyCount();
             matchStartConfirmedByMe = session.isMatchStartReady(userId);
         }
@@ -439,10 +488,14 @@ public class LobbyService {
             );
         }
 
+        LobbyCountdownPhase countdownPhase = resolveCountdownPhase(session);
+        Instant wireCountdownEndsAt = wireCountdownEndsAt(session, countdownPhase);
+
         return new SessionSnapshotResponse(
             session.getId(),
             session.getStatus(),
-            session.getCountdownEndsAt(),
+            countdownPhase,
+            wireCountdownEndsAt,
             session.playerCount(),
             me != null,
             me != null && me.isFormationConfirmed() ? me.getFormation() : null,
