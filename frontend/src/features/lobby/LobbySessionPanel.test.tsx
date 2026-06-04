@@ -47,20 +47,19 @@ describe("LobbySessionPanel", () => {
     expect(screen.queryByTestId("lobby-auction-countdown")).not.toBeInTheDocument();
   });
 
-  it("showsTenSecondAuctionCountdownForConfirmedPlayerWhenOpponentNotReady", () => {
+  it("showsReadyOneOfTwoWithoutCountdownWhenOnlySelfConfirmed", () => {
     render(
       <LobbySessionPanel
         nickname="Guest"
         snapshot={{
           ...baseSnapshot,
-          countdownPhase: "FORMATION_AUCTION_START",
           matchStartReadyCount: 1,
           matchStartConfirmedByMe: true,
-          countdownEndsAt: "2026-01-01T00:00:10.000Z",
+          countdownEndsAt: null,
         }}
         maxPlayers={2}
         gameMode="DUEL"
-        countdownSecondsLeft={10}
+        countdownSecondsLeft={null}
         formations={["FOUR_FOUR_TWO", "FOUR_THREE_THREE"]}
         loading={false}
         onChooseFormation={jest.fn()}
@@ -69,25 +68,52 @@ describe("LobbySessionPanel", () => {
       />
     );
 
-    expect(screen.getByTestId("lobby-auction-countdown")).toHaveTextContent("10");
+    expect(screen.getByText("Ready (1/2)")).toBeInTheDocument();
+    expect(screen.getByText("Waiting for opponent to confirm...")).toBeInTheDocument();
+    expect(screen.queryByTestId("lobby-auction-countdown")).not.toBeInTheDocument();
     expect(screen.queryByTestId("lobby-formation-FOUR_FOUR_TWO")).not.toBeInTheDocument();
-    expect(screen.getByTestId("lobby-leave")).toBeInTheDocument();
   });
 
-  it("keepsFormationGridForOpponentDuringFirstReadyCountdown", () => {
+  it("showsFiveSecondAuctionCountdownWhenBothReady", () => {
     render(
       <LobbySessionPanel
         nickname="Guest"
         snapshot={{
           ...baseSnapshot,
           countdownPhase: "FORMATION_AUCTION_START",
-          matchStartReadyCount: 1,
-          matchStartConfirmedByMe: false,
-          countdownEndsAt: "2026-01-01T00:00:10.000Z",
+          matchStartReadyCount: 2,
+          matchStartConfirmedByMe: true,
+          countdownEndsAt: "2026-01-01T00:00:05.000Z",
         }}
         maxPlayers={2}
         gameMode="DUEL"
-        countdownSecondsLeft={8}
+        countdownSecondsLeft={5}
+        formations={["FOUR_FOUR_TWO", "FOUR_THREE_THREE"]}
+        loading={false}
+        onChooseFormation={jest.fn()}
+        onStartAuction={jest.fn()}
+        onLeave={jest.fn()}
+      />
+    );
+
+    expect(screen.getByTestId("lobby-auction-countdown")).toHaveTextContent("5");
+    expect(screen.queryByTestId("lobby-formation-FOUR_FOUR_TWO")).not.toBeInTheDocument();
+    expect(screen.getByTestId("lobby-leave")).toBeInTheDocument();
+  });
+
+  it("keepsFormationGridForOpponentWhileOnlyOneReady", () => {
+    render(
+      <LobbySessionPanel
+        nickname="Guest"
+        snapshot={{
+          ...baseSnapshot,
+          matchStartReadyCount: 1,
+          matchStartConfirmedByMe: false,
+          countdownEndsAt: null,
+        }}
+        maxPlayers={2}
+        gameMode="DUEL"
+        countdownSecondsLeft={null}
         formations={["FOUR_FOUR_TWO"]}
         loading={false}
         onChooseFormation={jest.fn()}
@@ -98,6 +124,7 @@ describe("LobbySessionPanel", () => {
 
     expect(screen.queryByTestId("lobby-auction-countdown")).not.toBeInTheDocument();
     expect(screen.getByTestId("lobby-formation-FOUR_FOUR_TWO")).toBeInTheDocument();
+    expect(screen.getByText("Opponent is ready — pick a formation and start")).toBeInTheDocument();
     expect(screen.getByTestId("lobby-confirm-formation-ready")).toBeInTheDocument();
   });
 
@@ -120,6 +147,34 @@ describe("LobbySessionPanel", () => {
     expect(screen.getByTestId("lobby-leave")).toBeInTheDocument();
   });
 
+  it("showsReadyTwoOfFourWithoutCountdownInTournamentLobby", () => {
+    render(
+      <LobbySessionPanel
+        nickname="Guest"
+        snapshot={{
+          ...baseSnapshot,
+          gameMode: "TOURNAMENT",
+          maxPlayers: 4,
+          playerCount: 4,
+          matchStartReadyCount: 2,
+          matchStartConfirmedByMe: true,
+          countdownEndsAt: null,
+        }}
+        maxPlayers={4}
+        gameMode="TOURNAMENT"
+        countdownSecondsLeft={null}
+        formations={["FOUR_FOUR_TWO"]}
+        loading={false}
+        onChooseFormation={jest.fn()}
+        onStartAuction={jest.fn()}
+        onLeave={jest.fn()}
+      />
+    );
+
+    expect(screen.getByText("Ready (2/4)")).toBeInTheDocument();
+    expect(screen.queryByTestId("lobby-auction-countdown")).not.toBeInTheDocument();
+  });
+
   it("placesWaitingHintInFooterWithoutOverlappingGrid", () => {
     render(
       <LobbySessionPanel
@@ -127,7 +182,7 @@ describe("LobbySessionPanel", () => {
         snapshot={{
           ...baseSnapshot,
           matchStartReadyCount: 1,
-          matchStartConfirmedByMe: true,
+          matchStartConfirmedByMe: false,
         }}
         maxPlayers={2}
         gameMode="DUEL"
@@ -140,7 +195,9 @@ describe("LobbySessionPanel", () => {
       />
     );
 
-    expect(screen.getByText("Waiting for opponent to confirm...")).toBeInTheDocument();
+    expect(
+      screen.getByText("Opponent is ready — pick a formation and start")
+    ).toBeInTheDocument();
     expect(screen.getByTestId("lobby-formation-FOUR_FOUR_TWO")).toBeInTheDocument();
   });
 

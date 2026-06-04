@@ -53,8 +53,8 @@ public class LobbyService {
     );
     /** Opponent-found lobby countdown before formation pick. */
     private static final long LOBBY_PAIRING_COUNTDOWN_SECONDS = 5L;
-    /** Countdown after first player confirms ready; auction starts when it expires. */
-    private static final long FORMATION_FIRST_READY_COUNTDOWN_SECONDS = 10L;
+    /** Countdown after all players confirm ready; auction starts when it expires. */
+    private static final long FORMATION_ALL_READY_COUNTDOWN_SECONDS = LOBBY_PAIRING_COUNTDOWN_SECONDS;
 
     private final ActiveSessionStore sessionStore;
     private final SseEmitterRegistry sseEmitterRegistry;
@@ -256,6 +256,9 @@ public class LobbyService {
 
         SessionAccess.requireMember(session, userId);
         ActivePlayer player = session.findPlayerByUserId(userId).orElseThrow();
+        if (session.isMatchStartReady(userId)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Formation is locked after confirming ready");
+        }
 
         player.selectFormation(formation);
         sessionStore.saveIfVersionMatch(session, versionBefore);
@@ -276,39 +279,42 @@ public class LobbyService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Not in formation selection phase");
         }
         SessionAccess.requireMember(session, userId);
+        ActivePlayer player = session.findPlayerByUserId(userId).orElseThrow();
+        if (!player.isFormationConfirmed()) {
+            throw new ResponseStatusException(
+                HttpStatus.UNPROCESSABLE_ENTITY,
+                "Select a formation before starting the auction"
+            );
+        }
 
-        session.getPlayers().forEach(ActivePlayer::confirmDefaultFormationIfMissing);
         boolean changed = session.registerMatchStartReady(userId);
         if (!changed) {
             return snapshot(session, userId);
         }
 
         if (session.areAllMatchStartReady()) {
-            if (startAuctionFromFormation(session, sessionId, versionBefore)) {
-                auctionService.openRoundIfNeeded(sessionId);
+            if (session.getCountdownEndsAt() == null) {
+                session.setCountdownEndsAt(
+                    Instant.now().plus(FORMATION_ALL_READY_COUNTDOWN_SECONDS, ChronoUnit.SECONDS)
+                );
             }
+            sessionStore.saveIfVersionMatch(session, versionBefore);
+            sseEmitterRegistry.broadcast(
+                sessionId, "formation_ready",
+                Map.of(
+                    "sessionId", sessionId,
+                    "readyCount", session.matchStartReadyCount(),
+                    "countdownEndsAt", session.getCountdownEndsAt()
+                )
+            );
             return snapshot(session, userId);
         }
 
-        if (session.getCountdownEndsAt() == null) {
-            session.setCountdownEndsAt(
-                Instant.now().plus(FORMATION_FIRST_READY_COUNTDOWN_SECONDS, ChronoUnit.SECONDS)
-            );
-            sessionStore.saveIfVersionMatch(session, versionBefore);
-            sseEmitterRegistry.broadcast(
-                sessionId, "formation_ready",
-                Map.of("sessionId", sessionId, "readyCount", session.matchStartReadyCount(),
-                       "countdownEndsAt", session.getCountdownEndsAt())
-            );
-        } else {
-            sessionStore.saveIfVersionMatch(session, versionBefore);
-            sseEmitterRegistry.broadcast(
-                sessionId, "formation_ready",
-                Map.of("sessionId", sessionId, "readyCount", session.matchStartReadyCount(),
-                       "countdownEndsAt", session.getCountdownEndsAt())
-            );
-        }
-
+        sessionStore.saveIfVersionMatch(session, versionBefore);
+        sseEmitterRegistry.broadcast(
+            sessionId, "formation_ready",
+            Map.of("sessionId", sessionId, "readyCount", session.matchStartReadyCount())
+        );
         return snapshot(session, userId);
     }
 
@@ -451,7 +457,7 @@ public class LobbyService {
         Instant cap = switch (phase) {
             case PAIRING -> Instant.now().plus(LOBBY_PAIRING_COUNTDOWN_SECONDS, ChronoUnit.SECONDS);
             case FORMATION_AUCTION_START ->
-                Instant.now().plus(FORMATION_FIRST_READY_COUNTDOWN_SECONDS, ChronoUnit.SECONDS);
+                Instant.now().plus(FORMATION_ALL_READY_COUNTDOWN_SECONDS, ChronoUnit.SECONDS);
         };
         if (endsAt.isAfter(cap)) {
             log.warn(

@@ -53,36 +53,77 @@ describe("lobbyTiming", () => {
     ).toBe("2026-01-01T00:00:05.000Z");
   });
 
-  it("noFormationCountdownBeforeFirstReady", () => {
+  it("noFormationCountdownBeforeAllReady", () => {
     expect(
       inferCountdownPhase({
         ...base,
         status: "FORMATION_SELECT",
-        countdownEndsAt: "2026-01-01T00:00:10.000Z",
+        countdownEndsAt: "2026-01-01T00:00:05.000Z",
         matchStartReadyCount: 0,
+        playerCount: 2,
+        maxPlayers: 2,
+      })
+    ).toBeNull();
+    expect(
+      inferCountdownPhase({
+        ...base,
+        status: "FORMATION_SELECT",
+        countdownEndsAt: "2026-01-01T00:00:05.000Z",
+        matchStartReadyCount: 1,
+        playerCount: 2,
+        maxPlayers: 2,
       })
     ).toBeNull();
     expect(
       resolveLobbyCountdownDeadline({
         ...base,
         status: "FORMATION_SELECT",
-        countdownEndsAt: "2026-01-01T00:00:10.000Z",
-        matchStartReadyCount: 0,
+        countdownEndsAt: "2026-01-01T00:00:05.000Z",
+        matchStartReadyCount: 1,
+        playerCount: 2,
+        maxPlayers: 2,
       })
     ).toBeNull();
   });
 
-  it("usesFormationPhaseDeadlineOnlyAfterFirstReady", () => {
+  it("noFormationCountdownUntilFourReadyInTournament", () => {
+    expect(
+      inferCountdownPhase({
+        ...base,
+        status: "FORMATION_SELECT",
+        gameMode: "TOURNAMENT",
+        countdownEndsAt: "2026-01-01T00:00:05.000Z",
+        matchStartReadyCount: 3,
+        playerCount: 4,
+        maxPlayers: 4,
+      })
+    ).toBeNull();
+    expect(
+      inferCountdownPhase({
+        ...base,
+        status: "FORMATION_SELECT",
+        gameMode: "TOURNAMENT",
+        countdownEndsAt: "2026-01-01T00:00:05.000Z",
+        matchStartReadyCount: 4,
+        playerCount: 4,
+        maxPlayers: 4,
+      })
+    ).toBe("FORMATION_AUCTION_START");
+  });
+
+  it("usesFormationPhaseDeadlineOnlyAfterAllReady", () => {
     expect(
       resolveLobbyCountdownDeadline({
         ...base,
         status: "FORMATION_SELECT",
         countdownPhase: "FORMATION_AUCTION_START",
-        countdownEndsAt: "2026-01-01T00:00:10.000Z",
-        matchStartReadyCount: 1,
+        countdownEndsAt: "2026-01-01T00:00:05.000Z",
+        matchStartReadyCount: 2,
+        playerCount: 2,
+        maxPlayers: 2,
         matchStartDeadlineAt: null,
       })
-    ).toBe("2026-01-01T00:00:10.000Z");
+    ).toBe("2026-01-01T00:00:05.000Z");
   });
 
   it("latchStaleCountdownDeadlineFixesOverLongPairingOnce", () => {
