@@ -1,68 +1,68 @@
-# SportDraft Backend — Mimari ve Geliştirme Planı
+# SportDraft Backend — Architecture & Development Plan
 
-Canlı ürün: [sportdraft.dev](https://www.sportdraft.dev)
+Live product: [sportdraft.dev](https://www.sportdraft.dev) · Staging: [test.sportdraft.dev](https://test.sportdraft.dev)
 
 ---
 
-## 1. Kullandığımız tasarım nedir?
+## 1. What design do we use?
 
 **Modular monolith + feature slice (BCE) + server-authoritative real-time game.**
 
-Bu bir microservice değil; tek deploy edilen Spring Boot uygulaması. Domain, **feature slice**’lara bölünmüş; her slice kendi sorumluluğunda boundary / control / entity katmanlarına sahip.
+This is not a microservice deployment; it is a single Spring Boot application. The domain is split into **feature slices**, each with boundary / control / entity layers for its own responsibility.
 
 ```
 dev.sportdraft.<feature>.{boundary, control, entity}
 ```
 
-| Slice | Sorumluluk |
+| Slice | Responsibility |
 |---|---|
-| `lobby/` | Oda listesi, create/join, formation, countdown |
-| `session/` | Redis session store, disconnect cleanup, arşiv |
-| `bidding/` | Auction round’ları, bid, settlement |
-| `simulation/` | Rating-weighted maç simülasyonu |
-| `competition/` | Turnuva / lig bracket, fixture, replay kuralları |
+| `lobby/` | Room list, `createRoom` / `joinRoom`, pairing + formation countdown, ready-up |
+| `session/` | Redis session store, disconnect cleanup, archive |
+| `bidding/` | Auction rounds, bids, settlement |
+| `simulation/` | Rating-weighted match simulation |
+| `competition/` | Tournament / league bracket, fixtures, replay rules |
 | `common/` | SSE/WS, auth filter, idempotency, event log |
 
-**Boundary** = HTTP/WS giriş noktası (controller, DTO record’ları).  
-**Control** = domain logic + use case’ler (`@Service`, listener, scheduler).  
-**Entity** = kalıcı model (JPA entity, Redis aggregate, repository).
+**Boundary** = HTTP/WS entry points (controllers, DTO records).  
+**Control** = domain logic and use cases (`@Service`, listeners, schedulers).  
+**Entity** = persistent models (JPA entities, Redis aggregates, repositories).
 
-Bu yapı DDD’nin tam hali değil; pratikte **“vertical slice + layered boundary”** — küçük ekip için okunabilir, test edilebilir, deploy tek.
+This is not full DDD; in practice it is **vertical slice + layered boundary** — readable for a small team, testable, single deploy unit.
 
 ---
 
-## 2. Veri ve state modeli
+## 2. Data and state model
 
-### Aktif oyun (Redis)
+### Active game (Redis)
 
-Draft + auction sırasında tüm state **tek JSON aggregate**’te:
+During draft and auction, all state lives in **one JSON aggregate**:
 
 ```
 session:{uuid}  →  ActiveSession
   ├── players, status, formations
   ├── rounds[], bids (embedded)
-  └── cardPool, scores (in-memory match sonrası)
+  └── cardPool, scores (in-memory after match)
 ```
 
-- **Optimistic lock**: `version` alanı + `saveIfVersionMatch`
-- **Per-session Redis lock**: `SessionLock.run()` — HTTP + scheduler aynı session’da çakışmasın
+- **Optimistic lock**: `version` field + `saveIfVersionMatch`
+- **Per-session Redis lock**: `SessionLock.run()` — HTTP and schedulers must not race on the same session
 - **Index SET/ZSET**: `sessions:active`, `sessions:waiting`, `sessions:status:*`
-- TTL: 24 saat (aktif session sürekli yenilenir)
+- **TTL**: 24 hours (refreshed while the session stays active)
 
-### Kalıcı veri (PostgreSQL)
+### Persistent data (PostgreSQL)
 
-| Tablo / alan | Ne için |
+| Table / area | Purpose |
 |---|---|
-| `cards` | Kart kataloğu |
-| `competition_*` | Turnuva/lig bracket, maçlar, izleme |
-| `match_history` | Biten duel replay JSON |
-| `processed_event` | Idempotent domain event handler |
+| `cards` | Card catalog |
+| `competition_*` | Tournament/league bracket, matches, watch state |
+| `match_history` | Finished duel replay JSON |
+| `processed_event` | Idempotent domain event handlers |
 
-> **Not:** Eski JPA `game_session` / `auction_round` / `bid` tabloları V26 migration ile kaldırıldı. **Runtime auction path Redis’tir.**
+> **Note:** Legacy JPA `game_session` / `auction_round` / `bid` tables were removed in Flyway V26. **The runtime auction path is Redis.**
 
 ---
 
-## 3. Real-time ve komut akışı
+## 3. Real-time and command flow
 
 ```
 Client  ──REST──►  boundary (command)
@@ -86,32 +86,64 @@ Client  ──REST──►  boundary (command)
               Client (render server state)
 ```
 
-- **Komutlar** REST (`/api/v2`)
-- **Canlı güncelleme** WebSocket birincil, SSE yedek
+- **Commands** via REST (`/api/v2`)
+- **Live updates** WebSocket primary, SSE fallback
 - **Reconnect** ordered event log (`SessionEventLog` ring buffer)
-- **Cross-slice decoupling** Spring `@EventListener` + `@Transactional` + `ProcessedEvent` idempotency
+- **Cross-slice decoupling** Spring `ApplicationEventPublisher` + `@EventListener` (most handlers) + `ProcessedEvent` idempotency
 
 ---
 
-## 4. Oyun modları
+## 3.1 Lobby and formation (ready-up)
 
-| Mod | Akış |
-|---|---|
-| **DUEL** (2p) | Lobby → draft → `SessionFinalizedEvent` → sim → skor |
-| **TOURNAMENT** (4p) | Shared draft → `DraftCompletedEvent` → semi/final bracket |
-| **LEAGUE** (4p) | Shared draft → 3 matchday → tablo → opsiyonel playoff |
+Session phases (`ActiveSession.status` in Redis):
 
-Mod farkları `CompetitionModeBehavior` implementasyonlarıyla ayrılır (`LeagueCompetitionMode`, `TournamentCompetitionMode`).
+```
+WAITING → COUNTDOWN → FORMATION_SELECT → AUCTIONING → …
+```
+
+| Phase | Trigger | Duration / rule |
+|---|---|---|
+| **COUNTDOWN** | Room full (`playerCount == maxPlayers`) | **5s** pairing (`LOBBY_PAIRING_COUNTDOWN_SECONDS`) |
+| **FORMATION_SELECT** | Pairing countdown finished | Pick formation + `confirmFormationReady` |
+| **Auction start countdown** | `matchStartReadyCount == maxPlayers` (2 or 4) | **5s** (`FORMATION_ALL_READY_COUNTDOWN_SECONDS`) |
+| **AUCTIONING** | Auction countdown expired or scheduler | Shuffle card pool, open first round |
+
+**Ready-up rules** (`LobbyService.confirmFormationReady`):
+
+1. Ready is rejected without a selected formation (422).
+2. Formation cannot be changed after ready.
+3. Partial ready (e.g. 1/2, 2/4): **no timer**; SSE `formation_ready` carries `readyCount` only.
+4. All players ready: set `countdownEndsAt`, SSE `formation_ready` with countdown; `LobbyPhaseScheduler` moves to `AUCTIONING` when time expires.
+5. Players who never confirmed ready get default **4-4-2** when the auction starts.
+
+**API (v2):**
+
+- `POST /api/v2/sessions/{id}/formation` — select formation
+- `POST /api/v2/sessions/{id}/confirm-formation-ready` — Start Auction / ready
+
+**Frontend:** `frontend/src/shared/lobbyTiming.ts` — `inferCountdownPhase` shows the auction countdown only when `matchStartReadyCount >= maxPlayers`; `LobbySessionPanel` shows Ready (X/N) in the footer.
 
 ---
 
-## 5. İsimlendirme rehberi (refactor sonrası)
+## 4. Game modes
 
-AI/generic isimler temizlendi. Tercih edilen kalıp:
-
-| Eski (kaldırıldı) | Yeni |
+| Mode | Flow |
 |---|---|
-| `SessionOrchestrator` | Kaldırıldı — controller → service doğrudan |
+| **DUEL** (2p) | Lobby (5s pairing + formation ready-up + 5s all-ready) → draft → `SessionFinalizedEvent` → sim → score |
+| **TOURNAMENT** (4p) | Same lobby → shared draft → `DraftCompletedEvent` → semi/final bracket |
+| **LEAGUE** (4p) | Same lobby → shared draft → 3 matchdays → table → optional playoff |
+
+Mode differences are isolated in `CompetitionModeBehavior` implementations (`LeagueCompetitionMode`, `TournamentCompetitionMode`).
+
+---
+
+## 5. Naming guide (post-refactor)
+
+Generic / AI-style names were cleaned up. Preferred patterns:
+
+| Old (removed) | New |
+|---|---|
+| `SessionOrchestrator` | Removed — controller → service directly |
 | `SessionMutationGuard.mutate()` | `SessionLock.run()` / `runVoid()` |
 | `AuctionTurnNormalizer` | `TurnSkipResolver.skipInactiveTurns()` |
 | `CompetitionMatchModeHooks` | `CompetitionModeBehavior` |
@@ -120,21 +152,21 @@ AI/generic isimler temizlendi. Tercih edilen kalıp:
 | `ensureOpenRound()` | `openRoundIfNeeded()` |
 | `useAuctionOrchestrator` (FE) | `useSessionSync` + `useAuctionPageState` |
 
-**Domain fiilleri kullan:** `createRoom`, `joinRoom`, `placeBid`, `closeRound`, `archive` — `handle*`, `process*`, `ensure*` sadece gerçekten gerekince.
+**Use domain verbs:** `createRoom`, `joinRoom`, `placeBid`, `closeRound`, `archive` — reserve `handle*`, `process*`, `ensure*` for cases that truly need them.
 
 ---
 
-## 6. Test stratejisi
+## 6. Test strategy
 
-- **Unit**: Mockito, control katmanı
-- **Slice**: `@WebMvcTest` controller + exception handler
+- **Unit**: Mockito, control layer
+- **Slice**: `@WebMvcTest` controllers + exception handler
 - **Integration**: `@SpringBootTest` + Testcontainers (Postgres + Redis)
-- **E2E**: Playwright (3 mod smoke)
-- **Coverage gate**: JaCoCo %85 (control katmanı)
+- **E2E**: Playwright (smoke for all three modes)
+- **Coverage gate**: JaCoCo 85% line coverage (control layer)
 
 ---
 
-## 7. CV’de nasıl anlatılır?
+## 7. How to describe it (e.g. CV / portfolio)
 
 **SportDraft** — multiplayer football card auction draft ([sportdraft.dev](https://www.sportdraft.dev))
 
@@ -144,44 +176,44 @@ AI/generic isimler temizlendi. Tercih edilen kalıp:
 - Domain events with idempotent handlers; Testcontainers + 85% coverage gate
 - 3 game modes (duel, tournament, league); deployed on Railway
 
-Yazma: microservices, Kafka, OTEL/Grafana stack, JPA-backed live auction.
+**Do not claim:** microservices, Kafka, full OTEL/Grafana stack, or JPA-backed live auction state.
 
 ---
 
-## 8. Geliştirme planı
+## 8. Development plan
 
-### Faz A — Kod tabanı hijyeni (kısa vade)
+### Phase A — Codebase hygiene (short term)
 
-- [x] AI/generic isim refactor (`SessionLock`, `CompetitionModeBehavior`, …)
-- [x] Gereksiz `SessionOrchestrator` kaldırma
-- [x] Kullanılmayan JPA auction entity/repo temizliği + Flyway V26 tablo drop
-- [x] Yetim Redis index reconciliation (TTL expire edge case)
-- [x] `joinLobby` deprecated endpoint kaldırıldı (backend + frontend)
+- [x] AI/generic name refactor (`SessionLock`, `CompetitionModeBehavior`, …)
+- [x] Remove redundant `SessionOrchestrator`
+- [x] Unused JPA auction entity/repo cleanup + Flyway V26 table drop
+- [x] Orphan Redis index reconciliation (TTL expire edge case)
+- [x] Deprecated `joinLobby` endpoint removed (backend + frontend)
 
-### Faz B — Ürün / auth (orta vade)
+### Phase B — Product / auth (medium term)
 
-- [ ] OAuth / hesap sistemi (anonymous token yerine)
+- [ ] OAuth / accounts (replace anonymous browser tokens)
 - [ ] Rate limiting (bid, feedback, room create)
-- [ ] Tek kullanıcı = tek aktif lobby guard’ı
-- [ ] Çoklu replica: scheduler leader election veya Redis tabanlı tick
+- [ ] One user = one active lobby guard
+- [ ] Multi-replica: scheduler leader election or Redis-based tick
 
-### Faz C — Kalite ve operasyon (orta vade)
+### Phase C — Quality and operations (medium term)
 
-- [ ] Railway log’larda sessionId correlation (MDC genişletme)
-- [ ] Health check: Redis + Postgres deep check prod’da
-- [ ] Load test: eşzamanlı 4 oda + auction bid latency
-- [ ] E2E: tam 44-round draft senaryosu (şu an smoke kısa draft)
+- [ ] `sessionId` correlation in Railway logs (extend MDC)
+- [ ] Health check: Redis + Postgres deep check in production
+- [ ] Load test: concurrent rooms + auction bid latency
+- [ ] E2E: full 44-round draft scenario (smoke tests are shorter today)
 
-### Faz D — Genişleme (uzun vade)
+### Phase D — Expansion (long term)
 
-- [ ] Basketbol / ikinci spor modu
-- [ ] Ek lig havuzları
-- [ ] Spectator iyileştirmeleri
-- [ ] Match history arama / profil sayfası
+- [ ] Basketball / second sport mode
+- [ ] Additional league pools
+- [ ] Spectator improvements
+- [ ] Match history search / profile page
 
 ---
 
-## 9. Yerel çalıştırma
+## 9. Run locally
 
 ```bash
 cd infra && docker compose up -d
@@ -189,21 +221,23 @@ cd backend && mvn spring-boot:run -Dspring-boot.run.profiles=local
 cd frontend && npm start
 ```
 
-Test:
+Tests:
 
 ```bash
-cd backend && mvn verify          # Testcontainers — Docker gerekir
-cd backend && mvn test -Pskip-it    # unit only
+cd backend && mvn verify          # Testcontainers — requires Docker
+cd backend && mvn test -Pskip-it    # unit tests only
 ```
+
+See root [README.md](../README.md) and [e2e/README.md](../e2e/README.md) for frontend and Playwright setup.
 
 ---
 
-## 10. Klasör referansı
+## 10. Folder reference
 
 ```
 backend/src/main/java/dev/sportdraft/
 ├── lobby/boundary/          LobbyCommandController, DTOs
-├── lobby/control/           LobbyService
+├── lobby/control/           LobbyService, LobbyPhaseScheduler
 ├── session/redis/           ActiveSession, ActiveSessionStore, SessionLock
 ├── session/control/         SessionArchiver, disconnect scheduler
 ├── bidding/control/         AuctionService, TurnSkipResolver, settlement
@@ -212,4 +246,4 @@ backend/src/main/java/dev/sportdraft/
 └── common/                  SSE, WS, web filters, event log
 ```
 
-Son güncelleme: 2026-05-23
+Last updated: 2026-05-24
