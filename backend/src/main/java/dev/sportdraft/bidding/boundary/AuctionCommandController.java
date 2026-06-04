@@ -1,6 +1,6 @@
 package dev.sportdraft.bidding.boundary;
 
-import dev.sportdraft.bidding.control.AuctionEngine;
+import dev.sportdraft.bidding.control.AuctionService;
 import dev.sportdraft.common.web.AuthTokenResolver;
 import dev.sportdraft.common.web.CommandIdempotencyGuard;
 import jakarta.validation.Valid;
@@ -17,16 +17,16 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v2/sessions/{sessionId}")
 public class AuctionCommandController {
 
-    private final AuctionEngine auctionEngine;
+    private final AuctionService auctionService;
     private final AuthTokenResolver authTokenResolver;
     private final CommandIdempotencyGuard commandIdempotencyGuard;
 
     public AuctionCommandController(
-        AuctionEngine auctionEngine,
+        AuctionService auctionService,
         AuthTokenResolver authTokenResolver,
         CommandIdempotencyGuard commandIdempotencyGuard
     ) {
-        this.auctionEngine = auctionEngine;
+        this.auctionService = auctionService;
         this.authTokenResolver = authTokenResolver;
         this.commandIdempotencyGuard = commandIdempotencyGuard;
     }
@@ -36,7 +36,7 @@ public class AuctionCommandController {
         @PathVariable UUID sessionId,
         @RequestHeader("Authorization") String authorization
     ) {
-        return auctionEngine.startRound(sessionId, authTokenResolver.resolveUserId(authorization));
+        return auctionService.startRound(sessionId, authTokenResolver.resolveUserId(authorization));
     }
 
     @GetMapping("/auction/state")
@@ -44,7 +44,7 @@ public class AuctionCommandController {
         @PathVariable UUID sessionId,
         @RequestHeader("Authorization") String authorization
     ) {
-        return auctionEngine.getAuctionState(sessionId, authTokenResolver.resolveUserId(authorization));
+        return auctionService.getAuctionState(sessionId, authTokenResolver.resolveUserId(authorization));
     }
 
     @PostMapping("/bids")
@@ -55,7 +55,7 @@ public class AuctionCommandController {
         @Valid @RequestBody PlaceBidRequest request
     ) {
         commandIdempotencyGuard.requireUuid(idempotencyKey);
-        return auctionEngine.placeBid(
+        return auctionService.placeBid(
             sessionId,
             authTokenResolver.resolveUserId(authorization),
             idempotencyKey,
@@ -71,7 +71,7 @@ public class AuctionCommandController {
         @RequestHeader("Idempotency-Key") String idempotencyKey
     ) {
         commandIdempotencyGuard.requireUuid(idempotencyKey);
-        return auctionEngine.readyNext(sessionId, authTokenResolver.resolveUserId(authorization), roundId);
+        return auctionService.readyNext(sessionId, authTokenResolver.resolveUserId(authorization), roundId);
     }
 
     @PostMapping("/auction/rounds/{roundId}/pass")
@@ -82,6 +82,6 @@ public class AuctionCommandController {
         @RequestHeader("Idempotency-Key") String idempotencyKey
     ) {
         commandIdempotencyGuard.requireUuid(idempotencyKey);
-        return auctionEngine.passRound(sessionId, authTokenResolver.resolveUserId(authorization), roundId);
+        return auctionService.passRound(sessionId, authTokenResolver.resolveUserId(authorization), roundId);
     }
 }

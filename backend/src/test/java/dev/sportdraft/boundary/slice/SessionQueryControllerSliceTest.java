@@ -1,8 +1,10 @@
 package dev.sportdraft.boundary.slice;
 
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import dev.sportdraft.common.web.AuthTokenResolver;
@@ -64,5 +66,16 @@ class SessionQueryControllerSliceTest {
         mockMvc.perform(get("/api/v2/sessions/{sessionId}/match-timeline", sessionId)
                 .header("Authorization", "Bearer " + userId))
             .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void ping_nonMember_returns401() throws Exception {
+        UUID outsider = UUID.fromString("33333333-3333-3333-3333-333333333333");
+        doThrow(new ResponseStatusException(HttpStatus.FORBIDDEN, "Player not found in session"))
+            .when(sessionReadService).recordPing(eq(sessionId), eq(outsider));
+
+        mockMvc.perform(post("/api/v2/sessions/{sessionId}/ping", sessionId)
+                .header("Authorization", "Bearer " + outsider))
+            .andExpect(status().isForbidden());
     }
 }

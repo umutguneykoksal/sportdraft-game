@@ -21,4 +21,19 @@ public enum GameMode {
         }
         return GameMode.valueOf(raw.trim().toUpperCase());
     }
+
+    /** @throws org.springframework.web.server.ResponseStatusException 400 when unknown */
+    public static GameMode fromWireOrThrow(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return DUEL;
+        }
+        try {
+            return GameMode.valueOf(raw.trim().toUpperCase());
+        } catch (IllegalArgumentException ex) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                org.springframework.http.HttpStatus.BAD_REQUEST,
+                "Unknown gameMode: " + raw
+            );
+        }
+    }
 }

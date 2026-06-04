@@ -60,7 +60,6 @@
       "!src/features/**/useAuctionPageState.ts",
       "!src/features/**/useSpectateMatchReplay.ts",
       "!src/features/**/useLobbyFlow.ts",
-      "!src/features/**/useAuctionSync.ts",
       "!src/features/**/useMatchFlow.ts",
       "!src/shared/realtime/eventDispatch.ts"
     ],

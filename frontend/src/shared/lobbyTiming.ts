@@ -3,14 +3,23 @@ import type { SessionSnapshotResponse } from "./api/contracts";
 /** Must match LobbyService.LOBBY_PAIRING_COUNTDOWN_SECONDS */
 export const LOBBY_PAIRING_COUNTDOWN_SECONDS = 5;
 
-/** Must match LobbyService.FORMATION_FIRST_READY_COUNTDOWN_SECONDS */
-export const FORMATION_FIRST_READY_COUNTDOWN_SECONDS = 10;
+/** Must match LobbyService.FORMATION_ALL_READY_COUNTDOWN_SECONDS */
+export const FORMATION_ALL_READY_COUNTDOWN_SECONDS = 5;
+
+/** @deprecated Use {@link FORMATION_ALL_READY_COUNTDOWN_SECONDS} */
+export const FORMATION_FIRST_READY_COUNTDOWN_SECONDS = FORMATION_ALL_READY_COUNTDOWN_SECONDS;
+
+export function formationCountdownReadyThreshold(
+  snapshot: SessionSnapshotResponse | null | undefined
+): number {
+  return snapshot?.maxPlayers ?? snapshot?.playerCount ?? 2;
+}
 
 export type LobbyCountdownPhase = "PAIRING" | "FORMATION_AUCTION_START";
 
 /**
  * Status is authoritative over {@link countdownPhase} so stale wire fields cannot
- * show a 10s auction timer during the 5s pairing countdown.
+ * show an auction timer during the 5s pairing countdown.
  */
 export function inferCountdownPhase(
   snapshot: SessionSnapshotResponse | null | undefined
@@ -22,7 +31,7 @@ export function inferCountdownPhase(
   }
 
   if (snapshot.status === "FORMATION_SELECT") {
-    if ((snapshot.matchStartReadyCount ?? 0) < 1) {
+    if ((snapshot.matchStartReadyCount ?? 0) < formationCountdownReadyThreshold(snapshot)) {
       return null;
     }
     return "FORMATION_AUCTION_START";
@@ -40,7 +49,7 @@ export function maxCountdownSecondsForPhase(
   phase: LobbyCountdownPhase | null
 ): number | null {
   if (phase === "PAIRING") return LOBBY_PAIRING_COUNTDOWN_SECONDS;
-  if (phase === "FORMATION_AUCTION_START") return FORMATION_FIRST_READY_COUNTDOWN_SECONDS;
+  if (phase === "FORMATION_AUCTION_START") return FORMATION_ALL_READY_COUNTDOWN_SECONDS;
   return null;
 }
 

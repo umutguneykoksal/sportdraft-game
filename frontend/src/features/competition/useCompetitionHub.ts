@@ -19,7 +19,8 @@ export function useCompetitionHub<TStep extends { kind: string; matchId?: string
 ) {
   const navigate = useNavigate();
   const myUserId = getClientUserId();
-  const { events } = useSessionStream(sessionId ?? null);
+  const { events, isConnected } = useSessionStream(sessionId ?? null);
+  const prevConnectedRef = useRef(false);
   const [competition, setCompetition] = useState<CompetitionResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -53,6 +54,14 @@ export function useCompetitionHub<TStep extends { kind: string; matchId?: string
   useEffect(() => {
     refresh();
   }, [refresh]);
+
+  useEffect(() => {
+    const wasConnected = prevConnectedRef.current;
+    prevConnectedRef.current = isConnected;
+    if (sessionId && isConnected && wasConnected) {
+      refresh();
+    }
+  }, [isConnected, sessionId, refresh]);
 
   useEffect(() => {
     const relevant = events.some((e) => config.sseEventTypes.includes(e.eventType));

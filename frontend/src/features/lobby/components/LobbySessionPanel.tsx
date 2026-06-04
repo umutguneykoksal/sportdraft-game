@@ -2,7 +2,7 @@ import type { Formation, GameMode, SessionSnapshotResponse } from "../../../shar
 import { FORMATION_LABELS, FORMATION_DOTS } from "../../../shared/formations";
 import { GAME_MODE_LABELS, SESSION_STATUS_LABELS, poolLeagueLabel } from "../../../shared/api/contracts";
 import {
-  FORMATION_FIRST_READY_COUNTDOWN_SECONDS,
+  FORMATION_ALL_READY_COUNTDOWN_SECONDS,
   LOBBY_PAIRING_COUNTDOWN_SECONDS,
   inferCountdownPhase,
 } from "../../../shared/lobbyTiming";
@@ -88,6 +88,7 @@ function FormationActionBar({
   snapshot,
   maxPlayers,
   formationPickActive,
+  showReadyControl,
   loading,
   onStartAuction,
   onLeave,
@@ -95,21 +96,24 @@ function FormationActionBar({
   snapshot: SessionSnapshotResponse;
   maxPlayers: number;
   formationPickActive: boolean;
+  showReadyControl: boolean;
   loading: boolean;
   onStartAuction: () => void;
   onLeave: () => void;
 }) {
+  const leaveOnly = !showReadyControl;
+
   return (
-    <div className="flex gap-3">
-      {formationPickActive && (
+    <div className={cn("flex gap-3", leaveOnly && "flex-col")}>
+      {showReadyControl && (
         <button
           data-testid="lobby-confirm-formation-ready"
           onClick={onStartAuction}
           disabled={loading || snapshot.matchStartConfirmedByMe || !snapshot.myFormation}
           className={cn(
-            "min-h-[44px] flex-1 rounded-lg py-2.5 text-sm font-bold transition-colors",
+            "min-h-[44px] min-w-0 flex-1 rounded-lg px-4 py-2.5 text-sm font-bold transition-colors",
             snapshot.matchStartConfirmedByMe
-              ? "cursor-default border border-accent-green/30 bg-accent-green/20 text-accent-green"
+              ? "cursor-default whitespace-nowrap border border-accent-green/40 bg-accent-green/15 text-accent-green"
               : "bg-accent text-white hover:bg-blue-600 disabled:opacity-50"
           )}
         >
@@ -125,7 +129,7 @@ function FormationActionBar({
         disabled={loading}
         className={cn(
           "min-h-[44px] rounded-lg border border-red-500/30 bg-red-900/30 px-5 py-2.5 text-sm font-bold text-red-400 hover:bg-red-900/50 disabled:opacity-50",
-          formationPickActive ? "" : "w-full"
+          leaveOnly ? "w-full" : "shrink-0 basis-auto min-w-[5.5rem]"
         )}
       >
         Leave
@@ -169,18 +173,21 @@ export function LobbySessionPanel({
     countdownPhase === "FORMATION_AUCTION_START"
     && countdownSecondsLeft != null
     && countdownSecondsLeft > 0;
+  /** Until this client confirms ready, show the formation grid. */
   const formationPickActive =
+    status === "FORMATION_SELECT" && !snapshot.matchStartConfirmedByMe;
+  const showReadyControl =
     status === "FORMATION_SELECT"
-    && (!formationStartCountdownActive || !snapshot.matchStartConfirmedByMe);
+    && (formationPickActive
+      || (snapshot.matchStartConfirmedByMe
+        && snapshot.matchStartReadyCount < maxPlayers
+        && !formationStartCountdownActive));
 
   const waitingHint =
     formationPickActive
-    && !formationStartCountdownActive
     && snapshot.matchStartReadyCount >= 1
     && snapshot.matchStartReadyCount < maxPlayers
-      ? snapshot.matchStartConfirmedByMe
-        ? "Waiting for opponent to confirm..."
-        : "Opponent is ready — pick a formation and start"
+      ? "Opponent is ready — pick a formation and start"
       : null;
 
   const poolLabel =
@@ -189,7 +196,7 @@ export function LobbySessionPanel({
       : null;
 
   const pairingCountdownLabel = `Opponent found — formation pick starts in ${LOBBY_PAIRING_COUNTDOWN_SECONDS}s`;
-  const formationCountdownLabel = `Auction starts in up to ${FORMATION_FIRST_READY_COUNTDOWN_SECONDS}s`;
+  const formationCountdownLabel = `Auction starts in ${FORMATION_ALL_READY_COUNTDOWN_SECONDS}s`;
 
   return (
     <div
@@ -263,12 +270,24 @@ export function LobbySessionPanel({
             </div>
           )}
 
-          {formationStartCountdownActive
+          {status === "FORMATION_SELECT"
             && snapshot.matchStartConfirmedByMe
-            && countdownSecondsLeft != null && (
+            && !formationStartCountdownActive
+            && snapshot.matchStartReadyCount < maxPlayers && (
+            <div className="flex shrink-0 flex-col items-center justify-center px-4 py-6 text-center sm:flex-1">
+              <p className="text-sm text-slate-400">Waiting for opponent to confirm...</p>
+              {snapshot.myFormation && (
+                <p className="mt-2 text-xs text-slate-500">
+                  Locked in {FORMATION_LABELS[snapshot.myFormation]}
+                </p>
+              )}
+            </div>
+          )}
+
+          {formationStartCountdownActive && countdownSecondsLeft != null && (
             <div className="flex shrink-0 flex-col items-center justify-center px-4 py-4 sm:flex-1">
               <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-accent/90">
-                Auction start · up to {FORMATION_FIRST_READY_COUNTDOWN_SECONDS}s
+                Auction start · {FORMATION_ALL_READY_COUNTDOWN_SECONDS}s
               </p>
               <CountdownRing
                 seconds={countdownSecondsLeft}
@@ -331,6 +350,7 @@ export function LobbySessionPanel({
               snapshot={snapshot}
               maxPlayers={maxPlayers}
               formationPickActive={formationPickActive}
+              showReadyControl={showReadyControl}
               loading={loading}
               onStartAuction={onStartAuction}
               onLeave={onLeave}

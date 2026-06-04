@@ -37,7 +37,7 @@ public class LobbyController {
 
     @PostMapping("/lobbies")
     public SessionSnapshotResponse createRoom(
-        @Valid @RequestBody(required = false) JoinLobbyRequest request,
+        @Valid @RequestBody(required = false) JoinRoomRequest request,
         @RequestHeader("Authorization") String authorization
     ) {
         String nickname = request != null ? request.nickname() : null;
@@ -47,7 +47,7 @@ public class LobbyController {
     @PostMapping("/lobbies/{sessionId}/join")
     public SessionSnapshotResponse joinRoom(
         @PathVariable UUID sessionId,
-        @Valid @RequestBody(required = false) JoinLobbyRequest request,
+        @Valid @RequestBody(required = false) JoinRoomRequest request,
         @RequestHeader("Authorization") String authorization
     ) {
         String nickname = request != null ? request.nickname() : null;

@@ -260,8 +260,25 @@ class SessionReadServiceTest {
 
     @Test
     void recordPing_delegatesToSseRegistry() {
+        ActiveSession session = activeSessionWithTimeline();
+        when(sessionStore.getById(sessionId)).thenReturn(session);
+
         sessionReadService.recordPing(sessionId, homeUserId);
+
         verify(sseEmitterRegistry).recordPlayerPing(sessionId, homeUserId);
+    }
+
+    @Test
+    void recordPing_rejectsNonMember() {
+        ActiveSession session = activeSessionWithTimeline();
+        when(sessionStore.getById(sessionId)).thenReturn(session);
+
+        UUID outsider = UUID.randomUUID();
+
+        assertThatThrownBy(() -> sessionReadService.recordPing(sessionId, outsider))
+            .isInstanceOf(ResponseStatusException.class)
+            .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode())
+                .isEqualTo(HttpStatus.FORBIDDEN));
     }
 
     private ActiveSession activeSessionWithTimeline() {

@@ -54,23 +54,30 @@ export function useLobbyFlow() {
   sessionIdRef.current = sessionId;
   const syncSeqRef = useRef(0);
 
+  const reportSyncError = useCallback((e: unknown, fallback: string) => {
+    setError(e instanceof Error ? e.message : fallback);
+  }, []);
+
   const refetchSnapshot = useCallback((sid: string) => {
     const seq = ++syncSeqRef.current;
-    return getSessionSnapshot(sid).then((snap) => {
-      if (seq === syncSeqRef.current && sessionIdRef.current === sid) {
-        setSnapshot(snap);
-      }
-    });
-  }, []);
+    return getSessionSnapshot(sid)
+      .then((snap) => {
+        if (seq === syncSeqRef.current && sessionIdRef.current === sid) {
+          setSnapshot(snap);
+        }
+      })
+      .catch((e) => reportSyncError(e, "Could not refresh lobby state"));
+  }, [reportSyncError]);
 
   useEffect(() => {
     seenEventIdsRef.current.clear();
     wasEverConnectedRef.current = false;
   }, [sessionId]);
 
-  if (isConnected) {
-    wasEverConnectedRef.current = true;
-  }
+  useEffect(() => {
+    if (isConnected) wasEverConnectedRef.current = true;
+  }, [isConnected]);
+
   const showReconnecting = !!sessionId && wasEverConnectedRef.current && !isConnected;
 
   // 1. Restore session on mount
@@ -126,7 +133,7 @@ export function useLobbyFlow() {
     prevConnectedRef.current = isConnected;
     const sid = sessionIdRef.current;
     if (!sid || !isConnected || !wasConnected) return;
-    refetchSnapshot(sid).catch(() => {});
+    refetchSnapshot(sid).catch(() => { /* error surfaced via reportSyncError */ });
   }, [isConnected, refetchSnapshot]);
 
   // 5. SSE — drain all unseen events (not only the last buffer index)
@@ -138,7 +145,7 @@ export function useLobbyFlow() {
     const sid = sessionIdRef.current;
     if (!sid || !shouldRefetchLobbySnapshot(fresh)) return;
 
-    refetchSnapshot(sid).catch(() => {});
+    refetchSnapshot(sid).catch(() => { /* error surfaced via reportSyncError */ });
   }, [events, refetchSnapshot]);
 
   // 5b. Poll snapshot while in lobby phases (catches missed auctioning_started)
@@ -176,12 +183,14 @@ export function useLobbyFlow() {
       try {
         const list = await listLobbies();
         if (!cancelled) setRooms(list);
-      } catch { /* swallow */ }
+      } catch (e) {
+        if (!cancelled) reportSyncError(e, "Could not load lobby list");
+      }
     };
     poll();
     const interval = setInterval(poll, LOBBY_POLL_INTERVAL_MS);
     return () => { cancelled = true; clearInterval(interval); };
-  }, [snapshot]);
+  }, [snapshot, reportSyncError]);
 
   // 7b. Pool min-rating options for selected league (disable thresholds with too few cards)
   useEffect(() => {

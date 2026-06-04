@@ -56,7 +56,7 @@ export function AuctionPage() {
                 style={{ width: `${state.budgetPercent}%` }}
               />
             </div>
-            {!state.isConnected && (
+            {state.showReconnecting && (
               <span className="text-amber-400 text-xs animate-pulse">Reconnecting...</span>
             )}
           </div>

@@ -8,7 +8,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import dev.sportdraft.bidding.boundary.AuctionCommandController;
-import dev.sportdraft.bidding.control.AuctionEngine;
+import dev.sportdraft.bidding.control.AuctionService;
 import dev.sportdraft.common.web.AuthTokenResolver;
 import dev.sportdraft.common.web.CommandIdempotencyGuard;
 import dev.sportdraft.common.web.GlobalExceptionHandler;
@@ -33,7 +33,7 @@ class AuctionCommandControllerSliceTest {
     private MockMvc mockMvc;
 
     @MockBean
-    private AuctionEngine auctionEngine;
+    private AuctionService auctionService;
 
     private final UUID userId = UUID.fromString("11111111-1111-1111-1111-111111111111");
     private final UUID sessionId = UUID.fromString("22222222-2222-2222-2222-222222222222");
@@ -41,7 +41,7 @@ class AuctionCommandControllerSliceTest {
 
     @Test
     void placeBid_validationError_returns422() throws Exception {
-        when(auctionEngine.placeBid(eq(sessionId), eq(userId), any(), any()))
+        when(auctionService.placeBid(eq(sessionId), eq(userId), any(), any()))
             .thenThrow(new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "Bid is below minimum increment"));
 
         mockMvc.perform(post("/api/v2/sessions/{sessionId}/bids", sessionId)

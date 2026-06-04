@@ -20,29 +20,12 @@ import { buildRoundOutcomeNotice, type RoundOutcomeNotice } from "../buildRoundO
 import { ROUND_BID_SECONDS } from "../auctionTiming";
 import type { RoundEndedPayload } from "../../../shared/realtime/eventDispatch";
 import { getOrCreateClientSession } from "../../../shared/session";
+import { mapAuctionTeamCards, POSITION_COLORS } from "../../../shared/auction/teamCards";
+
+export { POSITION_COLORS };
 
 export const BID_UI_GRACE_MS = 2000;
 export const ROUND_OUTCOME_TOAST_MS = 5000;
-
-export const POSITION_COLORS: Record<string, string> = {
-  GK: "bg-yellow-500",
-  DEF: "bg-blue-500",
-  CDM: "bg-indigo-500",
-  CM: "bg-green-500",
-  CAM: "bg-orange-500",
-  FWD: "bg-red-500",
-};
-
-function mapCards(raw: AuctionTeamCardResponse[]): AuctionTeamCardResponse[] {
-  return raw.map((c) => ({
-    cardId: c.cardId,
-    cardName: c.cardName,
-    clubName: c.clubName,
-    position: c.position,
-    rating: c.rating ?? 0,
-    amountCents: c.amountCents,
-  }));
-}
 
 export function useAuctionPageState(sessionId: string | undefined) {
   const navigate = useNavigate();
@@ -106,16 +89,22 @@ export function useAuctionPageState(sessionId: string | undefined) {
     matchCompleted,
   } = useSessionSync(sessionId ?? null, false, { onRoundEnded: showRoundOutcome });
 
+  const wasEverConnectedRef = useRef(false);
+  useEffect(() => {
+    if (isConnected) wasEverConnectedRef.current = true;
+  }, [isConnected]);
+  const showReconnecting = wasEverConnectedRef.current && !isConnected;
+
   const multiPlayerMode = (sessionSnap?.maxPlayers ?? 2) > 2;
   const playerViews = auctionState?.players ?? [];
   const myPlayerView = playerViews.find((p) => p.userId === myUserId);
 
   const myTeam = multiPlayerMode && myPlayerView
-    ? mapCards(myPlayerView.team)
-    : auctionState ? mapCards(auctionState.myTeam) : [];
+    ? mapAuctionTeamCards(myPlayerView.team)
+    : auctionState ? mapAuctionTeamCards(auctionState.myTeam) : [];
   const opponentTeam = multiPlayerMode
     ? []
-    : auctionState ? mapCards(auctionState.opponentTeam) : [];
+    : auctionState ? mapAuctionTeamCards(auctionState.opponentTeam) : [];
   const myFormation: Formation = (multiPlayerMode && myPlayerView
     ? myPlayerView.formation
     : auctionState?.myFormation) as Formation ?? "FOUR_FOUR_TWO";
@@ -562,6 +551,7 @@ export function useAuctionPageState(sessionId: string | undefined) {
     round,
     error,
     isConnected,
+    showReconnecting,
     myTeam,
     opponentTeam,
     myFormation,

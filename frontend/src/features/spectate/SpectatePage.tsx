@@ -9,6 +9,8 @@ import { TeamPitch } from "../../shared/components/TeamPitch";
 import { PositionBadgeRow } from "../../shared/components/PositionBadgeRow";
 import { PlayerAttributeBars } from "../../shared/components/PlayerAttributeBars";
 import { FORMATION_LABELS } from "../../shared/formations";
+import { getOrCreateClientSession } from "../../shared/session";
+import { mapAuctionTeamCards, POSITION_COLORS } from "../../shared/auction/teamCards";
 import { openEligibleHighlights } from "../../shared/positions";
 import {
   computeDisplaySecondsLeft,
@@ -19,28 +21,10 @@ import { deriveSpectateTurnMessage, nicknameForUserId } from "./deriveSpectateTu
 import { useSpectateMatchReplay } from "./hooks/useSpectateMatchReplay";
 import { MatchCommentary } from "../match/components/MatchCommentary";
 
-function mapCards(raw: AuctionTeamCardResponse[]): AuctionTeamCardResponse[] {
-  return raw.map((c) => ({
-    cardId: c.cardId,
-    cardName: c.cardName,
-    position: c.position,
-    rating: c.rating ?? 0,
-    amountCents: c.amountCents,
-  }));
-}
-
-const positionColors: Record<string, string> = {
-  GK: "bg-yellow-500",
-  DEF: "bg-blue-500",
-  CDM: "bg-indigo-500",
-  CM: "bg-green-500",
-  CAM: "bg-orange-500",
-  FWD: "bg-red-500",
-};
-
 export function SpectatePage() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
+  getOrCreateClientSession();
 
   const { state, round, lastEvent, isConnected, loadFailed, matchCompleted } = useSpectateSync(sessionId ?? null);
   const { phase: matchPhase, timeline, simulationStalled, showFinalResult } = useSpectateMatchReplay(
@@ -60,13 +44,16 @@ export function SpectatePage() {
   const previousRoundIdRef = useRef<string | null>(null);
   const wasEverConnectedRef = useRef(false);
 
-  if (isConnected) wasEverConnectedRef.current = true;
+  useEffect(() => {
+    if (isConnected) wasEverConnectedRef.current = true;
+  }, [isConnected]);
+
   const showReconnecting = wasEverConnectedRef.current && !isConnected;
 
   useEffect(() => {
     if (!state) return;
-    setHomeTeam(mapCards(state.homeTeam));
-    setAwayTeam(mapCards(state.awayTeam));
+    setHomeTeam(mapAuctionTeamCards(state.homeTeam));
+    setAwayTeam(mapAuctionTeamCards(state.awayTeam));
     if (state.homeFormation) setHomeFormation(state.homeFormation as Formation);
     if (state.awayFormation) setAwayFormation(state.awayFormation as Formation);
   }, [state]);
@@ -339,7 +326,7 @@ export function SpectatePage() {
                   {homeTeam.map((c) => (
                     <div key={c.cardId} className="flex items-center justify-between text-sm">
                       <div className="flex items-center gap-2">
-                        <span className={`${positionColors[c.position] ?? "bg-gray-500"} text-white text-xs px-1.5 py-0.5 rounded font-bold`}>
+                        <span className={`${POSITION_COLORS[c.position] ?? "bg-gray-500"} text-white text-xs px-1.5 py-0.5 rounded font-bold`}>
                           {c.position}
                         </span>
                         <span className="text-white">{c.cardName}</span>
@@ -360,7 +347,7 @@ export function SpectatePage() {
                   <PositionBadgeRow
                     primary={round.position}
                     eligiblePositions={round.eligiblePositions}
-                    colors={positionColors}
+                    colors={POSITION_COLORS}
                   />
                   <h2 className="text-2xl font-extrabold text-white mt-2">{round.cardName}</h2>
                   <p className="text-4xl font-black text-card-gold mt-1">{round.cardRating ?? "?"}</p>
@@ -445,7 +432,7 @@ export function SpectatePage() {
                   {awayTeam.map((c) => (
                     <div key={c.cardId} className="flex items-center justify-between text-sm">
                       <div className="flex items-center gap-2">
-                        <span className={`${positionColors[c.position] ?? "bg-gray-500"} text-white text-xs px-1.5 py-0.5 rounded font-bold`}>
+                        <span className={`${POSITION_COLORS[c.position] ?? "bg-gray-500"} text-white text-xs px-1.5 py-0.5 rounded font-bold`}>
                           {c.position}
                         </span>
                         <span className="text-white">{c.cardName}</span>

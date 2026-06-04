@@ -173,46 +173,95 @@ class LobbyServiceCommandTest {
     }
 
     @Test
-    void confirmFormationReady_firstPlayerStartsTenSecondCountdown() {
+    void confirmFormationReady_withoutFormationSelected_throws422() {
         UUID sessionId = UUID.randomUUID();
         ActiveSession session = formationSession(sessionId);
+        when(sessionStore.getById(sessionId)).thenReturn(session);
+
+        assertThatThrownBy(() -> lobbyService.confirmFormationReady(sessionId, hostUserId))
+            .isInstanceOf(ResponseStatusException.class)
+            .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode())
+                .isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY));
+    }
+
+    @Test
+    void confirmFormationReady_firstPlayerDoesNotStartCountdown() {
+        UUID sessionId = UUID.randomUUID();
+        ActiveSession session = formationSession(sessionId);
+        session.findPlayerByUserId(hostUserId).orElseThrow()
+            .selectFormation(Formation.FOUR_FOUR_TWO);
         when(sessionStore.getById(sessionId)).thenReturn(session);
         when(eventLog.currentSeq(sessionId)).thenReturn(1L);
 
         var response = lobbyService.confirmFormationReady(sessionId, hostUserId);
 
         assertThat(response.matchStartReadyCount()).isEqualTo(1);
-        assertThat(session.getCountdownEndsAt()).isNotNull();
-        assertThat(response.countdownPhase()).isEqualTo(LobbyCountdownPhase.FORMATION_AUCTION_START);
+        assertThat(session.getCountdownEndsAt()).isNull();
+        assertThat(response.countdownPhase()).isNull();
         assertThat(session.getStatus()).isEqualTo(SessionStatus.FORMATION_SELECT);
         verify(sseEmitterRegistry).broadcast(eq(sessionId), eq("formation_ready"), any());
         verify(sessionStore).saveIfVersionMatch(eq(session), any(Long.class));
+        verify(auctionService, never()).openRoundIfNeeded(any());
     }
 
     @Test
-    void confirmFormationReady_bothReadyStartsAuctionImmediately() {
+    void confirmFormationReady_bothReadyStartsFiveSecondCountdown() {
         UUID sessionId = UUID.randomUUID();
         ActiveSession session = formationSession(sessionId);
+        session.findPlayerByUserId(hostUserId).orElseThrow()
+            .selectFormation(Formation.FOUR_FOUR_TWO);
+        session.findPlayerByUserId(guestUserId).orElseThrow()
+            .selectFormation(Formation.FOUR_THREE_THREE);
         session.registerMatchStartReady(hostUserId);
-        UUID cardId = UUID.randomUUID();
         when(sessionStore.getById(sessionId)).thenReturn(session);
         when(eventLog.currentSeq(sessionId)).thenReturn(1L);
-        when(cardCatalog.getCardIdsForPool(session.getPoolLeague(), session.getMinPoolRating()))
-            .thenReturn(List.of(cardId));
 
         var response = lobbyService.confirmFormationReady(sessionId, guestUserId);
 
-        assertThat(response.status()).isEqualTo(SessionStatus.AUCTIONING);
-        assertThat(session.getStatus()).isEqualTo(SessionStatus.AUCTIONING);
+        assertThat(response.status()).isEqualTo(SessionStatus.FORMATION_SELECT);
+        assertThat(session.getStatus()).isEqualTo(SessionStatus.FORMATION_SELECT);
+        assertThat(session.getCountdownEndsAt()).isNotNull();
+        assertThat(response.countdownPhase()).isEqualTo(LobbyCountdownPhase.FORMATION_AUCTION_START);
+        verify(sseEmitterRegistry).broadcast(eq(sessionId), eq("formation_ready"), any());
+        verify(auctionService, never()).openRoundIfNeeded(any());
+    }
+
+    @Test
+    void confirmFormationReady_fourPlayer_partialReadyDoesNotStartCountdown() {
+        UUID sessionId = UUID.randomUUID();
+        UUID user2 = UUID.randomUUID();
+        UUID user3 = UUID.randomUUID();
+        ActiveSession session = formationSession(sessionId, GameMode.TOURNAMENT, hostUserId, guestUserId, user2, user3);
+        session.findPlayerByUserId(hostUserId).orElseThrow().selectFormation(Formation.FOUR_FOUR_TWO);
+        session.findPlayerByUserId(guestUserId).orElseThrow().selectFormation(Formation.FOUR_THREE_THREE);
+        when(sessionStore.getById(sessionId)).thenReturn(session);
+        when(eventLog.currentSeq(sessionId)).thenReturn(1L);
+
+        var afterTwo = lobbyService.confirmFormationReady(sessionId, hostUserId);
+        lobbyService.confirmFormationReady(sessionId, guestUserId);
+
+        assertThat(afterTwo.matchStartReadyCount()).isEqualTo(1);
+        assertThat(session.matchStartReadyCount()).isEqualTo(2);
         assertThat(session.getCountdownEndsAt()).isNull();
-        verify(sseEmitterRegistry).broadcast(eq(sessionId), eq("auctioning_started"), any());
-        verify(auctionService).openRoundIfNeeded(sessionId);
+        assertThat(session.getMaxPlayers()).isEqualTo(4);
+
+        session.findPlayerByUserId(user2).orElseThrow().selectFormation(Formation.THREE_FIVE_TWO);
+        session.findPlayerByUserId(user3).orElseThrow().selectFormation(Formation.FIVE_THREE_TWO);
+        lobbyService.confirmFormationReady(sessionId, user2);
+        var afterAll = lobbyService.confirmFormationReady(sessionId, user3);
+
+        assertThat(afterAll.matchStartReadyCount()).isEqualTo(4);
+        assertThat(session.getCountdownEndsAt()).isNotNull();
+        assertThat(afterAll.countdownPhase()).isEqualTo(LobbyCountdownPhase.FORMATION_AUCTION_START);
+        assertThat(session.getStatus()).isEqualTo(SessionStatus.FORMATION_SELECT);
     }
 
     @Test
     void confirmFormationReady_idempotentWhenAlreadyReady() {
         UUID sessionId = UUID.randomUUID();
         ActiveSession session = formationSession(sessionId);
+        session.findPlayerByUserId(hostUserId).orElseThrow()
+            .selectFormation(Formation.FOUR_FOUR_TWO);
         session.registerMatchStartReady(hostUserId);
         when(sessionStore.getById(sessionId)).thenReturn(session);
         when(eventLog.currentSeq(sessionId)).thenReturn(1L);
@@ -298,12 +347,23 @@ class LobbyServiceCommandTest {
     }
 
     private ActiveSession formationSession(UUID sessionId) {
-        ActiveSession session = waitingSession(sessionId, hostUserId);
-        session.getPlayers().add(new ActivePlayer(
-            UUID.randomUUID(), guestUserId, "Guest", Formation.FOUR_FOUR_TWO, 100
-        ));
-        session.addToTurnOrder(guestUserId);
-        session.moveToFormationSelect(Instant.now().plus(30, ChronoUnit.SECONDS));
+        return formationSession(sessionId, GameMode.DUEL, hostUserId, guestUserId);
+    }
+
+    private ActiveSession formationSession(
+        UUID sessionId,
+        GameMode mode,
+        UUID... userIds
+    ) {
+        ActiveSession session = new ActiveSession(sessionId, SessionStatus.WAITING, Instant.now(), mode);
+        for (int i = 0; i < userIds.length; i++) {
+            UUID userId = userIds[i];
+            session.getPlayers().add(new ActivePlayer(
+                UUID.randomUUID(), userId, "P" + (i + 1), Formation.FOUR_FOUR_TWO, 100
+            ));
+            session.addToTurnOrder(userId);
+        }
+        session.moveToFormationSelect(null);
         return session;
     }
 }
