@@ -63,6 +63,13 @@ describe("LobbyEntryPanel", () => {
     expect(screen.getByLabelText("League")).toBeInTheDocument();
   });
 
+  it("showsPoolLeagueSelector", () => {
+    render(<LobbyEntryPanel {...baseProps} />);
+
+    expect(screen.getByTestId("lobby-pool-league")).toBeInTheDocument();
+    expect(screen.getByLabelText("League")).toBeInTheDocument();
+  });
+
   it("opensHowToPlayModal", async () => {
     const user = userEvent.setup();
     render(<LobbyEntryPanel {...baseProps} />);
