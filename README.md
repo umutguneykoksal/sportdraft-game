@@ -2,9 +2,9 @@
 
 **[Play (production) →](https://www.sportdraft.dev)** · **[Dev / staging →](https://test.sportdraft.dev)**
 
-| Environment | URL |
-|-------------|-----|
-| Production | [sportdraft.dev](https://www.sportdraft.dev) |
+| Environment | URL                                                |
+| ----------- | -------------------------------------------------- |
+| Production  | [sportdraft.dev](https://www.sportdraft.dev)       |
 | Development | [test.sportdraft.dev](https://test.sportdraft.dev) |
 
 Multiplayer football card auction draft. Two to four players share a card pool, bid from a **100-credit** budget, fill an **11-slot formation**, then the server runs an instant rating-based match simulation.
@@ -18,11 +18,11 @@ Multiplayer football card auction draft. Two to four players share a card pool, 
 
 ## Game modes
 
-| Mode | Players | Flow |
-|------|---------|------|
-| **Duel** | 2 | Lobby → formation → auction draft → instant match result |
-| **Tournament** | 4 | Shared draft → semi-finals → intermission → final |
-| **League** | 4 | Shared draft → three matchdays → live table → co-champions or playoff final |
+| Mode           | Players | Flow                                                                        |
+| -------------- | ------- | --------------------------------------------------------------------------- |
+| **Duel**       | 2       | Lobby → formation → auction draft → instant match result                    |
+| **Tournament** | 4       | Shared draft → semi-finals → intermission → final                           |
+| **League**     | 4       | Shared draft → three matchdays → live table → co-champions or playoff final |
 
 The host picks the **card pool** before the room opens: league (Premier League or Trendyol Super Lig) and minimum overall rating (**70 / 75 / 80**).
 
