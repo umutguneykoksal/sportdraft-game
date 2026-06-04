@@ -20,12 +20,40 @@ const baseSnapshot: SessionSnapshotResponse = {
 };
 
 describe("LobbySessionPanel", () => {
+  it("showsPairingCountdownOnlyWithPairingPhase", () => {
+    render(
+      <LobbySessionPanel
+        nickname="Guest"
+        snapshot={{
+          ...baseSnapshot,
+          status: "COUNTDOWN",
+          countdownPhase: "PAIRING",
+          countdownEndsAt: "2026-01-01T00:00:05.000Z",
+          matchStartDeadlineAt: "2026-01-01T00:00:10.000Z",
+        }}
+        maxPlayers={2}
+        gameMode="DUEL"
+        countdownSecondsLeft={5}
+        formations={ALL_FORMATIONS}
+        loading={false}
+        onChooseFormation={jest.fn()}
+        onStartAuction={jest.fn()}
+        onLeave={jest.fn()}
+      />
+    );
+
+    expect(screen.getByTestId("lobby-match-countdown")).toHaveTextContent("5");
+    expect(screen.getByText(/Pairing · 5s/i)).toBeInTheDocument();
+    expect(screen.queryByTestId("lobby-auction-countdown")).not.toBeInTheDocument();
+  });
+
   it("showsTenSecondAuctionCountdownForConfirmedPlayerWhenOpponentNotReady", () => {
     render(
       <LobbySessionPanel
         nickname="Guest"
         snapshot={{
           ...baseSnapshot,
+          countdownPhase: "FORMATION_AUCTION_START",
           matchStartReadyCount: 1,
           matchStartConfirmedByMe: true,
           countdownEndsAt: "2026-01-01T00:00:10.000Z",
@@ -52,6 +80,7 @@ describe("LobbySessionPanel", () => {
         nickname="Guest"
         snapshot={{
           ...baseSnapshot,
+          countdownPhase: "FORMATION_AUCTION_START",
           matchStartReadyCount: 1,
           matchStartConfirmedByMe: false,
           countdownEndsAt: "2026-01-01T00:00:10.000Z",

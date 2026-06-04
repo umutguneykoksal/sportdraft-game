@@ -4,6 +4,7 @@ import dev.sportdraft.bidding.control.AuctionService;
 import dev.sportdraft.bidding.control.CardCatalogService;
 import dev.sportdraft.common.realtime.SessionEventLog;
 import dev.sportdraft.common.sse.SseEmitterRegistry;
+import dev.sportdraft.lobby.entity.LobbyCountdownPhase;
 import dev.sportdraft.lobby.boundary.LobbyRoomResponse;
 import dev.sportdraft.lobby.boundary.PoolMinRatingOptionView;
 import dev.sportdraft.lobby.boundary.PoolMinRatingOptionsResponse;
@@ -432,6 +433,34 @@ public class LobbyService {
         }
     }
 
+    private static LobbyCountdownPhase resolveCountdownPhase(ActiveSession session) {
+        if (session.getStatus() == SessionStatus.COUNTDOWN && session.getCountdownEndsAt() != null) {
+            return LobbyCountdownPhase.PAIRING;
+        }
+        if (session.getStatus() == SessionStatus.FORMATION_SELECT && session.getCountdownEndsAt() != null) {
+            return LobbyCountdownPhase.FORMATION_AUCTION_START;
+        }
+        return null;
+    }
+
+    private Instant wireCountdownEndsAt(ActiveSession session, LobbyCountdownPhase phase) {
+        Instant endsAt = session.getCountdownEndsAt();
+        if (endsAt == null || phase == null) {
+            return null;
+        }
+        if (phase == LobbyCountdownPhase.PAIRING) {
+            Instant cap = Instant.now().plus(LOBBY_PAIRING_COUNTDOWN_SECONDS, ChronoUnit.SECONDS);
+            if (endsAt.isAfter(cap)) {
+                log.warn(
+                    "Normalized pairing countdown session={} endsAt={} cap={}",
+                    session.getId(), endsAt, cap
+                );
+                return cap;
+            }
+        }
+        return endsAt;
+    }
+
     private SessionSnapshotResponse snapshot(ActiveSession session, UUID userId) {
         ActivePlayer me = session.findPlayerByUserId(userId).orElse(null);
 
@@ -457,10 +486,14 @@ public class LobbyService {
             );
         }
 
+        LobbyCountdownPhase countdownPhase = resolveCountdownPhase(session);
+        Instant wireCountdownEndsAt = wireCountdownEndsAt(session, countdownPhase);
+
         return new SessionSnapshotResponse(
             session.getId(),
             session.getStatus(),
-            session.getCountdownEndsAt(),
+            countdownPhase,
+            wireCountdownEndsAt,
             session.playerCount(),
             me != null,
             me != null && me.isFormationConfirmed() ? me.getFormation() : null,

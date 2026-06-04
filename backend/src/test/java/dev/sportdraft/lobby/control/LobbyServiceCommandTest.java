@@ -12,6 +12,7 @@ import dev.sportdraft.bidding.control.AuctionService;
 import dev.sportdraft.bidding.control.CardCatalogService;
 import dev.sportdraft.common.realtime.SessionEventLog;
 import dev.sportdraft.common.sse.SseEmitterRegistry;
+import dev.sportdraft.lobby.entity.LobbyCountdownPhase;
 import dev.sportdraft.session.entity.Formation;
 import dev.sportdraft.session.entity.GameMode;
 import dev.sportdraft.session.entity.PoolLeague;
@@ -104,6 +105,8 @@ class LobbyServiceCommandTest {
 
         assertThat(response.playerCount()).isEqualTo(2);
         assertThat(response.status()).isEqualTo(SessionStatus.COUNTDOWN);
+        assertThat(response.countdownPhase()).isEqualTo(LobbyCountdownPhase.PAIRING);
+        assertThat(response.countdownEndsAt()).isNotNull();
         verify(sseEmitterRegistry).broadcast(eq(sessionId), eq("countdown_started"), any());
     }
 
@@ -180,6 +183,7 @@ class LobbyServiceCommandTest {
 
         assertThat(response.matchStartReadyCount()).isEqualTo(1);
         assertThat(session.getCountdownEndsAt()).isNotNull();
+        assertThat(response.countdownPhase()).isEqualTo(LobbyCountdownPhase.FORMATION_AUCTION_START);
         assertThat(session.getStatus()).isEqualTo(SessionStatus.FORMATION_SELECT);
         verify(sseEmitterRegistry).broadcast(eq(sessionId), eq("formation_ready"), any());
         verify(sessionStore).saveIfVersionMatch(eq(session), any(Long.class));

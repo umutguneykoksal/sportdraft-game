@@ -69,8 +69,9 @@ export function LobbyPage() {
   };
 
   return (
-    <div className="lobby-bg box-border min-h-screen h-dvh w-full overflow-hidden p-3 sm:p-4">
+    <div className="lobby-bg box-border flex h-dvh min-h-0 w-full flex-col overflow-hidden p-3 sm:p-4">
       {!isInSession && (
+        <div className="flex min-h-0 flex-1 flex-col">
         <LobbyEntryPanel
           nicknameInput={nicknameInput}
           onNicknameChange={setNicknameInput}
@@ -91,9 +92,11 @@ export function LobbyPage() {
           onJoinRoom={onJoinRoom}
           onSpectateRoom={(sessionId) => navigate(`/spectate/${sessionId}`)}
         />
+        </div>
       )}
 
       {isInSession && snapshot && (
+        <div className="flex min-h-0 flex-1 flex-col">
         <LobbySessionPanel
           nickname={session.nickname}
           snapshot={snapshot}
@@ -106,6 +109,7 @@ export function LobbyPage() {
           onStartAuction={handleStartAuction}
           onLeave={handleLeave}
         />
+        </div>
       )}
     </div>
   );

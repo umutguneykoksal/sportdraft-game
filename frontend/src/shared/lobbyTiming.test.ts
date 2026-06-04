@@ -1,4 +1,8 @@
-import { resolveLobbyCountdownDeadline } from "./lobbyTiming";
+import {
+  computeCountdownSecondsLeft,
+  inferCountdownPhase,
+  resolveLobbyCountdownDeadline,
+} from "./lobbyTiming";
 import type { SessionSnapshotResponse } from "./api/contracts";
 
 const base: SessionSnapshotResponse = {
@@ -13,31 +17,44 @@ const base: SessionSnapshotResponse = {
   matchStartConfirmedByMe: false,
 };
 
-describe("resolveLobbyCountdownDeadline", () => {
-  it("usesOnlyCountdownEndsAtDuringPairingCountdown", () => {
-    expect(resolveLobbyCountdownDeadline(base)).toBe("2026-01-01T00:00:05.000Z");
+describe("lobbyTiming", () => {
+  it("infersPairingPhaseFromServerField", () => {
+    expect(
+      inferCountdownPhase({ ...base, countdownPhase: "PAIRING" })
+    ).toBe("PAIRING");
   });
 
-  it("ignoresMatchStartDeadlineDuringFormationSelect", () => {
+  it("usesOnlyCountdownEndsAtDuringPairingDespiteStaleMatchStartDeadline", () => {
+    expect(resolveLobbyCountdownDeadline({ ...base, countdownPhase: "PAIRING" })).toBe(
+      "2026-01-01T00:00:05.000Z"
+    );
+  });
+
+  it("ignoresMatchStartDeadlineWhenCountdownPhaseIsPairing", () => {
     expect(
       resolveLobbyCountdownDeadline({
         ...base,
-        status: "FORMATION_SELECT",
-        countdownEndsAt: null,
+        countdownPhase: "PAIRING",
+        countdownEndsAt: "2026-01-01T00:00:05.000Z",
         matchStartDeadlineAt: "2026-01-01T00:00:10.000Z",
       })
-    ).toBeNull();
+    ).toBe("2026-01-01T00:00:05.000Z");
   });
 
-  it("usesCountdownEndsAtDuringFormationAuctionStart", () => {
+  it("usesFormationPhaseDeadlineOnly", () => {
     expect(
       resolveLobbyCountdownDeadline({
         ...base,
         status: "FORMATION_SELECT",
+        countdownPhase: "FORMATION_AUCTION_START",
         countdownEndsAt: "2026-01-01T00:00:10.000Z",
-        matchStartDeadlineAt: "2026-01-01T00:00:10.000Z",
+        matchStartDeadlineAt: null,
       })
     ).toBe("2026-01-01T00:00:10.000Z");
+  });
+
+  it("computeCountdownSecondsLeftReturnsNullForMissingDeadline", () => {
+    expect(computeCountdownSecondsLeft(null)).toBeNull();
   });
 });
 

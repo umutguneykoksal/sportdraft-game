@@ -4,6 +4,7 @@ import { GAME_MODE_LABELS, SESSION_STATUS_LABELS, poolLeagueLabel } from "../../
 import {
   FORMATION_FIRST_READY_COUNTDOWN_SECONDS,
   LOBBY_PAIRING_COUNTDOWN_SECONDS,
+  inferCountdownPhase,
 } from "../../../shared/lobbyTiming";
 import { cn } from "../../../shared/utils/cn";
 
@@ -27,13 +28,14 @@ function FormationCard({
       onClick={onSelect}
       disabled={disabled}
       className={cn(
-        "relative flex min-h-[76px] w-full touch-manipulation flex-col overflow-hidden rounded-md border bg-surface-card transition-colors sm:h-full sm:min-h-[44px]",
-        selected ? "border-accent ring-1 ring-accent/40" : "border-white/10 hover:border-white/25",
+        "relative flex w-full touch-manipulation flex-col overflow-hidden rounded-md border bg-surface-card transition-colors",
+        "min-h-[88px] sm:min-h-[44px] sm:h-full",
+        selected ? "border-accent ring-1 ring-accent/40" : "border-white/10 hover:border-white/25 active:border-white/30",
         disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer"
       )}
     >
       <div
-        className="relative min-h-[52px] w-full flex-1 sm:min-h-0"
+        className="relative min-h-[60px] w-full flex-1 sm:min-h-0"
         style={{
           background: "linear-gradient(180deg, #1a5c30 0%, #1e6e3a 50%, #1a5c30 100%)",
         }}
@@ -44,7 +46,7 @@ function FormationCard({
           <div
             key={i}
             className={cn(
-              "absolute h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full sm:h-2.5 sm:w-2.5",
+              "absolute h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full sm:h-2.5 sm:w-2.5",
               selected ? "bg-accent shadow-sm shadow-accent/50" : "bg-white/80"
             )}
             style={{ left: `${dot.x}%`, top: `${dot.y}%` }}
@@ -53,7 +55,7 @@ function FormationCard({
       </div>
       <div
         className={cn(
-          "shrink-0 py-1 text-center text-[10px] font-bold leading-none sm:text-[11px]",
+          "shrink-0 py-1.5 text-center text-[11px] font-bold leading-none sm:text-[11px]",
           selected ? "bg-accent text-white" : "bg-surface-elevated text-slate-300"
         )}
       >
@@ -78,6 +80,56 @@ function CountdownRing({
         <span className="text-3xl font-bold tabular-nums text-white">{seconds}</span>
       </div>
       <p className="mt-3 max-w-xs text-sm leading-relaxed text-slate-400">{label}</p>
+    </div>
+  );
+}
+
+function FormationActionBar({
+  snapshot,
+  maxPlayers,
+  formationPickActive,
+  loading,
+  onStartAuction,
+  onLeave,
+}: {
+  snapshot: SessionSnapshotResponse;
+  maxPlayers: number;
+  formationPickActive: boolean;
+  loading: boolean;
+  onStartAuction: () => void;
+  onLeave: () => void;
+}) {
+  return (
+    <div className="flex gap-3">
+      {formationPickActive && (
+        <button
+          data-testid="lobby-confirm-formation-ready"
+          onClick={onStartAuction}
+          disabled={loading || snapshot.matchStartConfirmedByMe || !snapshot.myFormation}
+          className={cn(
+            "min-h-[44px] flex-1 rounded-lg py-2.5 text-sm font-bold transition-colors",
+            snapshot.matchStartConfirmedByMe
+              ? "cursor-default border border-accent-green/30 bg-accent-green/20 text-accent-green"
+              : "bg-accent text-white hover:bg-blue-600 disabled:opacity-50"
+          )}
+        >
+          {snapshot.matchStartConfirmedByMe
+            ? `Ready (${snapshot.matchStartReadyCount}/${maxPlayers})`
+            : "Start Auction"}
+        </button>
+      )}
+      <button
+        type="button"
+        data-testid="lobby-leave"
+        onClick={onLeave}
+        disabled={loading}
+        className={cn(
+          "min-h-[44px] rounded-lg border border-red-500/30 bg-red-900/30 px-5 py-2.5 text-sm font-bold text-red-400 hover:bg-red-900/50 disabled:opacity-50",
+          formationPickActive ? "" : "w-full"
+        )}
+      >
+        Leave
+      </button>
     </div>
   );
 }
@@ -108,14 +160,13 @@ export function LobbySessionPanel({
   onLeave,
 }: LobbySessionPanelProps) {
   const status = snapshot.status;
-  const formationStartCountdownActive =
-    status === "FORMATION_SELECT"
-    && snapshot.countdownEndsAt != null
+  const countdownPhase = inferCountdownPhase(snapshot);
+  const pairingCountdownActive =
+    countdownPhase === "PAIRING"
     && countdownSecondsLeft != null
     && countdownSecondsLeft > 0;
-  const lobbyCountdownActive =
-    status === "COUNTDOWN"
-    && snapshot.countdownEndsAt != null
+  const formationStartCountdownActive =
+    countdownPhase === "FORMATION_AUCTION_START"
     && countdownSecondsLeft != null
     && countdownSecondsLeft > 0;
   const formationPickActive =
@@ -141,148 +192,168 @@ export function LobbySessionPanel({
   const formationCountdownLabel = `Auction starts in up to ${FORMATION_FIRST_READY_COUNTDOWN_SECONDS}s`;
 
   return (
-    <div className="flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-xl border border-white/10 bg-surface-card/95 shadow-2xl shadow-black/30 sm:rounded-2xl">
-      <header className="flex shrink-0 flex-col gap-2 border-b border-white/10 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-3 sm:px-5">
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-base font-bold text-white">{nickname}</p>
-          <p className="text-[11px] text-slate-400">
-            {status ? SESSION_STATUS_LABELS[status] : "—"}
-            {" · "}
-            {snapshot.playerCount}/{maxPlayers}
-            {gameMode !== "DUEL" ? ` · ${GAME_MODE_LABELS[gameMode]}` : ""}
-          </p>
-          {poolLabel && (
-            <p className="truncate text-[11px] text-slate-500">{poolLabel}</p>
-          )}
-        </div>
-        <div className="flex shrink-0 items-center justify-between gap-3 sm:block sm:text-right">
-          <p className="text-[10px] uppercase tracking-wide text-slate-500">Formation</p>
-          <p className="text-sm font-semibold text-white">
-            {snapshot.myFormation ? FORMATION_LABELS[snapshot.myFormation] : "—"}
-          </p>
+    <div
+      className={cn(
+        "flex h-full min-h-0 w-full min-w-0 flex-col rounded-xl border border-white/10 bg-surface-card/95 shadow-2xl shadow-black/30 backdrop-blur-sm sm:rounded-2xl",
+        formationPickActive
+          ? "overflow-y-auto overscroll-y-contain [-webkit-overflow-scrolling:touch] sm:overflow-hidden"
+          : "overflow-hidden"
+      )}
+    >
+      <header className="sticky top-0 z-10 shrink-0 border-b border-white/10 bg-surface-card/95 px-4 py-3 backdrop-blur-sm sm:static sm:px-5">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-base font-bold text-white">{nickname}</p>
+            <p className="text-[11px] text-slate-400">
+              {status ? SESSION_STATUS_LABELS[status] : "—"}
+              {" · "}
+              {snapshot.playerCount}/{maxPlayers}
+              {gameMode !== "DUEL" ? ` · ${GAME_MODE_LABELS[gameMode]}` : ""}
+            </p>
+            {poolLabel && (
+              <p className="truncate text-[11px] text-slate-500">{poolLabel}</p>
+            )}
+          </div>
+          <div className="flex shrink-0 items-center justify-between gap-3 sm:block sm:text-right">
+            <p className="text-[10px] uppercase tracking-wide text-slate-500">Formation</p>
+            <p className="text-sm font-semibold text-white">
+              {snapshot.myFormation ? FORMATION_LABELS[snapshot.myFormation] : "—"}
+            </p>
+          </div>
         </div>
       </header>
 
-      <main className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain [-webkit-overflow-scrolling:touch] sm:flex sm:flex-col sm:overflow-hidden">
-        {lobbyCountdownActive && countdownSecondsLeft != null && (
-          <div className="flex shrink-0 items-center justify-center px-4 py-4 sm:flex-1">
-            <CountdownRing
-              seconds={countdownSecondsLeft}
-              label={pairingCountdownLabel}
-              testId="lobby-match-countdown"
-            />
-          </div>
+      {/* Mobile formation: natural height so the card scrolls; desktop: flex body + scrollable main */}
+      <div
+        className={cn(
+          "flex flex-col",
+          formationPickActive
+            ? "sm:min-h-0 sm:flex-1 sm:overflow-hidden"
+            : "min-h-0 flex-1 sm:overflow-hidden"
         )}
-
-        {status === "WAITING" && (
-          <div className="flex shrink-0 flex-col items-center justify-center px-4 py-8 text-center sm:flex-1">
-            <div className="inline-block animate-pulse">
-              <div className="mx-1 inline-block h-2.5 w-2.5 rounded-full bg-accent" />
-              <div className="mx-1 inline-block h-2.5 w-2.5 rounded-full bg-accent animation-delay-200" />
-              <div className="mx-1 inline-block h-2.5 w-2.5 rounded-full bg-accent animation-delay-400" />
+      >
+        <main
+          className={cn(
+            formationPickActive
+              ? "sm:min-h-0 sm:flex-1 sm:overflow-y-auto sm:overscroll-y-contain sm:[-webkit-overflow-scrolling:touch]"
+              : "min-h-0 flex-1 sm:overflow-y-auto sm:overscroll-y-contain sm:[-webkit-overflow-scrolling:touch]"
+          )}
+        >
+          {pairingCountdownActive && countdownSecondsLeft != null && (
+            <div className="flex shrink-0 flex-col items-center justify-center px-4 py-4 sm:flex-1">
+              <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-amber-400/90">
+                Pairing · {LOBBY_PAIRING_COUNTDOWN_SECONDS}s
+              </p>
+              <CountdownRing
+                seconds={countdownSecondsLeft}
+                label={pairingCountdownLabel}
+                testId="lobby-match-countdown"
+              />
             </div>
-            <p className="mt-4 text-sm text-slate-400">
-              Waiting for {maxPlayers - snapshot.playerCount} more player
-              {maxPlayers - snapshot.playerCount === 1 ? "" : "s"}...
-            </p>
-          </div>
-        )}
+          )}
 
-        {formationStartCountdownActive
-          && snapshot.matchStartConfirmedByMe
-          && countdownSecondsLeft != null && (
-          <div className="flex shrink-0 flex-col items-center justify-center px-4 py-4 sm:flex-1">
-            <CountdownRing
-              seconds={countdownSecondsLeft}
-              label={formationCountdownLabel}
-              testId="lobby-auction-countdown"
-            />
-            {snapshot.myFormation && (
-              <p className="text-center text-xs text-slate-500">
-                Locked in {FORMATION_LABELS[snapshot.myFormation]}
+          {status === "WAITING" && (
+            <div className="flex shrink-0 flex-col items-center justify-center px-4 py-8 text-center sm:flex-1">
+              <div className="inline-block animate-pulse">
+                <div className="mx-1 inline-block h-2.5 w-2.5 rounded-full bg-accent" />
+                <div className="mx-1 inline-block h-2.5 w-2.5 rounded-full bg-accent animation-delay-200" />
+                <div className="mx-1 inline-block h-2.5 w-2.5 rounded-full bg-accent animation-delay-400" />
+              </div>
+              <p className="mt-4 text-sm text-slate-400">
+                Waiting for {maxPlayers - snapshot.playerCount} more player
+                {maxPlayers - snapshot.playerCount === 1 ? "" : "s"}...
+              </p>
+            </div>
+          )}
+
+          {formationStartCountdownActive
+            && snapshot.matchStartConfirmedByMe
+            && countdownSecondsLeft != null && (
+            <div className="flex shrink-0 flex-col items-center justify-center px-4 py-4 sm:flex-1">
+              <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-accent/90">
+                Auction start · up to {FORMATION_FIRST_READY_COUNTDOWN_SECONDS}s
+              </p>
+              <CountdownRing
+                seconds={countdownSecondsLeft}
+                label={formationCountdownLabel}
+                testId="lobby-auction-countdown"
+              />
+              {snapshot.myFormation && (
+                <p className="text-center text-xs text-slate-500">
+                  Locked in {FORMATION_LABELS[snapshot.myFormation]}
+                </p>
+              )}
+            </div>
+          )}
+
+          {formationPickActive && (
+            <div className="px-4 pt-3 pb-4 sm:flex sm:min-h-0 sm:flex-1 sm:flex-col sm:overflow-hidden sm:px-5 sm:pb-2">
+              <p className="mb-3 shrink-0 text-center text-sm font-semibold text-slate-300">
+                Choose your formation
+              </p>
+              <p className="mb-3 shrink-0 text-center text-[11px] text-slate-500 sm:hidden">
+                Scroll for all formations — Start Auction stays at the bottom
+              </p>
+              <div className="grid grid-cols-2 gap-2.5 sm:min-h-0 sm:flex-1 sm:grid-cols-5 sm:grid-rows-2 sm:gap-2">
+                {formations.map((f) => (
+                  <FormationCard
+                    key={f}
+                    formation={f}
+                    selected={snapshot.myFormation === f}
+                    onSelect={() => onChooseFormation(f)}
+                    disabled={loading || snapshot.matchStartConfirmedByMe}
+                  />
+                ))}
+              </div>
+              {/* Room so the last row is not covered by the sticky action bar on mobile */}
+              <div className="h-28 shrink-0 sm:hidden" aria-hidden />
+            </div>
+          )}
+
+          {status !== "FORMATION_SELECT" && status !== "WAITING" && status !== "COUNTDOWN" && (
+            <div className="flex shrink-0 items-center justify-center px-4 py-8 text-sm text-slate-400 sm:flex-1">
+              {status ? SESSION_STATUS_LABELS[status] : "Loading session..."}
+            </div>
+          )}
+        </main>
+
+        {status === "FORMATION_SELECT" && (
+          <footer
+            className={cn(
+              "shrink-0 border-t border-white/10 bg-surface-elevated/95 px-4 py-3 backdrop-blur-sm",
+              "pb-[max(0.75rem,env(safe-area-inset-bottom))]",
+              formationPickActive && "sticky bottom-0 z-10",
+              "sm:static sm:px-5"
+            )}
+          >
+            {waitingHint && (
+              <p className="mb-3 text-center text-xs leading-relaxed text-slate-400">
+                {waitingHint}
               </p>
             )}
-          </div>
+            <FormationActionBar
+              snapshot={snapshot}
+              maxPlayers={maxPlayers}
+              formationPickActive={formationPickActive}
+              loading={loading}
+              onStartAuction={onStartAuction}
+              onLeave={onLeave}
+            />
+          </footer>
         )}
 
-        {formationPickActive && (
-          <div className="px-4 pb-4 pt-3 sm:flex sm:min-h-0 sm:flex-1 sm:flex-col sm:overflow-hidden sm:px-5 sm:pb-2">
-            <p className="mb-2 shrink-0 text-center text-sm font-semibold text-slate-300">
-              Choose your formation
-            </p>
-            <div className="grid grid-cols-3 gap-2 sm:min-h-0 sm:flex-1 sm:grid-cols-5 sm:grid-rows-2 sm:gap-2">
-              {formations.map((f) => (
-                <FormationCard
-                  key={f}
-                  formation={f}
-                  selected={snapshot.myFormation === f}
-                  onSelect={() => onChooseFormation(f)}
-                  disabled={loading || snapshot.matchStartConfirmedByMe}
-                />
-              ))}
-            </div>
-          </div>
-        )}
-
-        {status !== "FORMATION_SELECT" && status !== "WAITING" && status !== "COUNTDOWN" && (
-          <div className="flex shrink-0 items-center justify-center px-4 py-8 text-sm text-slate-400 sm:flex-1">
-            {status ? SESSION_STATUS_LABELS[status] : "Loading session..."}
-          </div>
-        )}
-      </main>
-
-      {status === "FORMATION_SELECT" && (
-        <footer className="shrink-0 border-t border-white/10 bg-surface-elevated/20 px-4 py-3 sm:px-5">
-          {waitingHint && (
-            <p className="mb-3 text-center text-xs leading-relaxed text-slate-400">
-              {waitingHint}
-            </p>
-          )}
-          <div className="flex gap-3">
-            {formationPickActive && (
-              <button
-                data-testid="lobby-confirm-formation-ready"
-                onClick={onStartAuction}
-                disabled={loading || snapshot.matchStartConfirmedByMe || !snapshot.myFormation}
-                className={cn(
-                  "flex-1 rounded-lg py-2.5 text-sm font-bold transition-colors",
-                  snapshot.matchStartConfirmedByMe
-                    ? "cursor-default border border-accent-green/30 bg-accent-green/20 text-accent-green"
-                    : "bg-accent text-white hover:bg-blue-600 disabled:opacity-50"
-                )}
-              >
-                {snapshot.matchStartConfirmedByMe
-                  ? `Ready (${snapshot.matchStartReadyCount}/${maxPlayers})`
-                  : "Start Auction"}
-              </button>
-            )}
+        {status !== "FORMATION_SELECT" && (
+          <footer className="shrink-0 border-t border-white/10 px-4 py-2.5 text-center sm:py-2.5">
             <button
-              type="button"
-              data-testid="lobby-leave"
               onClick={onLeave}
               disabled={loading}
-              className={cn(
-                "rounded-lg border border-red-500/30 bg-red-900/30 px-5 py-2.5 text-sm font-bold text-red-400 hover:bg-red-900/50 disabled:opacity-50",
-                formationPickActive ? "" : "w-full"
-              )}
+              className="min-h-[44px] text-xs text-red-400 underline transition-colors hover:text-red-300 disabled:opacity-50"
             >
-              Leave
+              Leave room
             </button>
-          </div>
-        </footer>
-      )}
-
-      {status !== "FORMATION_SELECT" && (
-        <footer className="shrink-0 border-t border-white/10 px-4 py-2.5 text-center">
-          <button
-            onClick={onLeave}
-            disabled={loading}
-            className="text-xs text-red-400 underline transition-colors hover:text-red-300 disabled:opacity-50"
-          >
-            Leave room
-          </button>
-        </footer>
-      )}
+          </footer>
+        )}
+      </div>
     </div>
   );
 }

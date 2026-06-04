@@ -27,7 +27,7 @@ import { useSessionStream } from "../../../shared/sse";
 import { drainUnseenEvents } from "../../../shared/realtime/eventDispatch";
 import { LOBBY_PHASE_POLL_MS } from "../../../shared/realtime/syncConstants";
 import { ALL_FORMATIONS } from "../../../shared/formations";
-import { resolveLobbyCountdownDeadline } from "../../../shared/lobbyTiming";
+import { useLobbyCountdownSeconds } from "./useLobbyCountdownSeconds";
 import { shouldPollLobbyPhase, shouldRefetchLobbySnapshot } from "./lobbySnapshotSync";
 
 const LOBBY_POLL_INTERVAL_MS = 3000;
@@ -38,7 +38,6 @@ export function useLobbyFlow() {
   const [rooms, setRooms] = useState<LobbyRoomResponse[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [countdownSecondsLeft, setCountdownSecondsLeft] = useState<number | null>(null);
   const [createGameMode, setCreateGameMode] = useState<GameMode>("DUEL");
   const [createMinPoolRating, setCreateMinPoolRating] = useState<PoolMinRating>(70);
   const [createPoolLeague, setCreatePoolLeague] = useState<PoolLeagueId>("PREMIER_LEAGUE");
@@ -167,22 +166,7 @@ export function useLobbyFlow() {
     return () => document.removeEventListener("visibilitychange", onVisible);
   }, [refetchSnapshot]);
 
-  // 6. Countdown timer — deadline chosen by session phase (see resolveLobbyCountdownDeadline)
-  useEffect(() => {
-    const deadlineAt = resolveLobbyCountdownDeadline(snapshot);
-    if (!deadlineAt) {
-      setCountdownSecondsLeft(null);
-      return;
-    }
-    const compute = () => {
-      const ms = new Date(deadlineAt).getTime() - Date.now();
-      if (Number.isNaN(ms)) return 0;
-      return Math.max(0, Math.ceil(ms / 1000));
-    };
-    setCountdownSecondsLeft(compute());
-    const timer = setInterval(() => setCountdownSecondsLeft(compute()), 250);
-    return () => clearInterval(timer);
-  }, [snapshot?.status, snapshot?.countdownEndsAt, snapshot?.matchStartDeadlineAt]);
+  const countdownSecondsLeft = useLobbyCountdownSeconds(snapshot);
 
   // 7. Lobby list polling (only when not in a session)
   useEffect(() => {
