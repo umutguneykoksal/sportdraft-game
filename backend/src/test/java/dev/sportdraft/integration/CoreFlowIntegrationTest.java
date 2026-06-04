@@ -56,13 +56,7 @@ class CoreFlowIntegrationTest extends AbstractIntegrationTest {
         assertThat(afterFirstReady.matchStartReadyCount()).isEqualTo(1);
 
         SessionSnapshotResponse afterSecondReady = lobbyService.confirmFormationReady(sessionId, user2);
-        assertThat(afterSecondReady.matchStartReadyCount()).isEqualTo(2);
-
-        session = sessionStore.getById(sessionId);
-        v = session.getVersion();
-        session.setCountdownEndsAt(Instant.now().minusSeconds(1));
-        sessionStore.saveIfVersionMatch(session, v);
-        lobbyService.advanceTimedPhases();
+        assertThat(afterSecondReady.status()).isEqualTo(SessionStatus.AUCTIONING);
 
         SessionSnapshotResponse auctioning = lobbyService.getSnapshot(sessionId, user1);
         assertThat(auctioning.status()).isEqualTo(SessionStatus.AUCTIONING);

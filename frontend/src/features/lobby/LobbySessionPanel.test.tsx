@@ -1,7 +1,6 @@
 import { render, screen } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
-import { REACT_ROUTER_FUTURE_FLAGS } from "../../test/reactRouterFuture";
 import { LobbySessionPanel } from "./components/LobbySessionPanel";
+import { ALL_FORMATIONS } from "../../shared/formations";
 import type { SessionSnapshotResponse } from "../../shared/api/contracts";
 
 const baseSnapshot: SessionSnapshotResponse = {
@@ -21,14 +20,19 @@ const baseSnapshot: SessionSnapshotResponse = {
 };
 
 describe("LobbySessionPanel", () => {
-  it("showsAuctionCountdownWithoutFormationGridWhenBothReady", () => {
+  it("showsTenSecondAuctionCountdownForConfirmedPlayerWhenOpponentNotReady", () => {
     render(
       <LobbySessionPanel
         nickname="Guest"
-        snapshot={baseSnapshot}
+        snapshot={{
+          ...baseSnapshot,
+          matchStartReadyCount: 1,
+          matchStartConfirmedByMe: true,
+          countdownEndsAt: "2026-01-01T00:00:10.000Z",
+        }}
         maxPlayers={2}
         gameMode="DUEL"
-        countdownSecondsLeft={5}
+        countdownSecondsLeft={10}
         formations={["FOUR_FOUR_TWO", "FOUR_THREE_THREE"]}
         loading={false}
         onChooseFormation={jest.fn()}
@@ -37,11 +41,35 @@ describe("LobbySessionPanel", () => {
       />
     );
 
-    expect(screen.getByTestId("lobby-auction-countdown")).toHaveTextContent("5");
-    expect(screen.getByText("Auction starting...")).toBeInTheDocument();
+    expect(screen.getByTestId("lobby-auction-countdown")).toHaveTextContent("10");
     expect(screen.queryByTestId("lobby-formation-FOUR_FOUR_TWO")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("lobby-confirm-formation-ready")).not.toBeInTheDocument();
     expect(screen.getByTestId("lobby-leave")).toBeInTheDocument();
+  });
+
+  it("keepsFormationGridForOpponentDuringFirstReadyCountdown", () => {
+    render(
+      <LobbySessionPanel
+        nickname="Guest"
+        snapshot={{
+          ...baseSnapshot,
+          matchStartReadyCount: 1,
+          matchStartConfirmedByMe: false,
+          countdownEndsAt: "2026-01-01T00:00:10.000Z",
+        }}
+        maxPlayers={2}
+        gameMode="DUEL"
+        countdownSecondsLeft={8}
+        formations={["FOUR_FOUR_TWO"]}
+        loading={false}
+        onChooseFormation={jest.fn()}
+        onStartAuction={jest.fn()}
+        onLeave={jest.fn()}
+      />
+    );
+
+    expect(screen.queryByTestId("lobby-auction-countdown")).not.toBeInTheDocument();
+    expect(screen.getByTestId("lobby-formation-FOUR_FOUR_TWO")).toBeInTheDocument();
+    expect(screen.getByTestId("lobby-confirm-formation-ready")).toBeInTheDocument();
   });
 
   it("showsLeaveDuringAuctionCountdown", () => {
@@ -85,6 +113,51 @@ describe("LobbySessionPanel", () => {
 
     expect(screen.getByText("Waiting for opponent to confirm...")).toBeInTheDocument();
     expect(screen.getByTestId("lobby-formation-FOUR_FOUR_TWO")).toBeInTheDocument();
+  });
+
+  it("rendersAllFormationCardsDuringPick", () => {
+    render(
+      <LobbySessionPanel
+        nickname="Guest"
+        snapshot={{
+          ...baseSnapshot,
+          matchStartReadyCount: 0,
+          matchStartConfirmedByMe: false,
+        }}
+        maxPlayers={2}
+        gameMode="DUEL"
+        countdownSecondsLeft={null}
+        formations={ALL_FORMATIONS}
+        loading={false}
+        onChooseFormation={jest.fn()}
+        onStartAuction={jest.fn()}
+        onLeave={jest.fn()}
+      />
+    );
+
+    for (const formation of ALL_FORMATIONS) {
+      expect(screen.getByTestId(`lobby-formation-${formation}`)).toBeInTheDocument();
+    }
+    expect(screen.getByTestId("lobby-confirm-formation-ready")).toBeInTheDocument();
+  });
+
+  it("showsPoolLabelOnSeparateLine", () => {
+    render(
+      <LobbySessionPanel
+        nickname="Guest"
+        snapshot={baseSnapshot}
+        maxPlayers={2}
+        gameMode="DUEL"
+        countdownSecondsLeft={null}
+        formations={ALL_FORMATIONS}
+        loading={false}
+        onChooseFormation={jest.fn()}
+        onStartAuction={jest.fn()}
+        onLeave={jest.fn()}
+      />
+    );
+
+    expect(screen.getByText(/Premier League · 70\+ OVR/i)).toBeInTheDocument();
   });
 });
 

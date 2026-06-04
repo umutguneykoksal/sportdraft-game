@@ -23,7 +23,7 @@ function FormationCard({
       onClick={onSelect}
       disabled={disabled}
       className={cn(
-        "relative flex h-full min-h-0 w-full flex-col overflow-hidden rounded-md border bg-surface-card transition-colors",
+        "relative flex h-full min-h-[44px] w-full touch-manipulation flex-col overflow-hidden rounded-md border bg-surface-card transition-colors",
         selected ? "border-accent ring-1 ring-accent/40" : "border-white/10 hover:border-white/25",
         disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer"
       )}
@@ -104,20 +104,22 @@ export function LobbySessionPanel({
   onLeave,
 }: LobbySessionPanelProps) {
   const status = snapshot.status;
-  const allPlayersReady = snapshot.matchStartReadyCount >= maxPlayers;
-  const auctionCountdownActive =
+  const formationStartCountdownActive =
     status === "FORMATION_SELECT"
-    && allPlayersReady
+    && snapshot.countdownEndsAt != null
     && countdownSecondsLeft != null
     && countdownSecondsLeft > 0;
   const lobbyCountdownActive =
     status === "COUNTDOWN"
     && countdownSecondsLeft != null
     && countdownSecondsLeft > 0;
-  const formationPickActive = status === "FORMATION_SELECT" && !auctionCountdownActive;
+  const formationPickActive =
+    status === "FORMATION_SELECT"
+    && (!formationStartCountdownActive || !snapshot.matchStartConfirmedByMe);
 
   const waitingHint =
     formationPickActive
+    && !formationStartCountdownActive
     && snapshot.matchStartReadyCount >= 1
     && snapshot.matchStartReadyCount < maxPlayers
       ? snapshot.matchStartConfirmedByMe
@@ -132,18 +134,20 @@ export function LobbySessionPanel({
 
   return (
     <div className="flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-xl border border-white/10 bg-surface-card/95 shadow-2xl shadow-black/30 sm:rounded-2xl">
-      <header className="flex shrink-0 items-center justify-between gap-2 border-b border-white/10 px-4 py-3 sm:gap-3 sm:px-5">
+      <header className="flex shrink-0 flex-col gap-2 border-b border-white/10 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-3 sm:px-5">
         <div className="min-w-0 flex-1">
           <p className="truncate text-base font-bold text-white">{nickname}</p>
-          <p className="truncate text-[11px] text-slate-400">
+          <p className="text-[11px] text-slate-400">
             {status ? SESSION_STATUS_LABELS[status] : "—"}
             {" · "}
             {snapshot.playerCount}/{maxPlayers}
             {gameMode !== "DUEL" ? ` · ${GAME_MODE_LABELS[gameMode]}` : ""}
-            {poolLabel ? ` · ${poolLabel}` : ""}
           </p>
+          {poolLabel && (
+            <p className="truncate text-[11px] text-slate-500">{poolLabel}</p>
+          )}
         </div>
-        <div className="shrink-0 text-right">
+        <div className="flex shrink-0 items-center justify-between gap-3 sm:block sm:text-right">
           <p className="text-[10px] uppercase tracking-wide text-slate-500">Formation</p>
           <p className="text-sm font-semibold text-white">
             {snapshot.myFormation ? FORMATION_LABELS[snapshot.myFormation] : "—"}
@@ -156,7 +160,7 @@ export function LobbySessionPanel({
           <div className="flex flex-1 items-center justify-center px-4">
             <CountdownRing
               seconds={countdownSecondsLeft}
-              label="Opponent found! Starting..."
+              label="Opponent found! Formation pick in 5s"
               testId="lobby-match-countdown"
             />
           </div>
@@ -176,11 +180,13 @@ export function LobbySessionPanel({
           </div>
         )}
 
-        {status === "FORMATION_SELECT" && auctionCountdownActive && countdownSecondsLeft != null && (
+        {formationStartCountdownActive
+          && snapshot.matchStartConfirmedByMe
+          && countdownSecondsLeft != null && (
           <div className="flex flex-1 flex-col items-center justify-center px-4">
             <CountdownRing
               seconds={countdownSecondsLeft}
-              label="Auction starting..."
+              label="Auction starting soon — waiting for opponent or timer"
               testId="lobby-auction-countdown"
             />
             {snapshot.myFormation && (
@@ -192,11 +198,11 @@ export function LobbySessionPanel({
         )}
 
         {formationPickActive && (
-          <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-4 pb-2 pt-3 sm:px-5">
+          <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-y-contain px-4 pb-2 pt-3 sm:overflow-hidden sm:px-5">
             <p className="mb-2 shrink-0 text-center text-sm font-semibold text-slate-300">
               Choose your formation
             </p>
-            <div className="grid min-h-0 flex-1 grid-cols-5 grid-rows-2 gap-1 sm:gap-2">
+            <div className="grid min-h-0 flex-1 grid-cols-3 grid-rows-4 gap-2 sm:grid-cols-5 sm:grid-rows-2 sm:gap-2">
               {formations.map((f) => (
                 <FormationCard
                   key={f}
@@ -211,7 +217,7 @@ export function LobbySessionPanel({
         )}
 
         {status === "FORMATION_SELECT" && (
-          <footer className="shrink-0 border-t border-white/10 bg-surface-elevated/20 px-5 py-3">
+          <footer className="shrink-0 border-t border-white/10 bg-surface-elevated/20 px-4 py-3 sm:px-5">
             {waitingHint && (
               <p className="mb-3 text-center text-xs leading-relaxed text-slate-400">
                 {waitingHint}

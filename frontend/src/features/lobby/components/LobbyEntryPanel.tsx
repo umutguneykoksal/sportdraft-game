@@ -72,6 +72,8 @@ function GameModeChip({
   return (
     <button
       type="button"
+      role="radio"
+      aria-checked={selected}
       data-testid={`lobby-mode-${mode}`}
       onClick={onSelect}
       className={cn(
@@ -252,10 +254,10 @@ export function LobbyEntryPanel({
         </div>
       </header>
 
-      {/* Card body — stacked on mobile, two columns from lg */}
-      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-y-contain lg:grid lg:grid-cols-2 lg:divide-x lg:divide-white/10 lg:overflow-hidden">
+      {/* Card body — stacked + single scroll on mobile; two columns from md (tablet+) */}
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-y-contain md:grid md:grid-cols-2 md:divide-x md:divide-white/10 md:overflow-hidden">
         {/* Left: create */}
-        <section className="flex min-w-0 shrink-0 flex-col p-4 sm:p-5 lg:min-h-0 lg:shrink lg:overflow-y-auto">
+        <section className="flex min-w-0 shrink-0 flex-col p-4 sm:p-5 md:min-h-0 md:overflow-y-auto">
           <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">New game</h2>
 
           <label htmlFor="lobby-nickname-input" className="mb-1 flex items-center gap-1 text-[10px] font-medium text-slate-400">
@@ -308,7 +310,11 @@ export function LobbyEntryPanel({
                 : "Ready — you can create or join a room"}
           </p>
 
-          <div className="mb-2 flex gap-1">
+          <div
+            role="radiogroup"
+            aria-label="Game mode"
+            className="mb-2 flex gap-1"
+          >
             {(["DUEL", "TOURNAMENT", "LEAGUE"] as GameMode[]).map((mode) => (
               <GameModeChip
                 key={mode}
@@ -340,20 +346,30 @@ export function LobbyEntryPanel({
               </select>
             </div>
             <div className="shrink-0">
-              <p className="mb-1 text-[10px] font-medium text-slate-400">OVR</p>
-              <div className="flex flex-wrap gap-1">
+              <div
+                role="group"
+                aria-label="Minimum OVR"
+                className="flex flex-wrap gap-1"
+              >
                 {POOL_MIN_RATING_OPTIONS.map((rating) => {
                   const option = poolMinRatingOptions.find((o) => o.minRating === rating);
                   const selectable = !poolMinRatingOptionsLoaded || (option?.selectable ?? false);
+                  const selected = createMinPoolRating === rating;
                   return (
                     <button
                       key={rating}
                       type="button"
+                      aria-pressed={selected}
+                      title={
+                        !selectable && poolMinRatingOptionsLoaded
+                          ? `Not enough players for ${rating}+ OVR`
+                          : undefined
+                      }
                       onClick={() => selectable && onCreateMinPoolRatingChange(rating)}
                       disabled={!selectable}
                       className={cn(
                         "rounded-md border px-2 py-1.5 text-[11px] font-semibold",
-                        createMinPoolRating === rating
+                        selected
                           ? "border-card-gold/50 bg-card-gold/20 text-card-gold"
                           : selectable
                             ? "border-white/10 bg-surface-elevated text-slate-300"
@@ -378,7 +394,7 @@ export function LobbyEntryPanel({
             data-testid="lobby-create-room"
             onClick={onCreateRoom}
             disabled={loading || !canCreateRoom}
-            className="mt-3 inline-flex w-full items-center justify-center gap-1.5 rounded-md bg-accent py-2 text-sm font-bold text-white hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-50 lg:mt-auto"
+            className="mt-3 inline-flex w-full items-center justify-center gap-1.5 rounded-md bg-accent py-2 text-sm font-bold text-white hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-50 md:mt-auto"
           >
             {loading ? (
               <>
@@ -395,7 +411,7 @@ export function LobbyEntryPanel({
         </section>
 
         {/* Right: rooms */}
-        <section className="flex min-h-0 min-w-0 flex-1 flex-col border-t border-white/10 p-4 sm:p-5 lg:flex-none lg:border-t-0">
+        <section className="flex min-w-0 shrink-0 flex-col border-t border-white/10 p-4 sm:p-5 md:min-h-0 md:flex-1 md:border-t-0">
           <div className="mb-2 flex shrink-0 items-center justify-between">
             <div className="flex items-center gap-1.5">
               <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-400">Join a room</h2>
@@ -427,7 +443,7 @@ export function LobbyEntryPanel({
               <p className="mt-1 text-xs text-slate-600">Create one to start</p>
             </div>
           ) : (
-            <div className="min-h-0 flex-1 space-y-2 overflow-y-auto">
+            <div className="space-y-2 md:min-h-0 md:flex-1 md:overflow-y-auto">
               {rooms.map((room) => (
                 <RoomRow
                   key={room.sessionId}

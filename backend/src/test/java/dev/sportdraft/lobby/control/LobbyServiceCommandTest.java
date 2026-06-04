@@ -170,7 +170,7 @@ class LobbyServiceCommandTest {
     }
 
     @Test
-    void confirmFormationReady_firstPlayerBroadcastsReadyCount() {
+    void confirmFormationReady_firstPlayerStartsTenSecondCountdown() {
         UUID sessionId = UUID.randomUUID();
         ActiveSession session = formationSession(sessionId);
         when(sessionStore.getById(sessionId)).thenReturn(session);
@@ -179,23 +179,30 @@ class LobbyServiceCommandTest {
         var response = lobbyService.confirmFormationReady(sessionId, hostUserId);
 
         assertThat(response.matchStartReadyCount()).isEqualTo(1);
+        assertThat(session.getCountdownEndsAt()).isNotNull();
+        assertThat(session.getStatus()).isEqualTo(SessionStatus.FORMATION_SELECT);
         verify(sseEmitterRegistry).broadcast(eq(sessionId), eq("formation_ready"), any());
         verify(sessionStore).saveIfVersionMatch(eq(session), any(Long.class));
     }
 
     @Test
-    void confirmFormationReady_bothReadyStartsCountdown() {
+    void confirmFormationReady_bothReadyStartsAuctionImmediately() {
         UUID sessionId = UUID.randomUUID();
         ActiveSession session = formationSession(sessionId);
         session.registerMatchStartReady(hostUserId);
+        UUID cardId = UUID.randomUUID();
         when(sessionStore.getById(sessionId)).thenReturn(session);
         when(eventLog.currentSeq(sessionId)).thenReturn(1L);
+        when(cardCatalog.getCardIdsForPool(session.getPoolLeague(), session.getMinPoolRating()))
+            .thenReturn(List.of(cardId));
 
         var response = lobbyService.confirmFormationReady(sessionId, guestUserId);
 
-        assertThat(response.matchStartReadyCount()).isEqualTo(2);
-        assertThat(session.getCountdownEndsAt()).isNotNull();
-        verify(sseEmitterRegistry).broadcast(eq(sessionId), eq("formation_ready"), any());
+        assertThat(response.status()).isEqualTo(SessionStatus.AUCTIONING);
+        assertThat(session.getStatus()).isEqualTo(SessionStatus.AUCTIONING);
+        assertThat(session.getCountdownEndsAt()).isNull();
+        verify(sseEmitterRegistry).broadcast(eq(sessionId), eq("auctioning_started"), any());
+        verify(auctionService).openRoundIfNeeded(sessionId);
     }
 
     @Test

@@ -25,7 +25,12 @@ export function HowToPlayModal({ open, onClose }: HowToPlayModalProps) {
       <div className="min-h-0 flex-1 space-y-2 overflow-y-auto px-4 py-3">
         <HowToPlaySection title="Lobby">
           <p>Create or join a room, pick a league and minimum OVR, then choose your formation.</p>
-          <p>Both sides confirm Ready — a short countdown starts the auction.</p>
+          <p>
+            When one player taps <strong className="text-white">Start Auction</strong>, a{" "}
+            <strong className="text-white">10-second</strong> timer begins. If both confirm before
+            it ends, the auction starts immediately.
+          </p>
+          <p>After pairing, a <strong className="text-white">5-second</strong> countdown leads into formation pick.</p>
         </HowToPlaySection>
 
         <HowToPlaySection title="Auction">

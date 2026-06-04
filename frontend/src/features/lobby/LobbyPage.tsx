@@ -69,7 +69,7 @@ export function LobbyPage() {
   };
 
   return (
-    <div className="lobby-bg box-border h-dvh w-full overflow-hidden p-3 sm:p-4">
+    <div className="lobby-bg box-border min-h-screen h-dvh w-full overflow-hidden p-3 sm:p-4">
       {!isInSession && (
         <LobbyEntryPanel
           nicknameInput={nicknameInput}
