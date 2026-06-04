@@ -438,11 +438,11 @@ public class LobbyService {
         Instant matchStartDeadlineAt = null;
         int matchStartReadyCount = 0;
         boolean matchStartConfirmedByMe = false;
+        if (session.getStatus() == SessionStatus.MATCH_START_PENDING) {
+            matchStartDeadlineAt = session.getMatchStartDeadlineAt();
+        }
         if (session.getStatus() == SessionStatus.MATCH_START_PENDING
             || session.getStatus() == SessionStatus.FORMATION_SELECT) {
-            matchStartDeadlineAt = session.getStatus() == SessionStatus.MATCH_START_PENDING
-                ? session.getMatchStartDeadlineAt()
-                : session.getCountdownEndsAt();
             matchStartReadyCount = session.matchStartReadyCount();
             matchStartConfirmedByMe = session.isMatchStartReady(userId);
         }

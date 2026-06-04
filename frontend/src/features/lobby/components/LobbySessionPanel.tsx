@@ -1,6 +1,10 @@
 import type { Formation, GameMode, SessionSnapshotResponse } from "../../../shared/api/contracts";
 import { FORMATION_LABELS, FORMATION_DOTS } from "../../../shared/formations";
 import { GAME_MODE_LABELS, SESSION_STATUS_LABELS, poolLeagueLabel } from "../../../shared/api/contracts";
+import {
+  FORMATION_FIRST_READY_COUNTDOWN_SECONDS,
+  LOBBY_PAIRING_COUNTDOWN_SECONDS,
+} from "../../../shared/lobbyTiming";
 import { cn } from "../../../shared/utils/cn";
 
 function FormationCard({
@@ -23,13 +27,13 @@ function FormationCard({
       onClick={onSelect}
       disabled={disabled}
       className={cn(
-        "relative flex h-full min-h-[44px] w-full touch-manipulation flex-col overflow-hidden rounded-md border bg-surface-card transition-colors",
+        "relative flex min-h-[76px] w-full touch-manipulation flex-col overflow-hidden rounded-md border bg-surface-card transition-colors sm:h-full sm:min-h-[44px]",
         selected ? "border-accent ring-1 ring-accent/40" : "border-white/10 hover:border-white/25",
         disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer"
       )}
     >
       <div
-        className="relative min-h-0 w-full flex-1"
+        className="relative min-h-[52px] w-full flex-1 sm:min-h-0"
         style={{
           background: "linear-gradient(180deg, #1a5c30 0%, #1e6e3a 50%, #1a5c30 100%)",
         }}
@@ -71,9 +75,9 @@ function CountdownRing({
   return (
     <div className="flex flex-col items-center py-6 text-center" data-testid={testId}>
       <div className="inline-flex h-20 w-20 items-center justify-center rounded-full border-4 border-accent bg-surface-card">
-        <span className="text-3xl font-bold text-white">{seconds}</span>
+        <span className="text-3xl font-bold tabular-nums text-white">{seconds}</span>
       </div>
-      <p className="mt-3 text-sm text-slate-400">{label}</p>
+      <p className="mt-3 max-w-xs text-sm leading-relaxed text-slate-400">{label}</p>
     </div>
   );
 }
@@ -111,6 +115,7 @@ export function LobbySessionPanel({
     && countdownSecondsLeft > 0;
   const lobbyCountdownActive =
     status === "COUNTDOWN"
+    && snapshot.countdownEndsAt != null
     && countdownSecondsLeft != null
     && countdownSecondsLeft > 0;
   const formationPickActive =
@@ -131,6 +136,9 @@ export function LobbySessionPanel({
     (snapshot.minPoolRating ?? 0) > 0
       ? `${poolLeagueLabel(snapshot.poolLeague)} · ${snapshot.minPoolRating}+ OVR`
       : null;
+
+  const pairingCountdownLabel = `Opponent found — formation pick starts in ${LOBBY_PAIRING_COUNTDOWN_SECONDS}s`;
+  const formationCountdownLabel = `Auction starts in up to ${FORMATION_FIRST_READY_COUNTDOWN_SECONDS}s`;
 
   return (
     <div className="flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-xl border border-white/10 bg-surface-card/95 shadow-2xl shadow-black/30 sm:rounded-2xl">
@@ -155,19 +163,19 @@ export function LobbySessionPanel({
         </div>
       </header>
 
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      <main className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain [-webkit-overflow-scrolling:touch] sm:flex sm:flex-col sm:overflow-hidden">
         {lobbyCountdownActive && countdownSecondsLeft != null && (
-          <div className="flex flex-1 items-center justify-center px-4">
+          <div className="flex shrink-0 items-center justify-center px-4 py-4 sm:flex-1">
             <CountdownRing
               seconds={countdownSecondsLeft}
-              label="Opponent found! Formation pick in 5s"
+              label={pairingCountdownLabel}
               testId="lobby-match-countdown"
             />
           </div>
         )}
 
         {status === "WAITING" && (
-          <div className="flex flex-1 flex-col items-center justify-center px-4 text-center">
+          <div className="flex shrink-0 flex-col items-center justify-center px-4 py-8 text-center sm:flex-1">
             <div className="inline-block animate-pulse">
               <div className="mx-1 inline-block h-2.5 w-2.5 rounded-full bg-accent" />
               <div className="mx-1 inline-block h-2.5 w-2.5 rounded-full bg-accent animation-delay-200" />
@@ -183,10 +191,10 @@ export function LobbySessionPanel({
         {formationStartCountdownActive
           && snapshot.matchStartConfirmedByMe
           && countdownSecondsLeft != null && (
-          <div className="flex flex-1 flex-col items-center justify-center px-4">
+          <div className="flex shrink-0 flex-col items-center justify-center px-4 py-4 sm:flex-1">
             <CountdownRing
               seconds={countdownSecondsLeft}
-              label="Auction starting soon — waiting for opponent or timer"
+              label={formationCountdownLabel}
               testId="lobby-auction-countdown"
             />
             {snapshot.myFormation && (
@@ -198,11 +206,11 @@ export function LobbySessionPanel({
         )}
 
         {formationPickActive && (
-          <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-y-contain px-4 pb-2 pt-3 sm:overflow-hidden sm:px-5">
+          <div className="px-4 pb-4 pt-3 sm:flex sm:min-h-0 sm:flex-1 sm:flex-col sm:overflow-hidden sm:px-5 sm:pb-2">
             <p className="mb-2 shrink-0 text-center text-sm font-semibold text-slate-300">
               Choose your formation
             </p>
-            <div className="grid min-h-0 flex-1 grid-cols-3 grid-rows-4 gap-2 sm:grid-cols-5 sm:grid-rows-2 sm:gap-2">
+            <div className="grid grid-cols-3 gap-2 sm:min-h-0 sm:flex-1 sm:grid-cols-5 sm:grid-rows-2 sm:gap-2">
               {formations.map((f) => (
                 <FormationCard
                   key={f}
@@ -216,65 +224,65 @@ export function LobbySessionPanel({
           </div>
         )}
 
-        {status === "FORMATION_SELECT" && (
-          <footer className="shrink-0 border-t border-white/10 bg-surface-elevated/20 px-4 py-3 sm:px-5">
-            {waitingHint && (
-              <p className="mb-3 text-center text-xs leading-relaxed text-slate-400">
-                {waitingHint}
-              </p>
-            )}
-            <div className="flex gap-3">
-              {formationPickActive && (
-                <button
-                  data-testid="lobby-confirm-formation-ready"
-                  onClick={onStartAuction}
-                  disabled={loading || snapshot.matchStartConfirmedByMe || !snapshot.myFormation}
-                  className={cn(
-                    "flex-1 rounded-lg py-2.5 text-sm font-bold transition-colors",
-                    snapshot.matchStartConfirmedByMe
-                      ? "cursor-default border border-accent-green/30 bg-accent-green/20 text-accent-green"
-                      : "bg-accent text-white hover:bg-blue-600 disabled:opacity-50"
-                  )}
-                >
-                  {snapshot.matchStartConfirmedByMe
-                    ? `Ready (${snapshot.matchStartReadyCount}/${maxPlayers})`
-                    : "Start Auction"}
-                </button>
-              )}
-              <button
-                type="button"
-                data-testid="lobby-leave"
-                onClick={onLeave}
-                disabled={loading}
-                className={cn(
-                  "rounded-lg border border-red-500/30 bg-red-900/30 px-5 py-2.5 text-sm font-bold text-red-400 hover:bg-red-900/50 disabled:opacity-50",
-                  formationPickActive ? "" : "w-full"
-                )}
-              >
-                Leave
-              </button>
-            </div>
-          </footer>
-        )}
-
         {status !== "FORMATION_SELECT" && status !== "WAITING" && status !== "COUNTDOWN" && (
-          <div className="flex flex-1 items-center justify-center px-4 text-sm text-slate-400">
+          <div className="flex shrink-0 items-center justify-center px-4 py-8 text-sm text-slate-400 sm:flex-1">
             {status ? SESSION_STATUS_LABELS[status] : "Loading session..."}
           </div>
         )}
+      </main>
 
-        {status !== "FORMATION_SELECT" && (
-          <footer className="shrink-0 border-t border-white/10 px-4 py-2.5 text-center">
+      {status === "FORMATION_SELECT" && (
+        <footer className="shrink-0 border-t border-white/10 bg-surface-elevated/20 px-4 py-3 sm:px-5">
+          {waitingHint && (
+            <p className="mb-3 text-center text-xs leading-relaxed text-slate-400">
+              {waitingHint}
+            </p>
+          )}
+          <div className="flex gap-3">
+            {formationPickActive && (
+              <button
+                data-testid="lobby-confirm-formation-ready"
+                onClick={onStartAuction}
+                disabled={loading || snapshot.matchStartConfirmedByMe || !snapshot.myFormation}
+                className={cn(
+                  "flex-1 rounded-lg py-2.5 text-sm font-bold transition-colors",
+                  snapshot.matchStartConfirmedByMe
+                    ? "cursor-default border border-accent-green/30 bg-accent-green/20 text-accent-green"
+                    : "bg-accent text-white hover:bg-blue-600 disabled:opacity-50"
+                )}
+              >
+                {snapshot.matchStartConfirmedByMe
+                  ? `Ready (${snapshot.matchStartReadyCount}/${maxPlayers})`
+                  : "Start Auction"}
+              </button>
+            )}
             <button
+              type="button"
+              data-testid="lobby-leave"
               onClick={onLeave}
               disabled={loading}
-              className="text-xs text-red-400 underline transition-colors hover:text-red-300 disabled:opacity-50"
+              className={cn(
+                "rounded-lg border border-red-500/30 bg-red-900/30 px-5 py-2.5 text-sm font-bold text-red-400 hover:bg-red-900/50 disabled:opacity-50",
+                formationPickActive ? "" : "w-full"
+              )}
             >
-              Leave room
+              Leave
             </button>
-          </footer>
-        )}
-      </div>
+          </div>
+        </footer>
+      )}
+
+      {status !== "FORMATION_SELECT" && (
+        <footer className="shrink-0 border-t border-white/10 px-4 py-2.5 text-center">
+          <button
+            onClick={onLeave}
+            disabled={loading}
+            className="text-xs text-red-400 underline transition-colors hover:text-red-300 disabled:opacity-50"
+          >
+            Leave room
+          </button>
+        </footer>
+      )}
     </div>
   );
 }

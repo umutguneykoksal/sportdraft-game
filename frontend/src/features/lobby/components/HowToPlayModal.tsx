@@ -1,3 +1,7 @@
+import {
+  FORMATION_FIRST_READY_COUNTDOWN_SECONDS,
+  LOBBY_PAIRING_COUNTDOWN_SECONDS,
+} from "../../../shared/lobbyTiming";
 import { LobbyModalShell } from "./LobbyModalShell";
 
 interface HowToPlaySectionProps {
@@ -27,10 +31,14 @@ export function HowToPlayModal({ open, onClose }: HowToPlayModalProps) {
           <p>Create or join a room, pick a league and minimum OVR, then choose your formation.</p>
           <p>
             When one player taps <strong className="text-white">Start Auction</strong>, a{" "}
-            <strong className="text-white">10-second</strong> timer begins. If both confirm before
-            it ends, the auction starts immediately.
+            <strong className="text-white">{FORMATION_FIRST_READY_COUNTDOWN_SECONDS}-second</strong>{" "}
+            timer begins. If both confirm before it ends, the auction starts immediately.
           </p>
-          <p>After pairing, a <strong className="text-white">5-second</strong> countdown leads into formation pick.</p>
+          <p>
+            After pairing, a{" "}
+            <strong className="text-white">{LOBBY_PAIRING_COUNTDOWN_SECONDS}-second</strong> countdown
+            leads into formation pick.
+          </p>
         </HowToPlaySection>
 
         <HowToPlaySection title="Auction">
