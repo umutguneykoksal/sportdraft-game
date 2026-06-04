@@ -448,15 +448,17 @@ public class LobbyService {
         if (endsAt == null || phase == null) {
             return null;
         }
-        if (phase == LobbyCountdownPhase.PAIRING) {
-            Instant cap = Instant.now().plus(LOBBY_PAIRING_COUNTDOWN_SECONDS, ChronoUnit.SECONDS);
-            if (endsAt.isAfter(cap)) {
-                log.warn(
-                    "Normalized pairing countdown session={} endsAt={} cap={}",
-                    session.getId(), endsAt, cap
-                );
-                return cap;
-            }
+        Instant cap = switch (phase) {
+            case PAIRING -> Instant.now().plus(LOBBY_PAIRING_COUNTDOWN_SECONDS, ChronoUnit.SECONDS);
+            case FORMATION_AUCTION_START ->
+                Instant.now().plus(FORMATION_FIRST_READY_COUNTDOWN_SECONDS, ChronoUnit.SECONDS);
+        };
+        if (endsAt.isAfter(cap)) {
+            log.warn(
+                "Normalized {} countdown session={} endsAt={} cap={}",
+                phase, session.getId(), endsAt, cap
+            );
+            return cap;
         }
         return endsAt;
     }

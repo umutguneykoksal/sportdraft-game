@@ -8,35 +8,60 @@ export const FORMATION_FIRST_READY_COUNTDOWN_SECONDS = 10;
 
 export type LobbyCountdownPhase = "PAIRING" | "FORMATION_AUCTION_START";
 
+/**
+ * Status is authoritative over {@link countdownPhase} so stale wire fields cannot
+ * show a 10s auction timer during the 5s pairing countdown.
+ */
 export function inferCountdownPhase(
   snapshot: SessionSnapshotResponse | null | undefined
 ): LobbyCountdownPhase | null {
   if (!snapshot?.countdownEndsAt) return null;
-  if (snapshot.countdownPhase) return snapshot.countdownPhase;
-  if (snapshot.status === "COUNTDOWN") return "PAIRING";
-  if (snapshot.status === "FORMATION_SELECT") return "FORMATION_AUCTION_START";
+
+  if (snapshot.status === "COUNTDOWN") {
+    return "PAIRING";
+  }
+
+  if (snapshot.status === "FORMATION_SELECT") {
+    if ((snapshot.matchStartReadyCount ?? 0) < 1) {
+      return null;
+    }
+    return "FORMATION_AUCTION_START";
+  }
+
+  if (snapshot.countdownPhase) {
+    return snapshot.countdownPhase;
+  }
+
   return null;
 }
 
+function capDeadlineIso(endsAt: string, capSeconds: number): string {
+  const endsMs = new Date(endsAt).getTime();
+  if (Number.isNaN(endsMs)) return endsAt;
+  const capMs = Date.now() + capSeconds * 1000;
+  return new Date(Math.min(endsMs, capMs)).toISOString();
+}
+
 /**
- * Deadline for the active lobby countdown. Uses server {@link countdownPhase}
- * so stale {@link matchStartDeadlineAt} cannot override pairing (5s).
+ * Deadline for the active lobby countdown. Never uses {@link matchStartDeadlineAt}
+ * except in {@link MATCH_START_PENDING}.
  */
 export function resolveLobbyCountdownDeadline(
   snapshot: SessionSnapshotResponse | null | undefined
 ): string | null {
-  if (!snapshot?.countdownEndsAt) return null;
-
   const phase = inferCountdownPhase(snapshot);
-  if (phase === "PAIRING" || phase === "FORMATION_AUCTION_START") {
-    return snapshot.countdownEndsAt;
+  if (!phase || !snapshot?.countdownEndsAt) {
+    if (snapshot?.status === "MATCH_START_PENDING") {
+      return snapshot.matchStartDeadlineAt ?? snapshot.countdownEndsAt ?? null;
+    }
+    return null;
   }
 
-  if (snapshot.status === "MATCH_START_PENDING") {
-    return snapshot.matchStartDeadlineAt ?? snapshot.countdownEndsAt ?? null;
+  if (phase === "PAIRING") {
+    return capDeadlineIso(snapshot.countdownEndsAt, LOBBY_PAIRING_COUNTDOWN_SECONDS);
   }
 
-  return null;
+  return capDeadlineIso(snapshot.countdownEndsAt, FORMATION_FIRST_READY_COUNTDOWN_SECONDS);
 }
 
 export function computeCountdownSecondsLeft(deadlineAt: string | null): number | null {

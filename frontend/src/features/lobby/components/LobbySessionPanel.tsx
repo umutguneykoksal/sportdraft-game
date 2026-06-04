@@ -194,13 +194,17 @@ export function LobbySessionPanel({
   return (
     <div
       className={cn(
-        "flex h-full min-h-0 w-full min-w-0 flex-col rounded-xl border border-white/10 bg-surface-card/95 shadow-2xl shadow-black/30 backdrop-blur-sm sm:rounded-2xl",
-        formationPickActive
-          ? "overflow-y-auto overscroll-y-contain [-webkit-overflow-scrolling:touch] sm:overflow-hidden"
-          : "overflow-hidden"
+        "flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-xl border border-white/10 bg-surface-card/95 shadow-2xl shadow-black/30 backdrop-blur-sm sm:rounded-2xl",
+        formationPickActive &&
+          "max-sm:overflow-y-auto max-sm:overscroll-y-contain max-sm:[-webkit-overflow-scrolling:touch]"
       )}
     >
-      <header className="sticky top-0 z-10 shrink-0 border-b border-white/10 bg-surface-card/95 px-4 py-3 backdrop-blur-sm sm:static sm:px-5">
+      <header
+        className={cn(
+          "shrink-0 border-b border-white/10 bg-surface-card/95 px-4 py-3 sm:px-5",
+          formationPickActive && "max-sm:sticky max-sm:top-0 max-sm:z-10 max-sm:backdrop-blur-sm"
+        )}
+      >
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
           <div className="min-w-0 flex-1">
             <p className="truncate text-base font-bold text-white">{nickname}</p>
@@ -223,20 +227,13 @@ export function LobbySessionPanel({
         </div>
       </header>
 
-      {/* Mobile formation: natural height so the card scrolls; desktop: flex body + scrollable main */}
-      <div
-        className={cn(
-          "flex flex-col",
-          formationPickActive
-            ? "sm:min-h-0 sm:flex-1 sm:overflow-hidden"
-            : "min-h-0 flex-1 sm:overflow-hidden"
-        )}
-      >
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         <main
           className={cn(
+            "min-h-0 flex-1",
             formationPickActive
-              ? "sm:min-h-0 sm:flex-1 sm:overflow-y-auto sm:overscroll-y-contain sm:[-webkit-overflow-scrolling:touch]"
-              : "min-h-0 flex-1 sm:overflow-y-auto sm:overscroll-y-contain sm:[-webkit-overflow-scrolling:touch]"
+              ? "max-sm:flex-none sm:flex sm:flex-col sm:overflow-hidden"
+              : "overflow-y-auto overscroll-y-contain [-webkit-overflow-scrolling:touch]"
           )}
         >
           {pairingCountdownActive && countdownSecondsLeft != null && (
@@ -287,7 +284,7 @@ export function LobbySessionPanel({
           )}
 
           {formationPickActive && (
-            <div className="px-4 pt-3 pb-4 sm:flex sm:min-h-0 sm:flex-1 sm:flex-col sm:overflow-hidden sm:px-5 sm:pb-2">
+            <div className="flex flex-col px-4 pt-3 pb-4 sm:min-h-0 sm:flex-1 sm:px-5 sm:pb-2">
               <p className="mb-3 shrink-0 text-center text-sm font-semibold text-slate-300">
                 Choose your formation
               </p>
@@ -305,7 +302,6 @@ export function LobbySessionPanel({
                   />
                 ))}
               </div>
-              {/* Room so the last row is not covered by the sticky action bar on mobile */}
               <div className="h-28 shrink-0 sm:hidden" aria-hidden />
             </div>
           )}
@@ -320,10 +316,10 @@ export function LobbySessionPanel({
         {status === "FORMATION_SELECT" && (
           <footer
             className={cn(
-              "shrink-0 border-t border-white/10 bg-surface-elevated/95 px-4 py-3 backdrop-blur-sm",
+              "shrink-0 border-t border-white/10 bg-surface-elevated/95 px-4 py-3 sm:px-5",
               "pb-[max(0.75rem,env(safe-area-inset-bottom))]",
-              formationPickActive && "sticky bottom-0 z-10",
-              "sm:static sm:px-5"
+              formationPickActive &&
+                "max-sm:sticky max-sm:bottom-0 max-sm:z-10 max-sm:backdrop-blur-sm"
             )}
           >
             {waitingHint && (
