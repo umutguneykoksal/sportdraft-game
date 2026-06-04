@@ -101,17 +101,19 @@ function FormationActionBar({
   onStartAuction: () => void;
   onLeave: () => void;
 }) {
+  const leaveOnly = !showReadyControl;
+
   return (
-    <div className="flex gap-3">
+    <div className={cn("flex gap-3", leaveOnly && "flex-col")}>
       {showReadyControl && (
         <button
           data-testid="lobby-confirm-formation-ready"
           onClick={onStartAuction}
           disabled={loading || snapshot.matchStartConfirmedByMe || !snapshot.myFormation}
           className={cn(
-            "min-h-[44px] flex-1 rounded-lg py-2.5 text-sm font-bold transition-colors",
+            "min-h-[44px] min-w-0 flex-1 rounded-lg px-4 py-2.5 text-sm font-bold transition-colors",
             snapshot.matchStartConfirmedByMe
-              ? "cursor-default border border-accent-green/30 bg-accent-green/20 text-accent-green"
+              ? "cursor-default whitespace-nowrap border border-accent-green/40 bg-accent-green/15 text-accent-green"
               : "bg-accent text-white hover:bg-blue-600 disabled:opacity-50"
           )}
         >
@@ -127,7 +129,7 @@ function FormationActionBar({
         disabled={loading}
         className={cn(
           "min-h-[44px] rounded-lg border border-red-500/30 bg-red-900/30 px-5 py-2.5 text-sm font-bold text-red-400 hover:bg-red-900/50 disabled:opacity-50",
-          formationPickActive ? "" : "w-full"
+          leaveOnly ? "w-full" : "shrink-0 basis-auto min-w-[5.5rem]"
         )}
       >
         Leave
