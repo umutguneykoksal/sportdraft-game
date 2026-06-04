@@ -1,14 +1,6 @@
 import { AuctionRoundResponse, AuctionStateResponse } from "./contracts";
 import { authHeaders, getApiBase, getApiPrefix, parseOrThrow } from "./httpClient";
 
-export async function startRound(sessionId: string): Promise<AuctionRoundResponse> {
-  const response = await fetch(`${getApiBase()}${getApiPrefix()}/sessions/${sessionId}/auction/rounds/start`, {
-    method: "POST",
-    headers: authHeaders(),
-  });
-  return parseOrThrow<AuctionRoundResponse>(response, `startRound failed: ${response.status}`);
-}
-
 export async function placeBid(
   sessionId: string,
   roundId: string,
@@ -23,17 +15,6 @@ export async function placeBid(
     body: JSON.stringify({ roundId, amountCents }),
   });
   return parseOrThrow<AuctionRoundResponse>(response, `placeBid failed: ${response.status}`);
-}
-
-export async function readyNextRound(sessionId: string, roundId: string): Promise<AuctionRoundResponse> {
-  const response = await fetch(`${getApiBase()}${getApiPrefix()}/sessions/${sessionId}/auction/rounds/${roundId}/ready-next`, {
-    method: "POST",
-    headers: {
-      ...authHeaders(),
-      "Idempotency-Key": crypto.randomUUID(),
-    },
-  });
-  return parseOrThrow<AuctionRoundResponse>(response, `readyNextRound failed: ${response.status}`);
 }
 
 export async function passRound(sessionId: string, roundId: string): Promise<AuctionRoundResponse> {
@@ -54,4 +35,3 @@ export async function getAuctionState(sessionId: string): Promise<AuctionStateRe
   });
   return parseOrThrow<AuctionStateResponse>(response, `getAuctionState failed: ${response.status}`);
 }
-

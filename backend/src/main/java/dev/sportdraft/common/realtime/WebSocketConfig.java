@@ -1,5 +1,7 @@
 package dev.sportdraft.common.realtime;
 
+import java.util.List;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.socket.config.annotation.EnableWebSocket;
@@ -13,13 +15,17 @@ public class WebSocketConfig implements WebSocketConfigurer {
 
     private final AuctionWebSocketHandler auctionWebSocketHandler;
 
+    @Value("${app.cors.allowed-origins:http://localhost:3000,https://*.up.railway.app}")
+    private List<String> allowedOrigins;
+
     public WebSocketConfig(AuctionWebSocketHandler auctionWebSocketHandler) {
         this.auctionWebSocketHandler = auctionWebSocketHandler;
     }
 
     @Override
     public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
-        registry.addHandler(auctionWebSocketHandler, "/ws/sessions").setAllowedOriginPatterns("*");
+        registry.addHandler(auctionWebSocketHandler, "/ws/sessions")
+            .setAllowedOriginPatterns(allowedOrigins.toArray(String[]::new));
     }
 
     /** Disable server-side idle close; client ping + server heartbeat keep proxies alive. */

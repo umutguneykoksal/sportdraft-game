@@ -28,7 +28,7 @@ export { getApiBase, getApiPrefix, getClientUserId } from "./api/httpClient";
 export { leaveLobby, listLobbies, createRoom, joinRoom, getPoolMinRatingOptions, getSpectateState, getSpectateMatchTimeline } from "./api/lobbyClient";
 export { getSessionSnapshot, selectFormation, confirmFormationReady, confirmMatchStart, pingSession, fetchEventsSince } from "./api/sessionClient";
 export type { EventSyncResponse } from "./api/sessionClient";
-export { startRound, placeBid, readyNextRound, passRound, getAuctionState } from "./api/auctionClient";
+export { placeBid, passRound, getAuctionState } from "./api/auctionClient";
 export { getMatchResult, getMatchTimeline } from "./api/matchClient";
 export {
   getCompetitionBySession,

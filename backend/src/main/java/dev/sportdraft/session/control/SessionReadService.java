@@ -102,6 +102,8 @@ public class SessionReadService {
     }
 
     public void recordPing(UUID sessionId, UUID userId) {
+        ActiveSession session = sessionStore.getById(sessionId);
+        SessionAccess.requireMember(session, userId);
         sseEmitterRegistry.recordPlayerPing(sessionId, userId);
     }
 

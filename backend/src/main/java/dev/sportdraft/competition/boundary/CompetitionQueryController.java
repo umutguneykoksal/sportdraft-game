@@ -1,6 +1,7 @@
 package dev.sportdraft.competition.boundary;
 
 import dev.sportdraft.competition.control.CompetitionQueryService;
+import dev.sportdraft.common.realtime.RealtimeConnectionAuthorizer;
 import dev.sportdraft.common.web.AuthTokenResolver;
 import java.util.UUID;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -15,13 +16,16 @@ public class CompetitionQueryController {
 
     private final CompetitionQueryService competitionQueryService;
     private final AuthTokenResolver authTokenResolver;
+    private final RealtimeConnectionAuthorizer connectionAuthorizer;
 
     public CompetitionQueryController(
         CompetitionQueryService competitionQueryService,
-        AuthTokenResolver authTokenResolver
+        AuthTokenResolver authTokenResolver,
+        RealtimeConnectionAuthorizer connectionAuthorizer
     ) {
         this.competitionQueryService = competitionQueryService;
         this.authTokenResolver = authTokenResolver;
+        this.connectionAuthorizer = connectionAuthorizer;
     }
 
     @GetMapping("/{sessionId}/competition")
@@ -30,6 +34,7 @@ public class CompetitionQueryController {
         @RequestHeader("Authorization") String authorization
     ) {
         UUID userId = authTokenResolver.resolveUserId(authorization);
+        connectionAuthorizer.assertSessionMembership(sessionId, userId);
         return competitionQueryService.getBySessionId(sessionId, userId);
     }
 }

@@ -118,7 +118,7 @@ AI/generic isimler temizlendi. Tercih edilen kalıp:
 | `TournamentPhaseCoordinator` | `TournamentBracketFlow` |
 | `LeaguePhaseCoordinator` | `LeagueSeasonFlow` |
 | `ensureOpenRound()` | `openRoundIfNeeded()` |
-| `useAuctionOrchestrator` (FE) | `useAuctionSync` |
+| `useAuctionOrchestrator` (FE) | `useSessionSync` + `useAuctionPageState` |
 
 **Domain fiilleri kullan:** `createRoom`, `joinRoom`, `placeBid`, `closeRound`, `archive` — `handle*`, `process*`, `ensure*` sadece gerçekten gerekince.
 

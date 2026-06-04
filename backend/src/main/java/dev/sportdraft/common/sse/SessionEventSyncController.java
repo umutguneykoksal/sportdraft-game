@@ -5,7 +5,9 @@ import dev.sportdraft.common.realtime.SessionEventLog;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -41,13 +43,21 @@ public class SessionEventSyncController {
         @RequestParam("afterSeq") long afterSeq,
         @RequestParam(value = "spectator", required = false, defaultValue = "false") boolean spectator
     ) {
-        UUID userId = UUID.fromString(token);
+        UUID userId = parseToken(token);
         if (!spectator) {
             connectionAuthorizer.assertSessionMembership(sessionId, userId);
         }
         List<Map<String, Object>> events = eventLog.since(sessionId, afterSeq);
         long lastSeq = eventLog.currentSeq(sessionId);
         return new SyncResponse(events, lastSeq);
+    }
+
+    private UUID parseToken(String token) {
+        try {
+            return UUID.fromString(token);
+        } catch (IllegalArgumentException ex) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid token");
+        }
     }
 
     public record SyncResponse(List<Map<String, Object>> events, long lastSeq) {}

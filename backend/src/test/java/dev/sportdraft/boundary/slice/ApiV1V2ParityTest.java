@@ -12,7 +12,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import dev.sportdraft.bidding.boundary.AuctionController;
 import dev.sportdraft.bidding.boundary.AuctionCommandController;
-import dev.sportdraft.bidding.control.AuctionEngine;
+import dev.sportdraft.bidding.control.AuctionService;
 import dev.sportdraft.bidding.control.AuctionService;
 import dev.sportdraft.common.realtime.RealtimeConnectionAuthorizer;
 import dev.sportdraft.common.realtime.SessionEventLog;
@@ -65,15 +65,12 @@ class ApiV1V2ParityTest {
         syncMvc = standalone(new SessionEventSyncController(eventLog, authorizer));
 
         AuctionService auctionService = mock(AuctionService.class);
-        AuctionEngine auctionEngine = mock(AuctionEngine.class);
         when(auctionService.placeBid(eq(sessionId), eq(userId), any(), any()))
-            .thenThrow(new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "Bid is below minimum increment"));
-        when(auctionEngine.placeBid(eq(sessionId), eq(userId), any(), any()))
             .thenThrow(new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "Bid is below minimum increment"));
 
         v1AuctionMvc = standalone(new AuctionController(auctionService, authTokenResolver));
         v2AuctionMvc = standalone(new AuctionCommandController(
-            auctionEngine,
+            auctionService,
             authTokenResolver,
             new CommandIdempotencyGuard()
         ));

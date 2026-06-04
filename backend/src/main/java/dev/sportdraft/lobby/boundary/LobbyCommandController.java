@@ -45,7 +45,7 @@ public class LobbyCommandController {
     ) {
         String nickname = request != null ? request.nickname() : null;
         var gameMode = request != null && request.gameMode() != null
-            ? dev.sportdraft.session.entity.GameMode.fromWire(request.gameMode())
+            ? dev.sportdraft.session.entity.GameMode.fromWireOrThrow(request.gameMode())
             : dev.sportdraft.session.entity.GameMode.DUEL;
         return lobbyService.createRoom(
             authTokenResolver.resolveUserId(authorization),
@@ -59,7 +59,7 @@ public class LobbyCommandController {
     @PostMapping("/{sessionId}/join")
     public SessionSnapshotResponse joinRoom(
         @PathVariable UUID sessionId,
-        @Valid @RequestBody(required = false) JoinLobbyRequest request,
+        @Valid @RequestBody(required = false) JoinRoomRequest request,
         @RequestHeader("Authorization") String authorization
     ) {
         String nickname = request != null ? request.nickname() : null;

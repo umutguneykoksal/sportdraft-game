@@ -1,6 +1,11 @@
 # SportDraft
 
-**[Play at sportdraft.dev →](https://www.sportdraft.dev)**
+**[Play (production) →](https://www.sportdraft.dev)** · **[Dev / staging →](https://test.sportdraft.dev)**
+
+| Environment | URL |
+|-------------|-----|
+| Production | [sportdraft.dev](https://www.sportdraft.dev) |
+| Development | [test.sportdraft.dev](https://test.sportdraft.dev) |
 
 Multiplayer football card auction draft. Two to four players share a card pool, bid from a **100-credit** budget, fill an **11-slot formation**, then the server runs an instant rating-based match simulation.
 
@@ -107,7 +112,7 @@ More detail: [docs/backend-architecture.md](docs/backend-architecture.md).
 
 ### Stack
 
-Java 21 · Spring Boot 3.3 · PostgreSQL 16 · Redis 7 · Flyway · React 18 · TypeScript · TanStack Query · Zustand · Tailwind · JUnit 5 · Testcontainers · Jest · Playwright
+Java 21 · Spring Boot 3.3 · PostgreSQL 16 · Redis 7 · Flyway · React 18 · TypeScript · Tailwind · JUnit 5 · Testcontainers · Jest · Playwright
 
 ### Run locally
 
@@ -136,8 +141,10 @@ Every push runs backend (`mvn verify` with Testcontainers, JaCoCo line coverage 
 cd backend && mvn verify          # needs Docker
 cd backend && mvn test -Pskip-it    # unit tests only
 cd frontend && npm run test:coverage
-cd e2e && npm test                # Playwright (app must be running)
+cd e2e && npm test                # Playwright — requires running stack + E2E_BASE_URL (see e2e/README if present)
 ```
+
+Playwright smoke tests skip locally when `E2E_BASE_URL` is unset; CI sets it to the deployed or staged app URL.
 
 ---
 
