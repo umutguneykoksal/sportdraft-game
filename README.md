@@ -30,12 +30,12 @@ The host picks the **card pool** before the room opens: league (Premier League o
 
 ## How a session works
 
-1. **Lobby** — create a room or join from the lobby list; countdown starts when the room is full.
-2. **Formation** — each player picks a formation (e.g. 4-4-2, 4-3-3) before the draft.
+1. **Lobby** — host creates a room (`createRoom`) or players join from the list (`joinRoom`). When the room is **full** (2 in Duel, 4 in Tournament/League), a **5-second** pairing countdown runs, then formation selection opens.
+2. **Formation (ready-up)** — each player picks a formation (e.g. 4-4-2, 4-3-3) and taps **Start Auction**. Until everyone has confirmed, the UI shows **Ready (X/N)** with **no** auction timer. When **all** players in the room are ready, a **5-second** countdown runs, then the draft starts. Formations are locked after you confirm; opponents can still pick until they confirm.
 3. **Auction draft** — sequential rounds; bid on cards that fit open roster slots. Budget, turn order, anti-snipe extension, and auto-pass rules are enforced server-side.
-4. **Match** — when the draft finishes, the server simulates the fixture from card ratings and publishes the score (and event timeline for duels).
+4. **Match** — when the draft finishes, the server simulates the fixture from card ratings and publishes the score (and event timeline for duels). Tournament and league modes continue with bracket or season fixtures after the shared draft.
 
-All game state is **server-authoritative**: clients send commands and render what the server sends back. Disconnect and reconnect are handled with a live event log.
+All game state is **server-authoritative**: clients send commands and render what the server sends back. Disconnect and reconnect are handled with a live event log (WebSocket primary, SSE fallback, REST event sync).
 
 ---
 
@@ -71,7 +71,8 @@ Football only for now.
 ### Recently shipped
 
 - Redis-backed live auction state (single aggregate per session)
-- Room create/join flow (`createRoom` + `joinRoom`)
+- Room create/join flow (`createRoom` + `joinRoom` on `/api/v2`)
+- Formation ready-up: partial **Ready (X/N)**, **5s** countdown only when all players are ready
 - Legacy API cleanup and schema migration (Flyway V26)
 
 ---
@@ -106,9 +107,11 @@ flowchart TB
 
 The backend is a **modular monolith**: feature slices (`lobby`, `session`, `bidding`, `simulation`, `competition`) each with boundary / control / entity layers. Active draft and auction state lives in **Redis**; Postgres holds the card catalog, competition brackets, and match history.
 
-More detail: [docs/backend-architecture.md](docs/backend-architecture.md).
+Published architecture reference (also on GitHub): [docs/backend-architecture.md](docs/backend-architecture.md).
 
-**API:** canonical surface is `/api/v2`. Legacy `/api` endpoints remain as a deprecated fallback.
+**API:** canonical surface is `/api/v2` (e.g. `/api/v2/lobbies`, `/api/v2/sessions/{id}/…`). Legacy `/api` endpoints remain as a deprecated fallback.
+
+**Frontend:** Create React App, feature folders under `src/features/`, shared hooks (`useSessionSync`, `useRealtimeSession`) — not a separate BFF; the SPA talks to the API directly.
 
 ### Stack
 
@@ -127,24 +130,25 @@ cd frontend && npm ci && npm start
 Frontend defaults to `http://localhost:8080`. Override with `REACT_APP_API_BASE` in `frontend/.env`.
 
 ```
-backend/     API + domain logic
-frontend/    web app
-e2e/         Playwright smoke tests
-infra/       docker-compose (Postgres + Redis)
+backend/     API + domain logic (BCE feature slices)
+frontend/    React SPA
+e2e/         Playwright smoke tests (see e2e/README.md)
+infra/       docker-compose (Postgres + Redis, healthchecks)
+docs/        backend-architecture.md is published; other notes may be local-only
 ```
 
 ### Tests & CI
 
-Every push runs backend (`mvn verify` with Testcontainers, JaCoCo line coverage gate at 85%), frontend (`npm run test:coverage`), and Playwright smoke tests for all three game modes.
+Every push runs backend (`mvn verify` with Testcontainers, JaCoCo line coverage gate at 85% on the control layer), frontend (`npm run test:coverage`), and Playwright smoke tests for all three game modes.
 
 ```bash
 cd backend && mvn verify          # needs Docker
 cd backend && mvn test -Pskip-it    # unit tests only
 cd frontend && npm run test:coverage
-cd e2e && npm test                # Playwright — requires running stack + E2E_BASE_URL (see e2e/README if present)
+cd e2e && npm ci && npm test      # see e2e/README.md
 ```
 
-Playwright smoke tests skip locally when `E2E_BASE_URL` is unset; CI sets it to the deployed or staged app URL.
+**E2E locally:** set `E2E_BASE_URL` to a running app (e.g. `http://localhost:3000` with backend on `:8080`). If unset, smoke tests are skipped. CI sets `E2E_BASE_URL` to the staged or production URL. Smoke scope today: lobby → formation → auction entry per mode (not a full 44-round draft).
 
 ---
 
