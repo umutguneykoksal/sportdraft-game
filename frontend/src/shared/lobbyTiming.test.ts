@@ -1,6 +1,7 @@
 import {
   computeCountdownSecondsLeft,
   inferCountdownPhase,
+  latchStaleCountdownDeadline,
   resolveLobbyCountdownDeadline,
 } from "./lobbyTiming";
 import type { SessionSnapshotResponse } from "./api/contracts";
@@ -84,17 +85,18 @@ describe("lobbyTiming", () => {
     ).toBe("2026-01-01T00:00:10.000Z");
   });
 
-  it("capsPairingDeadlineToFiveSecondsFromNow", () => {
-    const far = new Date(Date.now() + 60_000).toISOString();
-    const resolved = resolveLobbyCountdownDeadline({
-      ...base,
-      status: "COUNTDOWN",
-      countdownEndsAt: far,
-    });
-    expect(resolved).not.toBeNull();
-    const seconds = computeCountdownSecondsLeft(resolved);
-    expect(seconds).not.toBeNull();
-    expect(seconds!).toBeLessThanOrEqual(5);
+  it("latchStaleCountdownDeadlineFixesOverLongPairingOnce", () => {
+    const now = 1_700_000_000_000;
+    const far = new Date(now + 60_000).toISOString();
+    const latched = latchStaleCountdownDeadline(far, 5, now);
+    expect(new Date(latched).getTime()).toBe(now + 5_000);
+    expect(Math.ceil((new Date(latched).getTime() - (now + 2_000)) / 1000)).toBe(3);
+  });
+
+  it("latchStaleCountdownDeadlineLeavesValidDeadlineUntouched", () => {
+    const now = 1_700_000_000_000;
+    const ok = new Date(now + 4_000).toISOString();
+    expect(latchStaleCountdownDeadline(ok, 5, now)).toBe(ok);
   });
 
   it("computeCountdownSecondsLeftReturnsNullForMissingDeadline", () => {

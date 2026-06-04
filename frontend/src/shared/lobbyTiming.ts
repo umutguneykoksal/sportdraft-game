@@ -35,16 +35,36 @@ export function inferCountdownPhase(
   return null;
 }
 
-function capDeadlineIso(endsAt: string, capSeconds: number): string {
+/** Max seconds for the active phase (null when no countdown). */
+export function maxCountdownSecondsForPhase(
+  phase: LobbyCountdownPhase | null
+): number | null {
+  if (phase === "PAIRING") return LOBBY_PAIRING_COUNTDOWN_SECONDS;
+  if (phase === "FORMATION_AUCTION_START") return FORMATION_FIRST_READY_COUNTDOWN_SECONDS;
+  return null;
+}
+
+/**
+ * One-shot correction when wire {@link countdownEndsAt} is too far in the future.
+ * Must be latched (same {@link nowMs}) — do not call every tick with a moving clock.
+ */
+export function latchStaleCountdownDeadline(
+  endsAt: string,
+  maxSeconds: number,
+  nowMs: number
+): string {
   const endsMs = new Date(endsAt).getTime();
   if (Number.isNaN(endsMs)) return endsAt;
-  const capMs = Date.now() + capSeconds * 1000;
-  return new Date(Math.min(endsMs, capMs)).toISOString();
+  const maxMs = maxSeconds * 1000;
+  const remainingMs = endsMs - nowMs;
+  if (remainingMs <= maxMs) return endsAt;
+  return new Date(nowMs + maxMs).toISOString();
 }
 
 /**
  * Deadline for the active lobby countdown. Never uses {@link matchStartDeadlineAt}
- * except in {@link MATCH_START_PENDING}.
+ * except in {@link MATCH_START_PENDING}. Trust server {@link countdownEndsAt}; stale
+ * over-long deadlines are corrected once in {@link useLobbyCountdownSeconds}.
  */
 export function resolveLobbyCountdownDeadline(
   snapshot: SessionSnapshotResponse | null | undefined
@@ -57,11 +77,15 @@ export function resolveLobbyCountdownDeadline(
     return null;
   }
 
-  if (phase === "PAIRING") {
-    return capDeadlineIso(snapshot.countdownEndsAt, LOBBY_PAIRING_COUNTDOWN_SECONDS);
-  }
+  return snapshot.countdownEndsAt;
+}
 
-  return capDeadlineIso(snapshot.countdownEndsAt, FORMATION_FIRST_READY_COUNTDOWN_SECONDS);
+export function countdownLatchKey(
+  snapshot: SessionSnapshotResponse | null | undefined
+): string | null {
+  const phase = inferCountdownPhase(snapshot);
+  if (!snapshot?.sessionId || !snapshot.countdownEndsAt || !phase) return null;
+  return `${snapshot.sessionId}|${snapshot.countdownEndsAt}|${phase}`;
 }
 
 export function computeCountdownSecondsLeft(deadlineAt: string | null): number | null {
