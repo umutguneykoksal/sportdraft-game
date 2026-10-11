@@ -6,6 +6,9 @@ import { LobbyEntryPanel } from "./components/LobbyEntryPanel";
 import { LobbySessionPanel } from "./components/LobbySessionPanel";
 import { saveNickname } from "../../shared/session";
 
+const NETWORK_ERROR_PATTERN = /failed to fetch|load failed|networkerror|network request failed/i;
+const MAINTENANCE_MESSAGE = "The site is currently under maintenance. Please try again later.";
+
 export function LobbyPage() {
   const navigate = useNavigate();
   const {
@@ -43,9 +46,12 @@ export function LobbyPage() {
     && (!poolMinRatingOptionsLoaded || hasSelectablePoolRating);
 
   useEffect(() => {
-    if (error) {
-      toast.error(error);
+    if (!error) return;
+    if (NETWORK_ERROR_PATTERN.test(error)) {
+      toast.error(MAINTENANCE_MESSAGE, { id: "lobby-maintenance" });
+      return;
     }
+    toast.error(error);
   }, [error]);
 
   useEffect(() => {
